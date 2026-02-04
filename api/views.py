@@ -21,36 +21,58 @@ def health_check(request):
 def search(request, query: str):
     """
     Search building codes with natural language query.
-    
-    Rate limited:
-    - Anonymous: 1/day
-    - Logged in: 3/day
-    - Pro: Unlimited
     """
-    # TODO: Implement LLM parsing and search
-    # This is a stub for initial setup
-    
+    from .llm_parser import parse_user_query
+    from .search import execute_search
+    from .formatters import format_search_results
     from core.models import SearchHistory
     
-    # Record the search
+    # Step 1: Parse natural language with LLM
+    try:
+        params = parse_user_query(query)
+    except ValueError as e:
+        return {
+            "success": False,
+            "results": [],
+            "error": str(e)
+        }
+    
+    # Step 2: Execute search
+    search_results = execute_search(params)
+    
+    if 'error' in search_results:
+        return {
+            "success": False,
+            "results": [],
+            "error": search_results['error']
+        }
+    
+    # Step 3: Format for display
+    formatted_results = format_search_results(search_results['results'])
+    
+    # Step 4: Record the search in history
     ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', ''))
     if ip and ',' in ip:
         ip = ip.split(',')[0].strip()
     
-    search_record = SearchHistory.objects.create(
+    SearchHistory.objects.create(
         user=request.user if request.user.is_authenticated else None,
         ip_address=ip if not request.user.is_authenticated else None,
         query=query,
-        parsed_params={},
-        result_count=0,
+        parsed_params=params,
+        result_count=len(formatted_results),
     )
     
     return {
-        "query": query,
-        "parsed_params": {},
-        "results": [],
-        "result_count": 0,
-        "message": "Search not yet implemented - skeleton only",
+        "success": True,
+        "results": formatted_results,
+        "error": None,
+        "meta": {
+            "query": query,
+            "parsed_params": params,
+            "applicable_codes": search_results['applicable_codes'],
+            "result_count": len(formatted_results)
+        }
     }
 
 
@@ -63,27 +85,39 @@ def get_search_history(request):
         user=request.user
     ).order_by('-timestamp')[:20]
     
+    results = [
+        {
+            "query": h.query,
+            "timestamp": h.timestamp.isoformat(),
+            "result_count": h.result_count,
+        }
+        for h in history
+    ]
+    
     return {
-        "history": [
-            {
-                "query": h.query,
-                "timestamp": h.timestamp.isoformat(),
-                "result_count": h.result_count,
-            }
-            for h in history
-        ]
+        "success": True,
+        "results": results,
+        "error": None
     }
 
 
 @api.get("/codes")
 def list_available_codes(request):
     """List all code editions in the system."""
-    # Will be populated from config/code_metadata.py
+    from config.code_metadata import CODE_EDITIONS
+    
+    data = []
+    for code_type, editions in CODE_EDITIONS.items():
+        for ed in editions:
+            data.append({
+                "name": f"{code_type} {ed['year']}",
+                "province": code_type if code_type != 'NBC' else 'Federal',
+                "status": "Current" if not ed['superseded_date'] else "Historical",
+                "effective_date": ed['effective_date']
+            })
+            
     return {
-        "codes": [
-            {"name": "OBC 2024", "province": "ON", "status": "Current"},
-            {"name": "NBC 2025", "province": "Federal", "status": "Current"},
-            # More will be loaded from CODE_EDITIONS
-        ],
-        "message": "Stub data - will load from CODE_EDITIONS"
+        "success": True,
+        "results": data,
+        "error": None
     }
