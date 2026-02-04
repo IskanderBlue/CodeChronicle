@@ -5,9 +5,15 @@ from datetime import date
 from typing import List, Dict, Any
 
 from django.conf import settings
-from building_code_mcp import search_code, get_section
+from building_code_mcp import BuildingCodeMCP
 from config.code_metadata import get_applicable_codes
 from config.map_loader import map_cache
+
+# Initialize the MCP server as a singleton
+# We point it to the neighboring repo's maps directory
+import os
+MCP_MAPS_DIR = os.path.abspath(os.path.join(settings.BASE_DIR, "..", "Canada_building_code_mcp", "maps"))
+mcp_server = BuildingCodeMCP(maps_dir=MCP_MAPS_DIR)
 
 
 def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -51,11 +57,14 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
         try:
             # Use building-code-mcp search
             # We use base_code to ensure we only search within the resolved jurisdiction
-            results = search_code(
+            # mcp_server is our singleton instance of BuildingCodeMCP
+            search_response = mcp_server.search_code(
                 query=" ".join(keywords),
                 code=base_code,
                 limit=10
             )
+            
+            results = search_response.get('results', [])
             
             # Add metadata to each result
             for result in results:
