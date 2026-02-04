@@ -3,10 +3,10 @@
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="text-center mb-12">
-        <h1 class="text-4xl font-extrabold text-gray-900 sm:text-5xl">
+        <h1 class="text-4xl font-extrabold text-neutral-900 dark:text-white sm:text-5xl">
             Choose your plan
         </h1>
-        <p class="mt-4 text-xl text-gray-500">
+        <p class="mt-4 text-xl text-neutral-500 dark:text-neutral-400">
             Simple pricing for individuals and professionals.
         </p>
     </div>
@@ -14,41 +14,43 @@
     <div
         class="mt-12 space-y-4 sm:mt-16 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0">
         {% for plan in plans %}
-        <div class="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200 bg-white">
+        <div
+            class="border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-sm divide-y divide-neutral-200 dark:divide-neutral-700 bg-white dark:bg-neutral-800">
             <div class="p-6">
-                <h2 class="text-xl leading-6 font-semibold text-gray-900">{{ plan.name }}</h2>
+                <h2 class="text-xl leading-6 font-semibold text-neutral-900 dark:text-white">{{ plan.name }}</h2>
                 <p class="mt-8">
-                    <span class="text-4xl font-extrabold text-gray-900">${{ plan.price }}</span>
-                    <span class="text-base font-medium text-gray-500">/mo</span>
+                    <span class="text-4xl font-extrabold text-neutral-900 dark:text-white">${{ plan.price }}</span>
+                    <span class="text-base font-medium text-neutral-500 dark:text-neutral-400">/mo</span>
                 </p>
 
                 {% if plan.id == 'free' %}
                 <a href="{% url 'account_signup' %}"
-                    class="mt-8 block w-full bg-gray-100 border border-gray-300 rounded-md py-2 text-sm font-semibold text-gray-700 text-center hover:bg-gray-200">
+                    class="mt-8 block w-full bg-neutral-100 dark:bg-neutral-700 border border-neutral-300 dark:border-neutral-600 rounded-md py-2 text-sm font-semibold text-neutral-700 dark:text-neutral-200 text-center hover:bg-neutral-200 dark:hover:bg-neutral-600">
                     {% if plan.is_current %}Current Plan{% else %}Choose Free{% endif %}
                 </a>
                 {% else %}
                 <form action="{% url 'core:create_checkout_session' %}" method="POST">
                     {% csrf_token %}
                     <button type="submit" {% if plan.is_current %}disabled{% endif %}
-                        class="mt-8 block w-full bg-indigo-600 border border-transparent rounded-md py-2 text-sm font-semibold text-white text-center hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                        class="mt-8 block w-full bg-primary-600 border border-transparent rounded-md py-2 text-sm font-semibold text-white text-center hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed">
                         {% if plan.is_current %}Current Plan{% else %}Upgrade to Pro{% endif %}
                     </button>
                 </form>
                 {% endif %}
             </div>
             <div class="pt-6 pb-8 px-6">
-                <h3 class="text-xs font-medium text-gray-900 uppercase tracking-wide">What's included</h3>
+                <h3 class="text-xs font-medium text-neutral-900 dark:text-neutral-300 uppercase tracking-wide">What's
+                    included</h3>
                 <ul role="list" class="mt-6 space-y-4">
                     {% for feature in plan.features %}
                     <li class="flex space-x-3">
-                        <svg class="flex-shrink-0 h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 20 20" fill="currentColor">
+                        <svg class="flex-shrink-0 h-5 w-5 text-success-500 dark:text-success-400"
+                            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd"
                                 d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
                                 clip-rule="evenodd" />
                         </svg>
-                        <span class="text-sm text-gray-500">{{ feature }}</span>
+                        <span class="text-sm text-neutral-500 dark:text-neutral-400">{{ feature }}</span>
                     </li>
                     {% endfor %}
                 </ul>
