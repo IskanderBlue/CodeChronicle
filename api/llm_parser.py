@@ -67,14 +67,19 @@ def parse_user_query(query: str) -> Dict[str, Any]:
 
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     
-    response = client.messages.create(
-        model=settings.CLAUDE_MODEL,
-        max_tokens=1000,
-        tools=[PARSE_QUERY_TOOL],
-        tool_choice={"type": "tool", "name": "parse_building_code_query"},
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": query}]
-    )
+    try:
+        response = client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=1000,
+            tools=[PARSE_QUERY_TOOL],
+            tool_choice={"type": "tool", "name": "parse_building_code_query"},
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": query}]
+        )
+    except anthropic.AuthenticationError:
+        raise ValueError("Invalid Anthropic API Key. Please verify the ANTHROPIC_API_KEY in your .env file.")
+    except Exception as e:
+        raise ValueError(f"LLM parsing failed: {str(e)}")
     
     # Extract tool use
     for block in response.content:

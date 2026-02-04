@@ -5,8 +5,8 @@ from .models import User, SearchHistory
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ['email', 'username', 'is_active', 'date_joined']
-    search_fields = ['email', 'username']
+    list_display = ['email', 'is_active', 'date_joined']
+    search_fields = ['email']
     list_filter = ['is_active', 'is_staff']
 
 

@@ -1,6 +1,7 @@
 """
 Views for core app (frontend pages).
 """
+import os
 from django.shortcuts import render, redirect
 from django.conf import settings
 from django.urls import reverse
@@ -18,6 +19,9 @@ def home(request):
 
 def pricing(request):
     """Pricing and subscription tiers."""
+    is_authenticated = request.user.is_authenticated
+    has_active_sub = is_authenticated and getattr(request.user, 'has_active_subscription', False)
+    
     plans = [
         {
             "id": "free",
@@ -29,7 +33,7 @@ def pricing(request):
                 "Historical code search",
                 "Coordinates & Page info",
             ],
-            "is_current": not request.user.is_authenticated or not request.user.has_active_subscription
+            "is_current": not is_authenticated or not has_active_sub
         },
         {
             "id": "pro",
@@ -43,7 +47,7 @@ def pricing(request):
                 "Search history exports",
             ],
             "price_id": os.environ.get('STRIPE_PRO_PRICE_ID', 'price_placeholder'),
-            "is_current": request.user.is_authenticated and request.user.has_active_subscription
+            "is_current": is_authenticated and has_active_sub
         },
     ]
     return render(request, 'pricing.html', {"plans": plans})
@@ -118,7 +122,12 @@ def search_results(request):
         })
         
     except Exception as e:
+        error_msg = str(e)
+        # Handle Anthropic auth error specifically for better UX
+        if "401" in error_msg and "invalid x-api-key" in error_msg.lower():
+            error_msg = "Search engine authentication failure. Please check the ANTHROPIC_API_KEY in .env settings."
+            
         return render(request, 'partials/search_results_partial.html', {
             "success": False,
-            "error": f"An unexpected error occurred: {str(e)}"
+            "error": f"An unexpected error occurred: {error_msg}"
         })

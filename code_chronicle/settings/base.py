@@ -1,8 +1,5 @@
 """
 Django base settings for code_chronicle project.
-
-Settings shared across all environments.
-For environment-specific settings, see development.py and production.py.
 """
 import os
 from pathlib import Path
@@ -115,10 +112,14 @@ AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
     'allauth.account.auth_backends.AuthenticationBackend',
 ]
-ACCOUNT_AUTHENTICATION_METHODS = {'email'}
-ACCOUNT_EMAIL_VERIFICATION = 'optional'  # Change to 'mandatory' for production
-ACCOUNT_EMAIL_REQUIRED = True
-# Removed ACCOUNT_USERNAME_REQUIRED as it is handled by the model and methods
+
+# allauth v0.65+ configuration
+ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_EMAIL_VERIFICATION = 'optional'
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email'
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
