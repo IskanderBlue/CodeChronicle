@@ -40,8 +40,13 @@ dependencies = [
     "django-allauth>=0.60",
     "dj-stripe>=2.8",
     
+    # Building code search extras
+    "pymupdf>=1.23.0",
+    "rapidfuzz>=3.5.0",
+    
     # Utilities
     "python-dotenv>=1.0",
+    "dj-database-url>=2.1.0",
     "gunicorn>=21.0",
 ]
 
