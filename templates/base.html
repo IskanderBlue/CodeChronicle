@@ -58,6 +58,11 @@
                 <div class="flex items-center space-x-4">
                     {% if user.is_authenticated %}
                     <span class="text-sm text-gray-500">{{ user.email }}</span>
+                    {% if user.is_staff %}
+                    <a href="/admin/" class="text-sm font-medium text-gray-700 hover:text-indigo-600">Admin</a>
+                    {% endif %}
+                    <a href="{% url 'account_change_password' %}"
+                        class="text-sm font-medium text-gray-700 hover:text-indigo-600">Password</a>
                     <a href="{% url 'account_logout' %}"
                         class="text-sm font-medium text-gray-700 hover:text-indigo-600">Logout</a>
                     {% else %}
