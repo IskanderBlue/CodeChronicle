@@ -87,7 +87,8 @@ All API responses follow this structure:
 {
     "success": True,
     "data": {...},      # or "results": [...]
-    "error": None       # or error message string
+    "error": None,      # or error message string
+    "meta": {...}       # optional metadata (pagination, parsed params, etc)
 }
 ```
 

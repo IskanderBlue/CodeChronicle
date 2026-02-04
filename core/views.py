@@ -1,7 +1,10 @@
 """
 Views for core app (frontend pages).
 """
-from django.shortcuts import render
+from django.shortcuts import render, redirect
+from django.conf import settings
+from django.urls import reverse
+from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from api.llm_parser import parse_user_query
 from api.search import execute_search
@@ -17,6 +20,7 @@ def pricing(request):
     """Pricing and subscription tiers."""
     plans = [
         {
+            "id": "free",
             "name": "Free",
             "price": "0",
             "features": [
@@ -24,9 +28,11 @@ def pricing(request):
                 "3 Searches per day (logged in)",
                 "Historical code search",
                 "Coordinates & Page info",
-            ]
+            ],
+            "is_current": not request.user.is_authenticated or not request.user.has_active_subscription
         },
         {
+            "id": "pro",
             "name": "Pro",
             "price": "29",
             "features": [
@@ -35,10 +41,43 @@ def pricing(request):
                 "Advanced PDF maps",
                 "Amendment alerts",
                 "Search history exports",
-            ]
+            ],
+            "price_id": os.environ.get('STRIPE_PRO_PRICE_ID', 'price_placeholder'),
+            "is_current": request.user.is_authenticated and request.user.has_active_subscription
         },
     ]
     return render(request, 'pricing.html', {"plans": plans})
+
+
+@login_required
+@require_POST
+def create_checkout_session(request):
+    """Create a Stripe Checkout session for the Pro plan."""
+    import stripe
+    stripe.api_key = settings.STRIPE_TEST_SECRET_KEY if settings.DEBUG else settings.STRIPE_LIVE_SECRET_KEY
+    
+    price_id = os.environ.get('STRIPE_PRO_PRICE_ID')
+    if not price_id:
+        # Fallback for dev if not set
+        price_id = "price_H5ggYrnNc779vg" # Just an example
+        
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            customer_email=request.user.email,
+            payment_method_types=['card'],
+            line_items=[
+                {
+                    'price': price_id,
+                    'quantity': 1,
+                },
+            ],
+            mode='subscription',
+            success_url=request.build_absolute_uri(reverse('core:home')) + '?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url=request.build_absolute_uri(reverse('core:pricing')),
+        )
+        return redirect(checkout_session.url, code=303)
+    except Exception as e:
+        return render(request, 'pricing.html', {"error": str(e)})
 
 
 @require_POST

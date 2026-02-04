@@ -29,8 +29,11 @@ class User(AbstractUser):
     @property
     def has_active_subscription(self) -> bool:
         """Check if user has an active Pro subscription."""
-        # Will be implemented with dj-stripe integration
-        return False
+        from djstripe.models import Subscription
+        return Subscription.objects.filter(
+            customer__user=self,
+            status__in=['active', 'trialing']
+        ).exists()
 
 
 class SearchHistory(models.Model):

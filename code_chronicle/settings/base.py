@@ -115,10 +115,10 @@ AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
     'allauth.account.auth_backends.AuthenticationBackend',
 ]
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_AUTHENTICATION_METHODS = {'email'}
 ACCOUNT_EMAIL_VERIFICATION = 'optional'  # Change to 'mandatory' for production
+ACCOUNT_EMAIL_REQUIRED = True
+# Removed ACCOUNT_USERNAME_REQUIRED as it is handled by the model and methods
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
