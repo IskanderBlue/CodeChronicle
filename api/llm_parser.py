@@ -58,10 +58,46 @@ If the user mentions a year but not a specific date, assume January 1st of that 
 If no date or year is mentioned, use today's date: {date.today().isoformat()}."""
 
 
+
+def get_prompt_hash(content: str) -> str:
+    """Generate SHA-256 hash of the prompt content."""
+    import hashlib
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
+
+def get_query_hash(query: str) -> str:
+    """Generate SHA-256 hash of the normalized query."""
+    import hashlib
+    # Normalize: lowercase, strip whitespace
+    normalized = query.lower().strip()
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+
 def parse_user_query(query: str) -> Dict[str, Any]:
     """
     Parse natural language query into structured parameters using Claude.
+    Checks QueryCache before calling API.
     """
+    from core.models import QueryCache, QueryPrompt
+    
+    # 0. Prepare hashes
+    query_hash = get_query_hash(query)
+    prompt_content = SYSTEM_PROMPT + str(PARSE_QUERY_TOOL)
+    prompt_hash = get_prompt_hash(prompt_content)
+    
+    # 1. Check Cache
+    cached = QueryCache.objects.filter(
+        query_hash=query_hash,
+        prompt__prompt_hash=prompt_hash
+    ).first()
+    
+    if cached:
+        # Cache Hit
+        cached.hits += 1
+        cached.save(update_fields=['hits'])
+        return cached.parsed_params
+
+    # 2. Cache Miss - Call API
     if not settings.ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY is not configured.")
 
@@ -102,6 +138,21 @@ def parse_user_query(query: str) -> Dict[str, Any]:
             # Ensure province defaults to ON if missing
             if 'province' not in params:
                 params['province'] = 'ON'
+            
+            # 3. Save to Cache
+            # Ensure Prompt exists
+            prompt_obj, _ = QueryPrompt.objects.get_or_create(
+                prompt_hash=prompt_hash,
+                defaults={'content': prompt_content}
+            )
+            
+            QueryCache.objects.create(
+                query_hash=query_hash,
+                raw_query=query,
+                parsed_params=params,
+                llm_model=settings.CLAUDE_MODEL,
+                prompt=prompt_obj
+            )
                 
             return params
             

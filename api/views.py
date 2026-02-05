@@ -61,6 +61,7 @@ def search(request, query: str):
         query=query,
         parsed_params=params,
         result_count=len(formatted_results),
+        top_results=search_results['top_results_metadata']
     )
     
     return {

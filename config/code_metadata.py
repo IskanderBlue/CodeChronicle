@@ -88,7 +88,7 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
     prov_editions = CODE_EDITIONS.get(province, [])
     for edition in prov_editions:
         effective = date.fromisoformat(edition['effective_date'])
-        superseded = date.fromisoformat(edition['superseded_date']) if edition['superseded_date'] else date.today()
+        superseded = date.fromisoformat(edition['superseded_date']) if edition['superseded_date'] else date.max
         
         if effective <= search_date < superseded:
             codes.append(f"{province}_{edition['year']}")
@@ -98,7 +98,7 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
     nbc_editions = CODE_EDITIONS.get('NBC', [])
     for edition in nbc_editions:
         effective = date.fromisoformat(edition['effective_date'])
-        superseded = date.fromisoformat(edition['superseded_date']) if edition['superseded_date'] else date.today()
+        superseded = date.fromisoformat(edition['superseded_date']) if edition['superseded_date'] else date.max
         
         if effective <= search_date < superseded:
             codes.append(f"NBC_{edition['year']}")

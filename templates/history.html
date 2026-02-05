@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-8 px-4" x-data="{ query: '' }">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Search History</h1>
+
+        <!-- Client-side filter -->
+        <div class="relative">
+            <input type="text" x-model="query" placeholder="Filter history..."
+                class="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg py-2 px-4 pl-10 focus:outline-none focus:ring-2 focus:ring-primary-500 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500">
+            <svg class="w-5 h-5 text-neutral-400 absolute left-3 top-2.5" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+        </div>
+    </div>
+
+    <div class="space-y-4">
+        {% for item in history %}
+        <div class="bg-white dark:bg-neutral-800 rounded-lg shadow p-6 border border-neutral-200 dark:border-neutral-700"
+            x-show="!query || '{{ item.query|escapejs }}'.toLowerCase().includes(query.toLowerCase())" x-transition>
+            <div class="flex justify-between items-start">
+                <div>
+                    <h3 class="text-lg font-semibold text-primary-600 dark:text-primary-400 mb-2">
+                        {{ item.query }}
+                    </h3>
+                    <div class="flex gap-2 mb-3">
+                        {% for kw in item.parsed_params.keywords %}
+                        <span
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-800 dark:bg-neutral-700 dark:text-neutral-300">
+                            {{ kw }}
+                        </span>
+                        {% endfor %}
+                        <span
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary-100 text-secondary-800 dark:bg-secondary-900 dark:text-secondary-200">
+                            {{ item.parsed_params.date }}
+                        </span>
+                        <span
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                            {{ item.parsed_params.province }}
+                        </span>
+                    </div>
+                </div>
+                <div class="text-sm text-neutral-500 dark:text-neutral-400">
+                    {{ item.timestamp|date:"M d, Y" }}
+                </div>
+            </div>
+
+            <!-- Quick Links -->
+            {% if item.top_results %}
+            <div class="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                <h4 class="text-xs font-bold text-neutral-500 uppercase tracking-wide mb-2">Top Results</h4>
+                <ul class="space-y-2">
+                    {% for result in item.top_results|slice:":3" %}
+                    <li class="flex items-center text-sm">
+                        <span class="w-20 font-mono text-neutral-500 text-xs">{{ result.code }}</span>
+                        <span class="font-medium text-neutral-800 dark:text-neutral-200 truncate">{{ result.title
+                            }}</span>
+                        <span class="ml-2 text-xs text-neutral-400">{{ result.section_id }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <!-- Rerun Search Action -->
+            <div class="mt-4 flex justify-end">
+                <form action="{% url 'core:home' %}" method="post">
+                    {% csrf_token %}
+                    <!-- We'll populate the main search bar via query parameter redirect for now, or just a button -->
+                    <!-- Simpler: Just link to home with query param if we build that support, 
+                         but home is HTMX. Let's just create a 'Re-run' button that 
+                         uses HTMX to load results into this page or redirects home.
+                         For MVP, let's just show details. -->
+                </form>
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-12 text-neutral-500">
+            No search history found.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
