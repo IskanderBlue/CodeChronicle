@@ -1,19 +1,72 @@
 """
 Search execution logic combining applicability resolution and building-code-mcp.
 """
+import os
+import tempfile
 from datetime import date
 from typing import List, Dict, Any
+
+import boto3
+from django.conf import settings
 
 from building_code_mcp import BuildingCodeMCP
 from config.code_metadata import get_applicable_codes
 from config.map_loader import map_cache
 
 
-# Start the MCP server pointing to the configured maps directory
-import os
-# Default to sibling repo for local dev if not set
-default_maps = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../Canada_building_code_mcp/maps'))
-maps_dir = os.environ.get('MCP_MAPS_DIR', default_maps)
+def _get_mcp_maps_dir() -> str:
+    """
+    Get the MCP maps directory path.
+    Uses MCP_MAPS_DIR setting if set, otherwise downloads maps from S3.
+    """
+    # Local maps dir takes precedence (development)
+    if settings.MCP_MAPS_DIR:
+        return settings.MCP_MAPS_DIR
+    
+    # Production: download from S3 to temp directory
+    if not settings.AWS_ACCESS_KEY_ID:
+        raise RuntimeError(
+            "MCP_MAPS_DIR not set and AWS credentials not configured. "
+            "Set MCP_MAPS_DIR for local development or configure AWS for production."
+        )
+    
+    temp_dir = os.path.join(tempfile.gettempdir(), 'mcp_maps')
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        region_name=settings.AWS_S3_REGION_NAME
+    )
+    
+    # List and download all map files
+    try:
+        response = s3.list_objects_v2(
+            Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+            Prefix='',  # All files in bucket root
+        )
+        
+        for obj in response.get('Contents', []):
+            key = obj['Key']
+            if key.endswith('.json'):
+                local_path = os.path.join(temp_dir, key)
+                if not os.path.exists(local_path):
+                    print(f"Downloading map: {key}")
+                    s3.download_file(
+                        settings.AWS_STORAGE_BUCKET_NAME,
+                        key,
+                        local_path
+                    )
+    except Exception as e:
+        print(f"Error downloading maps from S3: {e}")
+        raise
+    
+    return temp_dir
+
+
+# Initialize MCP server with resolved maps directory
+maps_dir = _get_mcp_maps_dir()
 mcp_server = BuildingCodeMCP(maps_dir=maps_dir)
 
 SEARCH_RESULT_LIMIT = 10  # Unified limit for search results
