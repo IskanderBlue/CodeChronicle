@@ -3,7 +3,7 @@ Configuration for available building code editions and their metadata.
 This file is a stub that will be populated with actual metadata later.
 """
 from datetime import date
-from typing import TypedDict, List, Optional
+from typing import List, Optional, TypedDict
 
 
 class Amendment(TypedDict):
@@ -76,32 +76,46 @@ CODE_EDITIONS: dict[str, List[CodeEdition]] = {
 }
 
 
+# Human-readable names for code systems
+CODE_DISPLAY_NAMES: dict[str, str] = {
+    'OBC': 'Ontario Building Code',
+    'NBC': 'National Building Code',
+}
+
+
+# Map province abbreviations to provincial code systems
+PROVINCE_TO_CODE = {
+    'ON': 'OBC',
+}
+
+
 def get_applicable_codes(province: str, search_date: date) -> List[str]:
     """
     Find which code editions were in effect at a given date.
-    
+
     Returns a list of code names (e.g., ['OBC_2012', 'NBC_2015'])
     """
     codes = []
-    
+
     # Check provincial code
-    prov_editions = CODE_EDITIONS.get(province, [])
+    code_system = PROVINCE_TO_CODE.get(province)
+    prov_editions = CODE_EDITIONS.get(code_system, []) if code_system else []
     for edition in prov_editions:
         effective = date.fromisoformat(edition['effective_date'])
         superseded = date.fromisoformat(edition['superseded_date']) if edition['superseded_date'] else date.max
-        
+
         if effective <= search_date < superseded:
-            codes.append(f"{province}_{edition['year']}")
+            codes.append(f"{code_system}_{edition['year']}")
             break
-            
+
     # Check federal code (NBC)
     nbc_editions = CODE_EDITIONS.get('NBC', [])
     for edition in nbc_editions:
         effective = date.fromisoformat(edition['effective_date'])
         superseded = date.fromisoformat(edition['superseded_date']) if edition['superseded_date'] else date.max
-        
+
         if effective <= search_date < superseded:
             codes.append(f"NBC_{edition['year']}")
             break
-            
+
     return codes

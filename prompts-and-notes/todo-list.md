@@ -1,10 +1,9 @@
 # TODO list
 
-- api/search.py 's default_maps, maps_dir should check s3 when running in production & should reference a variable re: where to find the maps when running locally.
-- we want more detail returned from search_results; maybe title too.
-- need loading indicator when search is running. 
-- "Full text not available for this code in the Free tier" displays if no pdf available even for pro.
-- periodically check for style violations.
+- ~~we want more detail returned from search_results; maybe title too.~~ done: added page_end, code_display_name via verbose=True
+- ~~need loading indicator when search is running.~~ done: inject spinner into results area on submit
+- ~~"Full text not available for this code in the Free tier" displays if no pdf available even for pro.~~ done: changed to "Full text not available for this code edition."
+- ~~periodically check for style violations.~~ done: ran ruff check
 - implment/test pdf display.
     - test with NBC 2025.
     - what does mcp return for ontario/html codes?
