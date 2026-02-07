@@ -56,7 +56,7 @@ CodeChronicle/
 ├── core/               # Models, middleware, frontend views
 ├── config/             # Code metadata and map loading
 ├── templates/          # HTML templates
-└── prompts/            # Planning notes (not deployed)
+└── prompts-and-notes/  # Planning notes (not deployed)
 
 ```
 
