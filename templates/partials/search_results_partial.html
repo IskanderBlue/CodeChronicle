@@ -12,7 +12,7 @@
 
 {% for result in results %}
 <div
-    class="bg-white dark:bg-neutral-800 shadow rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 hover:border-primary-300 dark:hover:border-primary-500 transition-colors">
+    class="bg-neutral-100 dark:bg-neutral-800 shadow rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 hover:border-primary-300 dark:hover:border-primary-500 transition-colors">
     <div class="px-4 py-5 sm:p-6">
         <!-- Row 1: Code display name + score badge -->
         <div class="flex justify-between items-start">
@@ -22,7 +22,7 @@
                 </p>
             </div>
             <span
-                class="bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-medium px-2.5 py-0.5 rounded border border-neutral-300 dark:border-neutral-600">
+                class="bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-medium px-2.5 py-0.5 rounded border border-neutral-300 dark:border-neutral-600">
                 Score: {{ result.score|floatformat:2 }}
             </span>
         </div>
@@ -49,7 +49,7 @@
                 <div data-pdf-url="{{ result.pdf_url }}" data-pdf-page="{{ result.page|default:'1' }}"
                     data-pdf-filename="{{ result.pdf_filename }}"
                     {% if result.bbox %}data-pdf-bbox="{{ result.bbox.l }},{{ result.bbox.t }},{{ result.bbox.r }},{{ result.bbox.b }}"{% endif %}
-                    class="w-full bg-neutral-100 dark:bg-neutral-900 min-h-[100px] cursor-pointer"
+                    class="w-full bg-neutral-200 dark:bg-neutral-900 min-h-[100px] cursor-pointer"
                     @click="expanded = !expanded">
                     <p class="text-xs text-neutral-400 italic text-center py-8">Loading PDF page...</p>
                 </div>
@@ -110,7 +110,7 @@
 
 {% if not results %}
 <div
-    class="text-center py-12 bg-white dark:bg-neutral-800 rounded-lg border-2 border-dashed border-neutral-300 dark:border-neutral-700">
+    class="text-center py-12 bg-neutral-100 dark:bg-neutral-800 rounded-lg border-2 border-dashed border-neutral-300 dark:border-neutral-700">
     <h3 class="mt-2 text-sm font-medium text-neutral-900 dark:text-white">No matching sections found</h3>
     <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Try adjusting your keywords or date.</p>
 </div>

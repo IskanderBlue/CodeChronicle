@@ -8,7 +8,7 @@
         <!-- Client-side filter -->
         <div class="relative">
             <input type="text" x-model="query" placeholder="Filter history..."
-                class="bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg py-2 px-4 pl-10 focus:outline-none focus:ring-2 focus:ring-primary-500 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500">
+                class="bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg py-2 px-4 pl-10 focus:outline-none focus:ring-2 focus:ring-primary-500 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500">
             <svg class="w-5 h-5 text-neutral-400 absolute left-3 top-2.5" fill="none" stroke="currentColor"
                 viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -20,7 +20,7 @@
     <div class="space-y-4">
         {% for item in history %}
         <a href="{% url 'core:home' %}?q={{ item.query|urlencode }}"
-            class="block bg-white dark:bg-neutral-800 rounded-lg shadow p-6 border border-neutral-200 dark:border-neutral-700 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer no-underline"
+            class="block bg-neutral-100 dark:bg-neutral-800 rounded-lg shadow p-6 border border-neutral-200 dark:border-neutral-700 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer no-underline"
             x-show="!query || '{{ item.query|escapejs }}'.toLowerCase().includes(query.toLowerCase())" x-transition>
             <div class="flex justify-between items-start">
                 <div>
@@ -30,7 +30,7 @@
                     <div class="flex flex-wrap gap-2 mb-3">
                         {% for kw in item.parsed_params.keywords %}
                         <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-800 dark:bg-neutral-700 dark:text-neutral-300">
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-200 text-neutral-800 dark:bg-neutral-700 dark:text-neutral-300">
                             {{ kw }}
                         </span>
                         {% endfor %}

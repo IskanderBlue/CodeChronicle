@@ -20,12 +20,15 @@
 	- done: added click-through to results
 - ~~update file references eg. NBC_2025.pdf to whatever the map says the default d/l name is.~~
 	- done: updated file references
+- ~~general: light mode is too bright; bg-neutral-50 should probably be closer to bg-neutral-200 for large fields.~~
+	- done: changed bg-neutral-50 to bg-neutral-200 for large fields
 
 ## UI improvements
 - handle display when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).
   - check whether all subsections are returned; if so, display their parent; otherwise, display specific subsections? Can discuss.
 - search: don't double up if id and title are identical
-- general: light mode is too bright; bg-neutral-50 should probably be closer to bg-neutral-200 for large fields.
+- top bar: move password, logout into Settings; move settings to right of top bar 
+  - top bar: no longer fits at md even; must swap out at lg? Verify after movign tabs to Settings.
 
 ## style
 - update `STYLE_GUIDE.md`: add the `coloured-logger` package to imports and try `from coloured_logger import Logger`; `logger = Logger(__name__)`; `logger.<appropriate level>(<message>)` rather than `print(<message>)`; reserve print for debugging purposes only.
