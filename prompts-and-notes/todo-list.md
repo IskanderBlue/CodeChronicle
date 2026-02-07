@@ -14,17 +14,18 @@
     - done: PDF.js inline rendering with expand/collapse, user-specific PDF directory in settings, serve_pdf view
 - ~~settings: should include links to all of the pdfs we can source.~~
     - done: added links from Canada_building_code_mcp/docs/PDF_DOWNLOAD_LINKS.md
-
-## bug fixes
-- search history: shows "{{ result.title }}" rather than the actual title.
+- ~~search history: shows "{{ result.title }}" rather than the actual title.~~
+  - done: changed to display actual title
+- ~~search history: should click through to the results.~~
+	- done: added click-through to results
+- ~~update file references eg. NBC_2025.pdf to whatever the map says the default d/l name is.~~
+	- done: updated file references
 
 ## UI improvements
 - handle display when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).
   - check whether all subsections are returned; if so, display their parent; otherwise, display specific subsections? Can discuss.
 - search: don't double up if id and title are identical
-- search history: should click through to the results.
 - general: light mode is too bright; bg-neutral-50 should probably be closer to bg-neutral-200 for large fields.
-- update file references eg. NBC_2025.pdf to whatever the map says the default d/l name is.
 
 ## style
 - update `STYLE_GUIDE.md`: add the `coloured-logger` package to imports and try `from coloured_logger import Logger`; `logger = Logger(__name__)`; `logger.<appropriate level>(<message>)` rather than `print(<message>)`; reserve print for debugging purposes only.
