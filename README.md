@@ -64,6 +64,11 @@ CodeChronicle/
 
 See `.env.example` for required configuration.
 
+## Notes
+
+Currently relies upon [Canada_building_code_mcp](https://github.com/DavidCho1999/Canada_building_code_mcp) for maps.
+Historical maps still under construction.
+
 ## License
 
 MIT
