@@ -1,5 +1,145 @@
 {% extends 'base.html' %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf_viewer.min.css">
+<script type="module">
+import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.worker.min.mjs';
+
+const pdfCache = {};
+
+function loadPdf(url) {
+    if (!pdfCache[url]) {
+        pdfCache[url] = pdfjsLib.getDocument(url).promise;
+    }
+    return pdfCache[url];
+}
+
+async function renderPdfPage(container, url, pageNum, bbox) {
+    try {
+        const pdf = await loadPdf(url);
+        const page = await pdf.getPage(pageNum);
+
+        const containerWidth = container.clientWidth || 600;
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        const scale = containerWidth / unscaledViewport.width;
+        const viewport = page.getViewport({ scale });
+        const pageHeight = unscaledViewport.height;
+
+        // Create wrapper
+        const wrapper = document.createElement('div');
+        wrapper.className = 'pdf-page';
+        wrapper.style.position = 'relative';
+        wrapper.style.width = viewport.width + 'px';
+        wrapper.style.height = viewport.height + 'px';
+
+        // Canvas for rendering
+        const canvas = document.createElement('canvas');
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = viewport.width + 'px';
+        canvas.style.height = viewport.height + 'px';
+        wrapper.appendChild(canvas);
+
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        // Highlight bbox region and offset to focus on it
+        if (bbox) {
+            const x = bbox.l * scale;
+            const y = (pageHeight - bbox.t) * scale;
+            const w = (bbox.r - bbox.l) * scale;
+            const h = (bbox.t - bbox.b) * scale;
+
+            const highlight = document.createElement('div');
+            highlight.className = 'pdf-bbox-highlight';
+            highlight.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
+            wrapper.appendChild(highlight);
+
+            // Shift page up so bbox is visible in collapsed view (overflow-hidden)
+            const offset = Math.max(0, y - 10);
+            wrapper.style.marginTop = -offset + 'px';
+        }
+
+        // Text layer for selection
+        const textContent = await page.getTextContent();
+        const textLayerDiv = document.createElement('div');
+        textLayerDiv.className = 'textLayer';
+        textLayerDiv.style.setProperty('--scale-factor', scale);
+        wrapper.appendChild(textLayerDiv);
+
+        const tl = new pdfjsLib.TextLayer({
+            textContentSource: textContent,
+            container: textLayerDiv,
+            viewport: viewport,
+        });
+        await tl.render();
+
+        container.innerHTML = '';
+        container.appendChild(wrapper);
+    } catch (err) {
+        container.innerHTML = '<p class="text-xs text-neutral-400 italic p-2">Could not load PDF page.</p>';
+        console.error('PDF render error:', err);
+    }
+}
+
+function parseBbox(str) {
+    if (!str) return null;
+    const parts = str.split(',').map(Number);
+    if (parts.length !== 4 || parts.some(isNaN)) return null;
+    return { l: parts[0], t: parts[1], r: parts[2], b: parts[3] };
+}
+
+function initPdfContainers(root) {
+    const containers = (root || document).querySelectorAll('[data-pdf-url]:not([data-pdf-loaded])');
+    containers.forEach(el => {
+        el.setAttribute('data-pdf-loaded', 'true');
+        const url = el.getAttribute('data-pdf-url');
+        const page = parseInt(el.getAttribute('data-pdf-page'), 10) || 1;
+        const bbox = parseBbox(el.getAttribute('data-pdf-bbox'));
+        renderPdfPage(el, url, page, bbox);
+    });
+}
+
+// Init after HTMX injects results
+document.addEventListener('htmx:afterSettle', (e) => initPdfContainers(e.detail.elt));
+document.addEventListener('DOMContentLoaded', () => initPdfContainers());
+</script>
+<style>
+    .pdf-page {
+        position: relative;
+    }
+    .pdf-page .textLayer {
+        position: absolute;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        overflow: hidden;
+        opacity: 0.25;
+        line-height: 1;
+    }
+    .pdf-page .textLayer ::selection {
+        background: rgba(0, 100, 200, 0.4);
+    }
+    .pdf-bbox-highlight {
+        background: rgba(14, 165, 133, 0.08);
+        border: 2px solid rgba(14, 165, 133, 0.4);
+        border-radius: 2px;
+        pointer-events: none;
+    }
+    .pdf-collapse-gradient {
+        --fade-color: #fff;
+        background: linear-gradient(transparent 60%, var(--fade-color) 100%);
+    }
+    .dark .pdf-collapse-gradient {
+        --fade-color: rgb(38 38 38);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="text-center mb-12">
