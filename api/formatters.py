@@ -1,7 +1,6 @@
 """
 Format search results for frontend display.
 """
-import os
 from typing import Any, Dict, List, Optional
 
 from config.code_metadata import CODE_DISPLAY_NAMES, get_pdf_filename
@@ -14,20 +13,6 @@ def _build_code_display_name(code_edition: str) -> str:
     year = parts[1] if len(parts) > 1 else ""
     display = CODE_DISPLAY_NAMES.get(prefix, prefix)
     return f"{display} {year}".strip()
-
-
-def _resolve_pdf(pdf_dir: str, code_edition: str, map_code: str) -> tuple[str | None, str]:
-    """
-    Check if a PDF exists for the given code edition + map code.
-    Returns (pdf_url, expected_filename). pdf_url is None if not found.
-    """
-    filename = get_pdf_filename(code_edition, map_code)
-    if not filename:
-        return None, f'{map_code}.pdf'
-    path = os.path.join(pdf_dir, filename)
-    if os.path.isfile(path):
-        return f'/pdf/{code_edition}/{map_code}/', filename
-    return None, filename
 
 
 def format_search_results(
@@ -45,16 +30,15 @@ def format_search_results(
         page = result.get('page')
         page_end = result.get('page_end', page)
 
-        # Resolve PDF URL using map_code (e.g. OBC_Vol1, NBC) for file lookup
-        pdf_url = None
-        pdf_not_found = False
-        pdf_expected = ''
+        # PDF filename derived from map_code (e.g. OBC_Vol1, NBC)
+        pdf_filename = ''
         map_code = result.get('map_code', '')
+        if map_code:
+            pdf_filename = get_pdf_filename(code_edition, map_code) or f'{map_code}.pdf'
+
+        pdf_url = None
         if pdf_dir and map_code:
-            pdf_url, pdf_expected = _resolve_pdf(pdf_dir, code_edition, map_code)
-            if not pdf_url:
-                pdf_not_found = True
-                print(f"PDF not found: {os.path.join(pdf_dir, pdf_expected)}")
+            pdf_url = f'/pdf/{code_edition}/{map_code}/'
 
         section_data = {
             'id': result.get('id'),
@@ -68,8 +52,7 @@ def format_search_results(
             'bbox': result.get('bbox'),
             'score': result.get('score', 0),
             'pdf_url': pdf_url,
-            'pdf_not_found': pdf_not_found,
-            'pdf_expected': pdf_expected if pdf_not_found else '',
+            'pdf_filename': pdf_filename,
         }
 
         # Amendment tracking (Placeholder for now)

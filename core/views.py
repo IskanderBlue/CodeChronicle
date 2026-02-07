@@ -16,8 +16,10 @@ from django.views.decorators.http import require_POST
 from api.formatters import format_search_results
 from api.llm_parser import parse_user_query
 from api.search import execute_search
-from config.code_metadata import get_pdf_filename
+from config.code_metadata import PDF_EXPECTATIONS, get_pdf_filename
 from core.models import SearchHistory
+
+
 
 
 @login_required
@@ -36,7 +38,8 @@ def history(request):
 
 def home(request):
     """Main search page."""
-    return render(request, "search.html")
+    initial_query = request.GET.get("q", "")
+    return render(request, "search.html", {"initial_query": initial_query})
 
 
 def pricing(request):
@@ -194,16 +197,19 @@ def user_settings(request):
     if request.method == "POST":
         pdf_directory = request.POST.get("pdf_directory", "").strip()
 
-        if pdf_directory and not os.path.isdir(pdf_directory):
-            messages.error(request, "Directory does not exist. Please enter a valid path.")
-            return render(request, "settings.html", {"pdf_directory": pdf_directory})
-
         request.user.pdf_directory = pdf_directory
         request.user.save(update_fields=["pdf_directory"])
         messages.success(request, "Settings saved.")
         return redirect("core:user_settings")
 
-    return render(request, "settings.html", {"pdf_directory": request.user.pdf_directory})
+    return render(
+        request,
+        "settings.html",
+        {
+            "pdf_directory": request.user.pdf_directory,
+            "pdf_expectations": PDF_EXPECTATIONS,
+        },
+    )
 
 
 @login_required

@@ -36,6 +36,42 @@
                     Save Settings
                 </button>
             </form>
+            <div class="mt-8">
+                <h3 class="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wider">
+                    Expected PDF Filenames
+                </h3>
+                <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+                    Ensure the following filenames exist in your configured directory.
+                </p>
+                <div class="mt-3 overflow-x-auto">
+                    <table class="min-w-full text-sm text-left border border-neutral-200 dark:border-neutral-700">
+                        <thead class="bg-neutral-50 dark:bg-neutral-900/50 text-neutral-600 dark:text-neutral-400">
+                            <tr>
+                                <th class="px-3 py-2 font-medium">Code</th>
+                                <th class="px-3 py-2 font-medium">Effective Date</th>
+                                <th class="px-3 py-2 font-medium">Map Code</th>
+                                <th class="px-3 py-2 font-medium">Filename</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-neutral-200 dark:divide-neutral-700 text-neutral-700 dark:text-neutral-300">
+                            {% for row in pdf_expectations %}
+                            <tr class="bg-white dark:bg-neutral-800">
+                                <td class="px-3 py-2 whitespace-nowrap">{{ row.system }}_{{ row.year }}</td>
+                                <td class="px-3 py-2 whitespace-nowrap">{{ row.effective_date }}</td>
+                                <td class="px-3 py-2 whitespace-nowrap">{{ row.map_code }}</td>
+                                <td class="px-3 py-2 whitespace-nowrap font-mono text-xs">{{ row.filename }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr class="bg-white dark:bg-neutral-800">
+                                <td class="px-3 py-3 text-center text-neutral-500 dark:text-neutral-400" colspan="4">
+                                    No PDF filenames configured.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>

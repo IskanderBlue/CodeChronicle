@@ -43,10 +43,11 @@
 
         <!-- Row 4: PDF inline / Text content / Warning -->
         {% if result.pdf_url %}
-        <div class="mt-4" x-data="{ expanded: false }">
+        <div class="mt-4" x-data="{ expanded: false }" data-pdf-block>
             <div class="pdf-clip relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
                 :style="{ maxHeight: expanded ? 'none' : '200px' }">
                 <div data-pdf-url="{{ result.pdf_url }}" data-pdf-page="{{ result.page|default:'1' }}"
+                    data-pdf-filename="{{ result.pdf_filename }}"
                     {% if result.bbox %}data-pdf-bbox="{{ result.bbox.l }},{{ result.bbox.t }},{{ result.bbox.r }},{{ result.bbox.b }}"{% endif %}
                     class="w-full bg-neutral-100 dark:bg-neutral-900 min-h-[100px] cursor-pointer"
                     @click="expanded = !expanded">
@@ -56,6 +57,7 @@
                     class="absolute bottom-0 left-0 right-0 h-16 pdf-collapse-gradient pointer-events-none">
                 </div>
             </div>
+            <div class="mt-2 hidden text-xs text-neutral-500 dark:text-neutral-400" data-pdf-warning></div>
             <div class="flex justify-end mt-1">
                 <button x-show="expanded" @click="expanded = false"
                     class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
@@ -66,6 +68,13 @@
                     Expand section
                 </button>
             </div>
+            {% if result.text %}
+            <div
+                class="mt-4 hidden text-neutral-700 dark:text-neutral-300 text-sm prose dark:prose-invert prose-primary max-w-none"
+                data-pdf-fallback>
+                {{ result.text|linebreaks }}
+            </div>
+            {% endif %}
         </div>
         {% elif result.text %}
         <div
@@ -81,12 +90,10 @@
                     d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p class="text-xs text-accent-700 dark:text-accent-400">
-                {% if result.pdf_not_found %}
-                PDF not found: expected <code class="bg-accent-100 dark:bg-accent-900/40 px-1 rounded">{{ result.pdf_expected }}</code> in your PDF directory.
-                {% elif not result.text_available %}
-                Full text not available for this code edition. Configure a PDF directory in <a href="/settings/" class="underline font-medium">Settings</a> to view inline.
+                {% if not result.text_available %}
+                Full text not available for this code edition. Choose a PDF folder in <a href="/settings/" class="underline font-medium">Settings</a> to view inline.
                 {% else %}
-                Configure a PDF directory in <a href="/settings/" class="underline font-medium">Settings</a> to view this page inline.
+                Choose a PDF folder in <a href="/settings/" class="underline font-medium">Settings</a> to view this page inline.
                 {% endif %}
             </p>
         </div>

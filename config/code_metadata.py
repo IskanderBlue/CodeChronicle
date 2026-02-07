@@ -252,6 +252,24 @@ CODE_DISPLAY_NAMES: dict[str, str] = {
 }
 
 
+PDF_EXPECTATIONS: list[dict[str, str | int]] = []
+for _system, _editions in {**CODE_EDITIONS, **GUIDE_EDITIONS}.items():
+    for _edition in _editions:
+        _year = _edition["year"]
+        _effective_date = _edition["effective_date"]
+        for _map_code, _filename in _edition.get("pdf_files", {}).items():
+            PDF_EXPECTATIONS.append(
+                {
+                    "system": _system,
+                    "year": _year,
+                    "effective_date": _effective_date,
+                    "map_code": _map_code,
+                    "filename": _filename,
+                }
+            )
+PDF_EXPECTATIONS.sort(key=lambda row: (row["system"], row["year"], row["map_code"]))
+
+
 # Map province abbreviations to provincial code systems
 PROVINCE_TO_CODE: dict[str, str] = {
     'ON': 'OBC',

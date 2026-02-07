@@ -79,9 +79,13 @@ async function renderPdfPage(container, url, pageNum, bbox) {
 
         container.innerHTML = '';
         container.appendChild(wrapper);
+        return true;
     } catch (err) {
-        container.innerHTML = '<p class="text-xs text-neutral-400 italic p-2">Could not load PDF page.</p>';
+        container.classList.add('flex', 'items-center', 'justify-center', 'text-center', 'text-xs', 'text-neutral-400', 'italic');
+        container.classList.remove('cursor-pointer');
+        container.innerHTML = 'Could not load PDF page. Check your directory path and file names under&nbsp;<a href="/settings/" class="text-primary-600 dark:text-primary-400 underline font-medium" onclick="event.stopPropagation()">Settings</a>.';
         console.error('PDF render error:', err);
+        return false;
     }
 }
 
@@ -90,6 +94,20 @@ function parseBbox(str) {
     const parts = str.split(',').map(Number);
     if (parts.length !== 4 || parts.some(isNaN)) return null;
     return { l: parts[0], t: parts[1], r: parts[2], b: parts[3] };
+}
+
+function showPdfWarning(container, message) {
+    const block = container.closest('[data-pdf-block]');
+    if (!block) return;
+    const warning = block.querySelector('[data-pdf-warning]');
+    if (warning) {
+        warning.textContent = message;
+        warning.classList.remove('hidden');
+    }
+    const fallback = block.querySelector('[data-pdf-fallback]');
+    if (fallback) {
+        fallback.classList.remove('hidden');
+    }
 }
 
 function initPdfContainers(root) {
@@ -104,8 +122,12 @@ function initPdfContainers(root) {
 }
 
 // Init after HTMX injects results
-document.addEventListener('htmx:afterSettle', (e) => initPdfContainers(e.detail.elt));
-document.addEventListener('DOMContentLoaded', () => initPdfContainers());
+document.addEventListener('htmx:afterSettle', (e) => {
+    initPdfContainers(e.detail.elt);
+});
+document.addEventListener('DOMContentLoaded', () => {
+    initPdfContainers();
+});
 </script>
 <style>
     .pdf-page {
