@@ -186,7 +186,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <label for="query" class="sr-only">Query</label>
                         <input type="text" name="query" id="query"
                             class="block w-full rounded-md border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm p-3 border dark:text-neutral-100 dark:placeholder-neutral-500"
-                            placeholder="e.g. fire safety for house built in 1993 in Ontario" required>
+                            placeholder="e.g. fire safety for house built in 1993 in Ontario"
+                            value="{{ initial_query }}" required>
                     </div>
                     <button type="submit"
                         class="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 shadow-sm">
@@ -261,5 +262,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 started.</p>
         </div>
     </div>
+
+    {% if initial_query %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var form = document.querySelector('[hx-post]');
+        if (form) {
+            document.getElementById('results-area').innerHTML =
+                document.getElementById('loading-tpl').innerHTML;
+            htmx.trigger(form, 'submit');
+        }
+    });
+    </script>
+    {% endif %}
 </div>
 {% endblock %}

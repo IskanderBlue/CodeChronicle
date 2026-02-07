@@ -19,14 +19,15 @@
 
     <div class="space-y-4">
         {% for item in history %}
-        <div class="bg-white dark:bg-neutral-800 rounded-lg shadow p-6 border border-neutral-200 dark:border-neutral-700"
+        <a href="{% url 'core:home' %}?q={{ item.query|urlencode }}"
+            class="block bg-white dark:bg-neutral-800 rounded-lg shadow p-6 border border-neutral-200 dark:border-neutral-700 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer no-underline"
             x-show="!query || '{{ item.query|escapejs }}'.toLowerCase().includes(query.toLowerCase())" x-transition>
             <div class="flex justify-between items-start">
                 <div>
                     <h3 class="text-lg font-semibold text-primary-600 dark:text-primary-400 mb-2">
                         {{ item.query }}
                     </h3>
-                    <div class="flex gap-2 mb-3">
+                    <div class="flex flex-wrap gap-2 mb-3">
                         {% for kw in item.parsed_params.keywords %}
                         <span
                             class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-800 dark:bg-neutral-700 dark:text-neutral-300">
@@ -43,8 +44,14 @@
                         </span>
                     </div>
                 </div>
-                <div class="text-sm text-neutral-500 dark:text-neutral-400">
+                <div class="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400 shrink-0">
+                    {% if item.search_count > 1 %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">{{ item.search_count }}x</span>
+                    {% endif %}
                     {{ item.timestamp|date:"M d, Y" }}
+                    <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
                 </div>
             </div>
 
@@ -56,27 +63,14 @@
                     {% for result in item.top_results|slice:":3" %}
                     <li class="flex items-center text-sm">
                         <span class="w-20 font-mono text-neutral-500 text-xs">{{ result.code }}</span>
-                        <span class="font-medium text-neutral-800 dark:text-neutral-200 truncate">{{ result.title
-                            }}</span>
+                        <span class="font-medium text-neutral-800 dark:text-neutral-200 truncate">{{ result.title }}</span>
                         <span class="ml-2 text-xs text-neutral-400">{{ result.section_id }}</span>
                     </li>
                     {% endfor %}
                 </ul>
             </div>
             {% endif %}
-
-            <!-- Rerun Search Action -->
-            <div class="mt-4 flex justify-end">
-                <form action="{% url 'core:home' %}" method="post">
-                    {% csrf_token %}
-                    <!-- We'll populate the main search bar via query parameter redirect for now, or just a button -->
-                    <!-- Simpler: Just link to home with query param if we build that support, 
-                         but home is HTMX. Let's just create a 'Re-run' button that 
-                         uses HTMX to load results into this page or redirects home.
-                         For MVP, let's just show details. -->
-                </form>
-            </div>
-        </div>
+        </a>
         {% empty %}
         <div class="text-center py-12 text-neutral-500">
             No search history found.
