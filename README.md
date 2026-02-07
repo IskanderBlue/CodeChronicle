@@ -22,12 +22,13 @@ copy .env.example .env
 
 # Run migrations
 python manage.py migrate
-
-## Local Development with Docker (PostgreSQL)
+```
 
 If you prefer to use PostgreSQL locally:
 
 ```bash
+# Local Development with Docker (PostgreSQL)
+
 # Start the database
 docker-compose up -d
 
@@ -35,6 +36,9 @@ docker-compose up -d
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/code_chronicle
 ```
 
+Finally:
+
+```bash
 # Create superuser
 python manage.py createsuperuser
 
@@ -45,6 +49,7 @@ python manage.py runserver
 ## Project Structure
 
 ```
+
 CodeChronicle/
 ├── code_chronicle/     # Django project settings
 ├── api/                # API endpoints (Django Ninja)
@@ -52,6 +57,7 @@ CodeChronicle/
 ├── config/             # Code metadata and map loading
 ├── templates/          # HTML templates
 └── prompts/            # Planning notes (not deployed)
+
 ```
 
 ## Environment Variables
