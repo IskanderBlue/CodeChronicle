@@ -11,8 +11,7 @@ import boto3
 from building_code_mcp import BuildingCodeMCP
 from django.conf import settings
 
-from config.code_metadata import get_applicable_codes
-from config.map_loader import map_cache
+from config.code_metadata import get_applicable_codes, get_map_codes
 
 
 def _get_mcp_maps_dir() -> str:
@@ -90,58 +89,41 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
 
     all_results = []
 
-    # Step 2: Search each code
+    # Step 2: Search each code using MCP map identifiers
     for code_name in applicable_codes:
-        # Check if it's a "current" code supported by the package natively
-        # or if we need to load a historical map.
+        map_codes = get_map_codes(code_name)
+        if not map_codes:
+            print(f"No map codes configured for {code_name}, skipping")
+            continue
 
-        # For MVP, building-code-mcp search_code() might only support current codes.
-        # If the code_name is in our historical metadata, we might need a custom search
-        # through the cached map if the package doesn't support custom map injection.
+        for map_code in map_codes:
+            try:
+                search_response = mcp_server.search_code(
+                    query=" ".join(keywords),
+                    code=map_code,
+                    limit=SEARCH_RESULT_LIMIT,
+                    verbose=True,
+                )
 
-        # Let's assume the package handles standard codes like NBC 2020, OBC 2024.
+                results = search_response.get("results", [])
 
-        # Prefix extraction (OBC_2024 -> OBC)
-        base_code = code_name.split("_")[0]
+                # Build bbox lookup from map data (search_code doesn't return it)
+                bbox_lookup = {}
+                map_data = mcp_server.maps.get(map_code, {})
+                for section in map_data.get("sections", []):
+                    if section.get("bbox"):
+                        bbox_lookup[section["id"]] = section["bbox"]
 
-        try:
-            # Use building-code-mcp search
-            # We use base_code to ensure we only search within the resolved jurisdiction
-            # mcp_server is our singleton instance of BuildingCodeMCP
+                # Tag each result with edition info and the specific map it came from
+                for result in results:
+                    result["code_edition"] = code_name
+                    result["map_code"] = map_code
+                    result["source_date"] = search_date.isoformat()
+                    result["bbox"] = bbox_lookup.get(result.get("id"))
 
-            # TODO: For custom historical maps (e.g., OBC 2006) not natively in the package,
-            # we need to ensure they are loaded into the MCP server or handled here.
-            # For now, we wrap in try/except to avoid crashing if the code isn't found.
-
-            search_response = mcp_server.search_code(
-                query=" ".join(keywords),
-                code=base_code,
-                limit=SEARCH_RESULT_LIMIT,
-                verbose=True,
-            )
-
-            results = search_response.get("results", [])
-
-            # If no results from package, check if we have a raw map cache for this edition
-            # This is a fallback for stubs/historical data not yet fully integrated in MCP
-            if not results:
-                raw_map = map_cache.get_map(code_name)
-                if raw_map:
-                    # Simple keyword match on raw map for fallback
-                    # This is very basic but ensures *something* returns for valid dates
-                    # In a real impl, we'd have a better local search utility
-                    print(f"Using fallback search for {code_name}")
-                    # (Fallback logic omitted for brevity in MVP - just rely on MCP for now)
-
-            # Add metadata to each result
-            for result in results:
-                result["code_edition"] = code_name
-                result["source_date"] = search_date.isoformat()
-
-            all_results.extend(results)
-        except Exception as e:
-            # If package fails (e.g., map not found), log it and continue
-            print(f"Error searching {code_name}: {e}")
+                all_results.extend(results)
+            except Exception as e:
+                print(f"Error searching {code_name} (map={map_code}): {e}")
 
     # Step 3: Deduplicate and format
     unique_results = deduplicate_results(all_results)

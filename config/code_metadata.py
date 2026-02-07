@@ -14,19 +14,26 @@ class Amendment(TypedDict):
 
 class CodeEdition(TypedDict):
     year: int
-    map_file: str
+    map_codes: List[str]  # MCP map identifiers (keys in BuildingCodeMCP.maps)
+    pdf_files: dict[str, str]  # map_code -> PDF filename as downloaded from publisher
     effective_date: str  # ISO date string
     superseded_date: Optional[str]  # ISO date string or None
     amendments: List[Amendment]
 
 
 # Master dictionary of code editions
-# In a real scenario, this might come from a DB or a more complex JSON file
+# map_codes must match the 'code' field (or filename stem) of the JSON maps
+# loaded by BuildingCodeMCP. OBC is split into two volumes.
+# pdf_files maps each map_code to the actual PDF filename from the publisher.
 CODE_EDITIONS: dict[str, List[CodeEdition]] = {
     'OBC': [
         {
             'year': 2024,
-            'map_file': 'OBC_2024.json',
+            'map_codes': ['OBC_Vol1', 'OBC_Vol2'],
+            'pdf_files': {
+                'OBC_Vol1': 'OBC2024v1.pdf',
+                'OBC_Vol2': 'OBC2024v2.pdf',
+            },
             'effective_date': '2024-01-01',
             'superseded_date': None,
             'amendments': [
@@ -35,7 +42,11 @@ CODE_EDITIONS: dict[str, List[CodeEdition]] = {
         },
         {
             'year': 2012,
-            'map_file': 'OBC_2012.json',
+            'map_codes': ['OBC_Vol1', 'OBC_Vol2'],
+            'pdf_files': {
+                'OBC_Vol1': 'OBC2012v1.pdf',
+                'OBC_Vol2': 'OBC2012v2.pdf',
+            },
             'effective_date': '2014-01-01',
             'superseded_date': '2024-01-01',
             'amendments': [
@@ -44,7 +55,11 @@ CODE_EDITIONS: dict[str, List[CodeEdition]] = {
         },
         {
             'year': 2006,
-            'map_file': 'OBC_2006.json',
+            'map_codes': ['OBC_Vol1', 'OBC_Vol2'],
+            'pdf_files': {
+                'OBC_Vol1': 'OBC2006v1.pdf',
+                'OBC_Vol2': 'OBC2006v2.pdf',
+            },
             'effective_date': '2006-12-31',
             'superseded_date': '2014-01-01',
             'amendments': []
@@ -53,21 +68,24 @@ CODE_EDITIONS: dict[str, List[CodeEdition]] = {
     'NBC': [
         {
             'year': 2025,
-            'map_file': 'NBC_2025.json',
+            'map_codes': ['NBC'],
+            'pdf_files': {'NBC': 'NBC2025p1.pdf'},
             'effective_date': '2025-01-01',
             'superseded_date': None,
             'amendments': []
         },
         {
             'year': 2020,
-            'map_file': 'NBC_2020.json',
+            'map_codes': ['NBC'],
+            'pdf_files': {'NBC': 'NBC2020p1.pdf'},
             'effective_date': '2020-01-01',
             'superseded_date': '2025-01-01',
             'amendments': []
         },
         {
             'year': 2015,
-            'map_file': 'NBC_2015.json',
+            'map_codes': ['NBC'],
+            'pdf_files': {'NBC': 'NBC2015p1.pdf'},
             'effective_date': '2015-01-01',
             'superseded_date': '2020-01-01',
             'amendments': []
@@ -87,6 +105,46 @@ CODE_DISPLAY_NAMES: dict[str, str] = {
 PROVINCE_TO_CODE = {
     'ON': 'OBC',
 }
+
+
+def _find_edition(code_name: str) -> Optional[CodeEdition]:
+    """Look up a CodeEdition dict by code_name like 'OBC_2024'."""
+    parts = code_name.split('_', 1)
+    if len(parts) != 2:
+        return None
+    system, year_str = parts
+    try:
+        year = int(year_str)
+    except ValueError:
+        return None
+    for edition in CODE_EDITIONS.get(system, []):
+        if edition['year'] == year:
+            return edition
+    return None
+
+
+def get_map_codes(code_name: str) -> List[str]:
+    """
+    Get MCP map identifiers for a code edition name.
+
+    e.g., 'OBC_2024' -> ['OBC_Vol1', 'OBC_Vol2']
+          'NBC_2025' -> ['NBC']
+    """
+    edition = _find_edition(code_name)
+    return edition['map_codes'] if edition else []
+
+
+def get_pdf_filename(code_name: str, map_code: str) -> Optional[str]:
+    """
+    Get the publisher PDF filename for a given code edition and map code.
+
+    e.g., ('NBC_2025', 'NBC') -> 'NBC2025p1.pdf'
+          ('OBC_2024', 'OBC_Vol1') -> 'OBC2024v1.pdf'
+    """
+    edition = _find_edition(code_name)
+    if not edition:
+        return None
+    return edition.get('pdf_files', {}).get(map_code)
 
 
 def get_applicable_codes(province: str, search_date: date) -> List[str]:
