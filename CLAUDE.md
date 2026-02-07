@@ -68,7 +68,7 @@ Anonymous: 1 search/day (per IP). Authenticated free: 3/day. Pro (via Stripe/dj-
 
 ## Code Style
 
-- **Linter**: ruff (rules: E, F, I, N, W; line-length: 100; target: py311)
+- **Linter**: ruff (rules: E, F, I, N, W; line-length: 100; target: py312)
 - **Imports**: stdlib → Django → third-party → local
 - **Type hints** on all function signatures
 - **Naming**: snake_case files/functions, PascalCase classes, UPPER_SNAKE_CASE constants, singular model names

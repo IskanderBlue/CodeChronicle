@@ -35,7 +35,7 @@ Frontend:
 Backend:
 ├── Django 5.x
 ├── Django Ninja (REST API)
-├── Python 3.11+
+├── Python 3.12+
 └── building-code-mcp (imported as dependency)
 
 Database:
