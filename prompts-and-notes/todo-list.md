@@ -12,6 +12,8 @@
 - ~~implement/test pdf display.~~ 
     - ~~test with NBC 2025.~~
     - done: PDF.js inline rendering with expand/collapse, user-specific PDF directory in settings, serve_pdf view
+- ~~settings: should include links to all of the pdfs we can source.~~
+    - done: added links from Canada_building_code_mcp/docs/PDF_DOWNLOAD_LINKS.md
 
 ## bug fixes
 - search history: shows "{{ result.title }}" rather than the actual title.
@@ -21,9 +23,8 @@
   - check whether all subsections are returned; if so, display their parent; otherwise, display specific subsections? Can discuss.
 - search: don't double up if id and title are identical
 - search history: should click through to the results.
-- settings: should have a clicker ui to select the folder in addition to the text input.
-- settings: should include links to all of the pdfs we can source.
 - general: light mode is too bright; bg-neutral-50 should probably be closer to bg-neutral-200 for large fields.
+- update file references eg. NBC_2025.pdf to whatever the map says the default d/l name is.
 
 ## style
 - update `STYLE_GUIDE.md`: add the `coloured-logger` package to imports and try `from coloured_logger import Logger`; `logger = Logger(__name__)`; `logger.<appropriate level>(<message>)` rather than `print(<message>)`; reserve print for debugging purposes only.
@@ -41,3 +42,8 @@ The `get_applicable_codes()` logic currently treats dates as hard cutoffs; these
 ## eventually
 - implement stripe subscriptions.
 - add optional `transition_end` field to `CodeEdition`; when set, `get_applicable_codes()` returns both old and new editions during the overlap window.
+- settings: should have a clicker ui to select the folder in addition to the text input.
+  - Troublesome; 
+    - codex says no way to do this without triggering user-unfriendly warning; won't work for Firefox anyway.
+    - Could do single-file drag-and-drop, but this doesn't store the full path; would have to store file in local IndexedDB, copyright issues.
+    - Could use IndexedDB to store the full path, but this would require a custom implementation.

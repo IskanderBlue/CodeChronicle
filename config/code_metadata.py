@@ -251,12 +251,31 @@ CODE_DISPLAY_NAMES: dict[str, str] = {
     'UGNECB': 'User\'s Guide \u2013 NECB',
 }
 
+PDF_DOWNLOAD_LINKS: dict[str, str] = {
+    'NBC_2025': 'https://nrc-publications.canada.ca/eng/view/object/?id=adf1ad94-7ea8-4b08-a19f-653ebb7f45f6',
+    'NFC_2025': 'https://nrc-publications.canada.ca/eng/view/object/?id=e8a18373-a824-42d5-8823-bfad854c2ebd',
+    'NPC_2025': 'https://nrc-publications.canada.ca/eng/view/object/?id=6e7cabf5-d83e-4efd-9a1c-6515fc7cdc71',
+    'NECB_2025': 'https://nrc-publications.canada.ca/eng/view/object/?id=0d558a8e-28fe-4b5d-bb73-35b5a3703e8b',
+    'OBC_2024': 'https://www.publications.gov.on.ca/browse-catalogues/building-code-and-guides/2024-ontarios-building-code-compendium-updated-to-january-16-2025-two-volume-pdf-set-kit/',
+    'BCBC_2024': 'https://www2.gov.bc.ca/gov/content/industry/construction-industry/building-codes-standards/bc-codes/2024-bc-codes',
+    'ABC_2023': 'https://nrc-publications.canada.ca/eng/view/object/?id=0316d953-0d55-4311-af69-cad55efec499',
+    'QCC_2020': 'https://nrc-publications.canada.ca/eng/view/object/?id=fbb47c66-fcda-4d5b-a045-882dfa80ab0e',
+    'QECB_2020': 'https://nrc-publications.canada.ca/eng/view/object/?id=ad5eaa41-7532-4cbb-9a1e-49c54b25371e',
+    'QPC_2020': 'https://nrc-publications.canada.ca/eng/view/object/?id=4931b15f-9344-43b6-a0f3-446b7b25c410',
+    'QSC_2020': 'https://nrc-publications.canada.ca/eng/view/object/?id=6a46f33c-2fc3-4d85-8ee7-34e6780e4bf5',
+    'IUGP9_2020': 'https://nrc-publications.canada.ca/eng/view/object/?id=a7a505fa-519c-436b-a23b-6f418df87e6a',
+    'UGP4_2020': 'https://nrc-publications.canada.ca/eng/view/object/?id=b9fddc27-86f2-496b-9aa4-b66c45164ba6',
+    'UGNECB_2020': 'https://nrc-publications.canada.ca/eng/view/object/?id=c6504d98-2da4-43c5-a8f6-360d6e640f88',
+}
 
-PDF_EXPECTATIONS: list[dict[str, str | int]] = []
+
+PDF_EXPECTATIONS: list[dict[str, str | int | None]] = []
 for _system, _editions in {**CODE_EDITIONS, **GUIDE_EDITIONS}.items():
     for _edition in _editions:
         _year = _edition["year"]
         _effective_date = _edition["effective_date"]
+        _code_key = f"{_system}_{_year}"
+        _download_url = PDF_DOWNLOAD_LINKS.get(_code_key)
         for _map_code, _filename in _edition.get("pdf_files", {}).items():
             PDF_EXPECTATIONS.append(
                 {
@@ -265,6 +284,7 @@ for _system, _editions in {**CODE_EDITIONS, **GUIDE_EDITIONS}.items():
                     "effective_date": _effective_date,
                     "map_code": _map_code,
                     "filename": _filename,
+                    "download_url": _download_url,
                 }
             )
 PDF_EXPECTATIONS.sort(key=lambda row: (row["system"], row["year"], row["map_code"]))
