@@ -3,9 +3,12 @@ Views for core app (frontend pages).
 """
 
 import os
+import re
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -13,6 +16,7 @@ from django.views.decorators.http import require_POST
 from api.formatters import format_search_results
 from api.llm_parser import parse_user_query
 from api.search import execute_search
+from config.code_metadata import get_pdf_filename
 from core.models import SearchHistory
 
 
@@ -21,10 +25,10 @@ def history(request):
     """User search history page."""
     # 200 items is reasonable for client-side filtering (Alpine.js)
     # Beyond this, we should consider server-side pagination.
-    HISTORY_LIMIT = 200
+    history_limit = 200
 
     searches = SearchHistory.objects.filter(user=request.user).order_by("-timestamp")[
-        :HISTORY_LIMIT
+        :history_limit
     ]
 
     return render(request, "history.html", {"history": searches})
@@ -135,7 +139,10 @@ def search_results(request):
             )
 
         # Step 3: Format
-        formatted = format_search_results(search_results_data["results"])
+        pdf_dir = ""
+        if request.user.is_authenticated:
+            pdf_dir = request.user.pdf_directory
+        formatted = format_search_results(search_results_data["results"], pdf_dir=pdf_dir or None)
 
         # Record search history
         try:
@@ -179,3 +186,49 @@ def search_results(request):
             "partials/search_results_partial.html",
             {"success": False, "error": f"An unexpected error occurred: {error_msg}"},
         )
+
+
+@login_required
+def user_settings(request):
+    """User settings page (PDF directory configuration)."""
+    if request.method == "POST":
+        pdf_directory = request.POST.get("pdf_directory", "").strip()
+
+        if pdf_directory and not os.path.isdir(pdf_directory):
+            messages.error(request, "Directory does not exist. Please enter a valid path.")
+            return render(request, "settings.html", {"pdf_directory": pdf_directory})
+
+        request.user.pdf_directory = pdf_directory
+        request.user.save(update_fields=["pdf_directory"])
+        messages.success(request, "Settings saved.")
+        return redirect("core:user_settings")
+
+    return render(request, "settings.html", {"pdf_directory": request.user.pdf_directory})
+
+
+@login_required
+def serve_pdf(request, code_edition: str, map_code: str):
+    """Serve a PDF from the authenticated user's configured directory."""
+    # Validate formats to prevent path traversal
+    if not re.match(r'^[A-Z]{2,5}_\d{4}$', code_edition):
+        raise Http404
+    if not re.match(r'^[A-Z]{2,5}(_[A-Za-z0-9]+)?$', map_code):
+        raise Http404
+
+    pdf_dir = request.user.pdf_directory
+    if not pdf_dir:
+        raise Http404
+
+    filename = get_pdf_filename(code_edition, map_code)
+    if not filename:
+        raise Http404
+
+    pdf_path = os.path.join(pdf_dir, filename)
+    if not os.path.isfile(pdf_path):
+        raise Http404
+
+    return FileResponse(
+        open(pdf_path, 'rb'),
+        content_type='application/pdf',
+        headers={'Content-Disposition': f'inline; filename="{filename}"'},
+    )

@@ -1,7 +1,7 @@
 """
 Core models for CodeChronicle.
 """
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
 
@@ -38,29 +38,35 @@ class User(AbstractBaseUser, PermissionsMixin):
     Uses email as the primary identifier and eliminates the username field.
     """
     email = models.EmailField(unique=True)
-    
+
     # Flags
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     pro_courtesy = models.BooleanField(default=False, help_text="Grant Pro status without Stripe subscription")
     date_joined = models.DateTimeField(default=timezone.now)
-    
+
+    # User-specific PDF directory (BYOD model for copyright compliance)
+    pdf_directory = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="Local directory path containing building code PDFs"
+    )
+
     # Stripe customer ID (managed by dj-stripe, but useful for quick lookup)
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
-    
+
     objects = UserManager()
-    
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
-    
+
     class Meta:
         db_table = 'users'
         verbose_name = 'User'
         verbose_name_plural = 'Users'
-    
+
     def __str__(self):
         return self.email
-    
+
     @property
     def has_active_subscription(self) -> bool:
         """
@@ -92,7 +98,7 @@ class QueryPrompt(models.Model):
     prompt_hash = models.CharField(max_length=64, unique=True, db_index=True)
     content = models.TextField()  # Full system prompt + tool definition
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         return f"Prompt {self.prompt_hash[:8]}"
 
@@ -132,7 +138,7 @@ class SearchHistory(models.Model):
     result_count = models.IntegerField(default=0)
     top_results = models.JSONField(default=list)  # Store minimal metadata for quick links
     timestamp = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         db_table = 'search_history'
         verbose_name = 'Search History'
@@ -143,6 +149,6 @@ class SearchHistory(models.Model):
             models.Index(fields=['ip_address', 'timestamp']),
             models.Index(fields=['user', 'query']),
         ]
-    
+
     def __str__(self):
         return f"{self.user or self.ip_address}: {self.query[:50]}"
