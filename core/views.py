@@ -5,6 +5,7 @@ Views for core app (frontend pages).
 import os
 import re
 
+from allauth.account.forms import ChangePasswordForm
 from coloured_logger import Logger
 from django.conf import settings
 from django.contrib import messages
@@ -219,12 +220,14 @@ def user_settings(request):
         messages.success(request, "Settings saved.")
         return redirect("core:user_settings")
 
+    password_form = ChangePasswordForm(user=request.user)
     return render(
         request,
         "settings.html",
         {
             "pdf_directory": request.user.pdf_directory,
             "pdf_expectations": PDF_EXPECTATIONS,
+            "password_form": password_form,
         },
     )
 

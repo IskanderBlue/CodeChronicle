@@ -9,8 +9,15 @@ from api.search import execute_search
 @pytest.fixture
 def mock_search_deps():
     with patch('api.search.mcp_server') as mock_mcp, \
-         patch('api.search.get_applicable_codes') as mock_codes:
+         patch('api.search.get_applicable_codes') as mock_codes, \
+         patch('api.search.get_map_codes') as mock_map_codes:
         mock_codes.return_value = ['NBC_2020', 'OBC_2024']
+        mock_map_codes.side_effect = lambda code_name: {
+            'NBC_2020': ['NBC'],
+            'NBC_2025': ['NBC'],
+            'OBC_2024': ['OBC_Vol1', 'OBC_Vol2'],
+        }.get(code_name, [])
+        mock_mcp.maps = {}
         yield mock_mcp, mock_codes
 
 
@@ -86,7 +93,7 @@ def test_execute_search_doors_fire_safety(mock_search_deps):
     assert 'NBC_2025' in response['applicable_codes']
     # Verify MCP was called for both code systems with verbose=True
     mock_mcp.search_code.assert_any_call(
-        query='doors fire safety', code='OBC', limit=10, verbose=True
+        query='doors fire safety', code='OBC_Vol1', limit=10, verbose=True
     )
     mock_mcp.search_code.assert_any_call(
         query='doors fire safety', code='NBC', limit=10, verbose=True

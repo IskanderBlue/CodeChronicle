@@ -1,6 +1,6 @@
 import pytest
-from django.test import Client
 from django.contrib.auth import get_user_model
+from django.test import Client
 
 User = get_user_model()
 
@@ -11,7 +11,6 @@ class TestApiEndpoints:
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpassword",
-            username="testuser"
         )
 
     def test_list_codes(self):

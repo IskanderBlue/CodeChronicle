@@ -82,10 +82,6 @@
                             class="{% if request.resolver_match.url_name == 'history' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                             History
                         </a>
-                        <a href="{% url 'core:user_settings' %}"
-                            class="{% if request.resolver_match.url_name == 'user_settings' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            Settings
-                        </a>
                         {% endif %}
                     </div>
                 </div>
@@ -103,10 +99,14 @@
                     <a href="/admin/"
                         class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {% if request.path == '/admin/' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %}">Admin</a>
                     {% endif %}
-                    <a href="{% url 'account_change_password' %}"
-                        class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {% if request.resolver_match.url_name == 'account_change_password' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %}">Password</a>
-                    <a href="{% url 'account_logout' %}"
-                        class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {% if request.resolver_match.url_name == 'account_logout' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %}">Logout</a>
+                    <a href="{% url 'core:user_settings' %}"
+                        class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {% if request.resolver_match.url_name == 'user_settings' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %}">
+                        <svg class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Settings
+                    </a>
                     {% else %}
                     <a href="{% url 'account_login' %}"
                         class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {% if request.resolver_match.url_name == 'account_login' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %}">Login</a>
@@ -178,8 +178,6 @@
                 {% if user.is_authenticated %}
                 <a href="{% url 'core:history' %}"
                     class="{% if request.resolver_match.url_name == 'history' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">History</a>
-                <a href="{% url 'core:user_settings' %}"
-                    class="{% if request.resolver_match.url_name == 'user_settings' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Settings</a>
                 {% endif %}
             </div>
             <div class="pt-4 pb-3 border-t border-neutral-200 dark:border-neutral-700">
@@ -203,10 +201,8 @@
                     <a href="/admin/"
                         class="{% if request.path == '/admin/' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Admin</a>
                     {% endif %}
-                    <a href="{% url 'account_change_password' %}"
-                        class="{% if request.resolver_match.url_name == 'account_change_password' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Password</a>
-                    <a href="{% url 'account_logout' %}"
-                        class="{% if request.resolver_match.url_name == 'account_logout' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Logout</a>
+                    <a href="{% url 'core:user_settings' %}"
+                        class="{% if request.resolver_match.url_name == 'user_settings' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Settings</a>
                 </div>
                 {% else %}
                 <div class="mt-3 space-y-1">

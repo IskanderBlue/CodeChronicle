@@ -1,6 +1,7 @@
 import pytest
-from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+
 from core.models import SearchHistory
 
 User = get_user_model()
@@ -11,7 +12,6 @@ class TestSearchHistory:
         self.user = User.objects.create_user(
             email="history@example.com",
             password="password",
-            username="historyuser"
         )
 
     def test_create_history(self):
