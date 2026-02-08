@@ -66,3 +66,9 @@ Thumbs.db
 *.pem
 *.key
 secrets/
+
+# claude
+.claude/
+
+# artifact
+nul
