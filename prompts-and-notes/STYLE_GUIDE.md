@@ -51,6 +51,7 @@ from django.conf import settings
 from django.http import JsonResponse
 
 # Third-party
+from coloured_logger import Logger
 from ninja import NinjaAPI
 from anthropic import Anthropic
 
@@ -72,6 +73,27 @@ Use type hints for all function signatures:
 def get_applicable_code(code_name: str, year: int) -> dict | None:
     ...
 ```
+
+### Logging
+Use `coloured-logger` instead of `print()` for all application output. Reserve `print()` for temporary debugging only — it should never be committed.
+
+```python
+from coloured_logger import Logger
+
+logger = Logger(__name__)
+
+# Use the appropriate level for the message
+logger.info("Search completed successfully")
+logger.warning("Rate limit approaching for user %s", user_id)
+logger.error("Failed to connect to MCP service: %s", err)
+logger.debug("Parsed query params: %s", params)
+```
+
+**Level guidelines:**
+- `logger.debug()` — Verbose details useful during development (parsed params, intermediate state)
+- `logger.info()` — Normal operational events (search executed, cache hit, user login)
+- `logger.warning()` — Recoverable issues that deserve attention (rate limit near, fallback used)
+- `logger.error()` — Failures that need investigation (API errors, missing config)
 
 ---
 

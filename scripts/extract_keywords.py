@@ -2,6 +2,10 @@ import glob
 import json
 import os
 
+from coloured_logger import Logger
+
+logger = Logger(__name__)
+
 
 def extract_keywords():
     # Path to the neighboring building-code-mcp repo
@@ -22,12 +26,12 @@ def extract_keywords():
             for v in vals:
                 common_synonyms.add(v.lower())
     except ImportError:
-        print("Warning: Could not import SYNONYMS from building_code_mcp. Falling back to empty.")
+        logger.warning("Could not import SYNONYMS from building_code_mcp. Falling back to empty.")
         common_synonyms = set()
 
     keywords = set(common_synonyms)
 
-    print(f"Processing {len(map_files)} map files...")
+    logger.info("Processing %d map files...", len(map_files))
 
     for map_file in map_files:
         try:
@@ -40,7 +44,7 @@ def extract_keywords():
                             if isinstance(kw, str) and len(kw) > 2:
                                 keywords.add(kw.lower())
         except Exception as e:
-            print(f"Error processing {map_file}: {e}")
+            logger.error("Error processing %s: %s", map_file, e)
 
     # Filter keywords (only alphabetic, no numbers unless common like 'Part 3')
     # and remove extremely common words if they are too noisy
@@ -57,7 +61,7 @@ def extract_keywords():
             f.write(f"    {repr(kw)},\n")
         f.write("]\n")
 
-    print(f"Extracted {len(filtered_keywords)} keywords to {output_path}")
+    logger.info("Extracted %d keywords to %s", len(filtered_keywords), output_path)
 
 
 if __name__ == "__main__":

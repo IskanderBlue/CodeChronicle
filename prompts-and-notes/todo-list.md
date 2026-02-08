@@ -22,6 +22,8 @@
 	- done: updated file references
 - ~~general: light mode is too bright; bg-neutral-50 should probably be closer to bg-neutral-200 for large fields.~~
 	- done: changed bg-neutral-50 to bg-neutral-200 for large fields
+- ~~update `STYLE_GUIDE.md`: add the `coloured-logger` package to imports and try `from coloured_logger import Logger`; `logger = Logger(__name__)`; `logger.<appropriate level>(<message>)` rather than `print(<message>)`; reserve print for debugging purposes only.~~
+	- done
 
 ## UI improvements
 - handle display when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).
@@ -29,9 +31,6 @@
 - search: don't double up if id and title are identical
 - top bar: move password, logout into Settings; move settings to right of top bar 
   - top bar: no longer fits at md even; must swap out at lg? Verify after movign tabs to Settings.
-
-## style
-- update `STYLE_GUIDE.md`: add the `coloured-logger` package to imports and try `from coloured_logger import Logger`; `logger = Logger(__name__)`; `logger.<appropriate level>(<message>)` rather than `print(<message>)`; reserve print for debugging purposes only.
 
 ## code dating — transition provisions to handle
 Several codes have conditional effective dates with grace periods for in-stream projects.

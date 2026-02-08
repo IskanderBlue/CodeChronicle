@@ -9,9 +9,12 @@ from typing import Any, Dict, List
 
 import boto3
 from building_code_mcp import BuildingCodeMCP
+from coloured_logger import Logger
 from django.conf import settings
 
 from config.code_metadata import get_applicable_codes, get_map_codes
+
+logger = Logger(__name__)
 
 
 def _get_mcp_maps_dir() -> str:
@@ -52,10 +55,10 @@ def _get_mcp_maps_dir() -> str:
             if key.endswith(".json"):
                 local_path = os.path.join(temp_dir, key)
                 if not os.path.exists(local_path):
-                    print(f"Downloading map: {key}")
+                    logger.info("Downloading map: %s", key)
                     s3.download_file(settings.AWS_STORAGE_BUCKET_NAME, key, local_path)
     except Exception as e:
-        print(f"Error downloading maps from S3: {e}")
+        logger.error("Error downloading maps from S3: %s", e)
         raise
 
     return temp_dir
@@ -93,7 +96,7 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
     for code_name in applicable_codes:
         map_codes = get_map_codes(code_name)
         if not map_codes:
-            print(f"No map codes configured for {code_name}, skipping")
+            logger.warning("No map codes configured for %s, skipping", code_name)
             continue
 
         for map_code in map_codes:
@@ -123,7 +126,7 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
 
                 all_results.extend(results)
             except Exception as e:
-                print(f"Error searching {code_name} (map={map_code}): {e}")
+                logger.error("Error searching %s (map=%s): %s", code_name, map_code, e)
 
     # Step 3: Deduplicate and format
     unique_results = deduplicate_results(all_results)

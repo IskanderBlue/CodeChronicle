@@ -5,6 +5,7 @@ Views for core app (frontend pages).
 import os
 import re
 
+from coloured_logger import Logger
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -19,6 +20,7 @@ from api.search import execute_search
 from config.code_metadata import PDF_EXPECTATIONS, get_pdf_filename
 from core.models import SearchHistory
 
+logger = Logger(__name__)
 
 
 
@@ -181,7 +183,7 @@ def search_results(request):
             )
         except Exception as e:
             # Don't fail the search if history tracking fails
-            print(f"Error recording search history: {e}")
+            logger.error("Error recording search history: %s", e)
 
         return render(
             request,

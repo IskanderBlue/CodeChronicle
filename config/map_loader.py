@@ -7,7 +7,10 @@ import os
 from typing import Any, Dict, Optional
 
 import boto3
+from coloured_logger import Logger
 from django.conf import settings
+
+logger = Logger(__name__)
 
 
 class MapCache:
@@ -49,11 +52,11 @@ class MapCache:
                     with open(file_path, "r", encoding="utf-8") as f:
                         return json.load(f)
                 except Exception as e:
-                    print(f"Error loading local map {code_name}: {e}")
+                    logger.error("Error loading local map %s: %s", code_name, e)
 
         # fallback to S3
         if not settings.AWS_ACCESS_KEY_ID:
-            print("AWS credentials not configured, skipping S3 load.")
+            logger.warning("AWS credentials not configured, skipping S3 load.")
             return None
 
         try:
@@ -69,7 +72,7 @@ class MapCache:
             )
             return json.loads(response["Body"].read().decode("utf-8"))
         except Exception as e:
-            print(f"Error loading map {code_name} from S3: {e}")
+            logger.error("Error loading map %s from S3: %s", code_name, e)
             return None
 
     def clear_cache(self):
