@@ -35,8 +35,6 @@
   - ideally to the specific section or subsection.
     - Not feasible
 
-## Coverage
-
 ## UI improvements
 - Think through how to handle what search UI displays when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).
   - check whether all subsections are returned; if so, display their parent; otherwise, display specific subsections? Can discuss.
