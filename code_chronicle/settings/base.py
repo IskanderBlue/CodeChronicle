@@ -140,8 +140,8 @@ AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME', 'building-code-maps')
 AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
 
-# Building Code MCP - empty means download from S3
-MCP_MAPS_DIR = os.environ.get('MCP_MAPS_DIR', '')
+# Building code maps - empty means download from S3
+MAPS_DIR = os.environ.get('MAPS_DIR', '')
 
 
 # ===================

@@ -26,12 +26,24 @@
 	- done
 - ~~top bar: move password, logout into Settings; may want to add tabs to settings page or otherwise make all setting changes clearly accessible; move settings to right of top bar~~
 	- done
+- ~~now that we have pdfs for major provinces, unlock non-ON; default to None for Province.~~
+  - done
+- ~~Use `html` (`notes_html` too for table) if no pdf is available (eg. Ontario before current handbook)~~
+	- done
+- ~~If no page is available (eg. Ontario before current handbook), link to the regulation,~~
+  - done 
+  - ideally to the specific section or subsection.
+    - Not feasible
+
+## Coverage
 
 ## UI improvements
-- handle display when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).
+- Think through how to handle what search UI displays when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).
   - check whether all subsections are returned; if so, display their parent; otherwise, display specific subsections? Can discuss.
 - search: don't double up if id and title are identical
-- top bar: no longer fits at md even; must swap out at lg? Marginal.
+
+## General
+- Implement: https://x.com/ryancarson/status/2016520542723924279
 
 ## code dating — transition provisions to handle
 Several codes have conditional effective dates with grace periods for in-stream projects.
@@ -51,3 +63,6 @@ The `get_applicable_codes()` logic currently treats dates as hard cutoffs; these
     - codex says no way to do this without triggering user-unfriendly warning; won't work for Firefox anyway.
     - Could do single-file drag-and-drop, but this doesn't store the full path; would have to store file in local IndexedDB, copyright issues.
     - Could use IndexedDB to store the full path, but this would require a custom implementation.
+
+## Maybe
+- top bar: no longer fits at md even; must swap out at lg? Marginal.

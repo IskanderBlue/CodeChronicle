@@ -99,9 +99,9 @@ def list_available_codes(request):
         for ed in editions:
             data.append(
                 {
-                    "name": f"{code_type} {ed['year']}",
+                    "name": f"{code_type} {ed['edition_id']}",
                     "province": code_type if code_type != "NBC" else "Federal",
-                    "status": "Current" if not ed["superseded_date"] else "Historical",
+                    "status": "Current" if not ed.get("superseded_date") else "Historical",
                     "effective_date": ed["effective_date"],
                 }
             )

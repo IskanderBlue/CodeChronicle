@@ -24,7 +24,7 @@
 
 ### Settings & Env
 - Settings: `code_chronicle/settings/{base,development,production}.py`.
-- Env vars: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `DATABASE_URL`, `MCP_MAPS_DIR` (empty = S3).
+- Env vars: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `DATABASE_URL`, `MAPS_DIR` (empty = S3).
 
 ### Rate Limits & Subscriptions
 - Anonymous: 1 search/day. Authenticated free: 3/day. Pro: unlimited (Stripe/dj-stripe or `pro_courtesy`).

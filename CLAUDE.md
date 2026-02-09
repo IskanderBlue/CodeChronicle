@@ -60,7 +60,7 @@ Django templates + HTMX + Alpine.js + Tailwind CSS (CDN). Templates live in `tem
 
 ### Settings
 
-Split settings in `code_chronicle/settings/`: `base.py`, `development.py`, `production.py`. Tests use `development` settings (configured in `pyproject.toml`). Key env vars: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `DATABASE_URL`, `MCP_MAPS_DIR` (empty = download from S3).
+Split settings in `code_chronicle/settings/`: `base.py`, `development.py`, `production.py`. Tests use `development` settings (configured in `pyproject.toml`). Key env vars: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `DATABASE_URL`, `MAPS_DIR` (empty = download from S3).
 
 ### Rate Limiting & Subscriptions
 

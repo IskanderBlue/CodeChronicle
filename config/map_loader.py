@@ -44,7 +44,7 @@ class MapCache:
         Load map data from S3 or local file system for development.
         """
         # In development, try to load from a local directory first if specified
-        local_maps_dir = settings.MCP_MAPS_DIR
+        local_maps_dir = settings.MAPS_DIR
         if local_maps_dir:
             file_path = os.path.join(local_maps_dir, f"{code_name}.json")
             if os.path.exists(file_path):

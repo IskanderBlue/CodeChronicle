@@ -110,6 +110,22 @@ def test_get_applicable_codes_ontario_2026():
     assert 'NBC_2025' in codes
 
 
+def test_get_applicable_codes_ontario_2010():
+    """Test that a 2010 date resolves to a CCM OBC edition if loaded."""
+    from config.code_metadata import CODE_EDITIONS, get_applicable_codes
+
+    has_ccm = any(
+        ed.get("source") == "elaws" for ed in CODE_EDITIONS.get("OBC", [])
+    )
+    if not has_ccm:
+        pytest.skip("CCM editions not loaded (no regulations.json)")
+
+    codes = get_applicable_codes('ON', date(2010, 6, 1))
+    obc_codes = [c for c in codes if c.startswith('OBC_')]
+    assert len(obc_codes) == 1
+    assert obc_codes[0].startswith('OBC_2006_v')
+
+
 def test_execute_search_no_codes():
     """Test when no codes are found for the date."""
     params = {

@@ -2,9 +2,11 @@
 Search execution logic combining applicability resolution and building-code-mcp.
 """
 
+import json
 import os
 import tempfile
 from datetime import date
+from pathlib import Path
 from typing import Any, Dict, List
 
 import boto3
@@ -17,20 +19,20 @@ from config.code_metadata import get_applicable_codes, get_map_codes
 logger = Logger(__name__)
 
 
-def _get_mcp_maps_dir() -> str:
+def _get_maps_dir() -> str:
     """
-    Get the MCP maps directory path.
-    Uses MCP_MAPS_DIR setting if set, otherwise downloads maps from S3.
+    Get the maps directory path.
+    Uses MAPS_DIR setting if set, otherwise downloads maps from S3.
     """
     # Local maps dir takes precedence (development)
-    if settings.MCP_MAPS_DIR:
-        return settings.MCP_MAPS_DIR
+    if settings.MAPS_DIR:
+        return settings.MAPS_DIR
 
     # Production: download from S3 to temp directory
     if not settings.AWS_ACCESS_KEY_ID:
         raise RuntimeError(
-            "MCP_MAPS_DIR not set and AWS credentials not configured. "
-            "Set MCP_MAPS_DIR for local development or configure AWS for production."
+            "MAPS_DIR not set and AWS credentials not configured. "
+            "Set MAPS_DIR for local development or configure AWS for production."
         )
 
     temp_dir = os.path.join(tempfile.gettempdir(), "mcp_maps")
@@ -64,9 +66,39 @@ def _get_mcp_maps_dir() -> str:
     return temp_dir
 
 
+def _rekey_maps_by_stem(server: BuildingCodeMCP, directory: str) -> None:
+    """
+    Re-key maps that share a 'code' field by filename stem.
+
+    BuildingCodeMCP._load_maps() keys by the JSON 'code' field, so CCM maps
+    that all have "code": "OBC" overwrite each other. This reloads them
+    keyed by filename stem (e.g. OBC_1997_v01) so each is individually
+    searchable, while preserving the original key for non-CCM maps.
+    """
+    maps_path = Path(directory)
+    if not maps_path.exists():
+        return
+    for json_file in maps_path.glob("*.json"):
+        stem = json_file.stem
+        if stem in server.maps or stem == "regulations":
+            continue
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            code_field = data.get("code", stem)
+            if code_field != stem:
+                server.maps[stem] = data
+        except Exception:
+            pass
+
+
 # Initialize MCP server with resolved maps directory
-maps_dir = _get_mcp_maps_dir()
+maps_dir = _get_maps_dir()
 mcp_server = BuildingCodeMCP(maps_dir=maps_dir)
+
+# Re-key maps by filename stem so CCM maps (which all share "code": "OBC")
+# are individually addressable as OBC_1997_v01, OBC_2006_v03, etc.
+_rekey_maps_by_stem(mcp_server, maps_dir)
 
 SEARCH_RESULT_LIMIT = 10  # Unified limit for search results
 
@@ -110,12 +142,16 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
 
                 results = search_response.get("results", [])
 
-                # Build bbox lookup from map data (search_code doesn't return it)
-                bbox_lookup = {}
+                # Build lookups from map data (search_code doesn't return these)
+                bbox_lookup: Dict[str, Any] = {}
+                html_lookup: Dict[str, str] = {}
                 map_data = mcp_server.maps.get(map_code, {})
                 for section in map_data.get("sections", []):
+                    sid = section["id"]
                     if section.get("bbox"):
-                        bbox_lookup[section["id"]] = section["bbox"]
+                        bbox_lookup[sid] = section["bbox"]
+                    if section.get("text") and not section.get("bbox"):
+                        html_lookup[sid] = section["text"]
 
                 # Tag each result with edition info and the specific map it came from
                 for result in results:
@@ -123,6 +159,7 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
                     result["map_code"] = map_code
                     result["source_date"] = search_date.isoformat()
                     result["bbox"] = bbox_lookup.get(result.get("id"))
+                    result["html_content"] = html_lookup.get(result.get("id"))
 
                 all_results.extend(results)
             except Exception as e:

@@ -3,7 +3,7 @@ Format search results for frontend display.
 """
 from typing import Any, Dict, List, Optional
 
-from config.code_metadata import CODE_DISPLAY_NAMES, get_pdf_filename
+from config.code_metadata import CODE_DISPLAY_NAMES, get_pdf_filename, get_source_url
 
 
 def _build_code_display_name(code_edition: str) -> str:
@@ -36,8 +36,11 @@ def format_search_results(
         if map_code:
             pdf_filename = get_pdf_filename(code_edition, map_code) or f'{map_code}.pdf'
 
+        html_content = result.get('html_content')
+        source_url = get_source_url(code_edition)
+
         pdf_url = None
-        if pdf_dir and map_code:
+        if pdf_dir and map_code and not source_url:
             pdf_url = f'/pdf/{code_edition}/{map_code}/'
 
         section_data = {
@@ -53,6 +56,8 @@ def format_search_results(
             'score': result.get('score', 0),
             'pdf_url': pdf_url,
             'pdf_filename': pdf_filename,
+            'html_content': html_content,
+            'source_url': source_url,
         }
 
         # Amendment tracking (Placeholder for now)

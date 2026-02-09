@@ -3,136 +3,137 @@
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf_viewer.min.css">
 <script type="module">
-import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.min.mjs';
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.worker.min.mjs';
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.worker.min.mjs';
 
-const pdfCache = {};
+    const pdfCache = {};
 
-function loadPdf(url) {
-    if (!pdfCache[url]) {
-        pdfCache[url] = pdfjsLib.getDocument(url).promise;
-    }
-    return pdfCache[url];
-}
-
-async function renderPdfPage(container, url, pageNum, bbox) {
-    try {
-        const pdf = await loadPdf(url);
-        const page = await pdf.getPage(pageNum);
-
-        const containerWidth = container.clientWidth || 600;
-        const unscaledViewport = page.getViewport({ scale: 1 });
-        const scale = containerWidth / unscaledViewport.width;
-        const viewport = page.getViewport({ scale });
-        const pageHeight = unscaledViewport.height;
-
-        // Create wrapper
-        const wrapper = document.createElement('div');
-        wrapper.className = 'pdf-page';
-        wrapper.style.position = 'relative';
-        wrapper.style.width = viewport.width + 'px';
-        wrapper.style.height = viewport.height + 'px';
-
-        // Canvas for rendering
-        const canvas = document.createElement('canvas');
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
-        canvas.style.width = viewport.width + 'px';
-        canvas.style.height = viewport.height + 'px';
-        wrapper.appendChild(canvas);
-
-        const ctx = canvas.getContext('2d');
-        ctx.scale(dpr, dpr);
-        await page.render({ canvasContext: ctx, viewport }).promise;
-
-        // Highlight bbox region and offset to focus on it
-        if (bbox) {
-            const x = bbox.l * scale;
-            const y = (pageHeight - bbox.t) * scale;
-            const w = (bbox.r - bbox.l) * scale;
-            const h = (bbox.t - bbox.b) * scale;
-
-            const highlight = document.createElement('div');
-            highlight.className = 'pdf-bbox-highlight';
-            highlight.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
-            wrapper.appendChild(highlight);
-
-            // Shift page up so bbox is visible in collapsed view (overflow-hidden)
-            const offset = Math.max(0, y - 10);
-            wrapper.style.marginTop = -offset + 'px';
+    function loadPdf(url) {
+        if (!pdfCache[url]) {
+            pdfCache[url] = pdfjsLib.getDocument(url).promise;
         }
+        return pdfCache[url];
+    }
 
-        // Text layer for selection
-        const textContent = await page.getTextContent();
-        const textLayerDiv = document.createElement('div');
-        textLayerDiv.className = 'textLayer';
-        textLayerDiv.style.setProperty('--scale-factor', scale);
-        wrapper.appendChild(textLayerDiv);
+    async function renderPdfPage(container, url, pageNum, bbox) {
+        try {
+            const pdf = await loadPdf(url);
+            const page = await pdf.getPage(pageNum);
 
-        const tl = new pdfjsLib.TextLayer({
-            textContentSource: textContent,
-            container: textLayerDiv,
-            viewport: viewport,
+            const containerWidth = container.clientWidth || 600;
+            const unscaledViewport = page.getViewport({ scale: 1 });
+            const scale = containerWidth / unscaledViewport.width;
+            const viewport = page.getViewport({ scale });
+            const pageHeight = unscaledViewport.height;
+
+            // Create wrapper
+            const wrapper = document.createElement('div');
+            wrapper.className = 'pdf-page';
+            wrapper.style.position = 'relative';
+            wrapper.style.width = viewport.width + 'px';
+            wrapper.style.height = viewport.height + 'px';
+
+            // Canvas for rendering
+            const canvas = document.createElement('canvas');
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(viewport.width * dpr);
+            canvas.height = Math.floor(viewport.height * dpr);
+            canvas.style.width = viewport.width + 'px';
+            canvas.style.height = viewport.height + 'px';
+            wrapper.appendChild(canvas);
+
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            await page.render({ canvasContext: ctx, viewport }).promise;
+
+            // Highlight bbox region and offset to focus on it
+            if (bbox) {
+                const x = bbox.l * scale;
+                const y = (pageHeight - bbox.t) * scale;
+                const w = (bbox.r - bbox.l) * scale;
+                const h = (bbox.t - bbox.b) * scale;
+
+                const highlight = document.createElement('div');
+                highlight.className = 'pdf-bbox-highlight';
+                highlight.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
+                wrapper.appendChild(highlight);
+
+                // Shift page up so bbox is visible in collapsed view (overflow-hidden)
+                const offset = Math.max(0, y - 10);
+                wrapper.style.marginTop = -offset + 'px';
+            }
+
+            // Text layer for selection
+            const textContent = await page.getTextContent();
+            const textLayerDiv = document.createElement('div');
+            textLayerDiv.className = 'textLayer';
+            textLayerDiv.style.setProperty('--scale-factor', scale);
+            wrapper.appendChild(textLayerDiv);
+
+            const tl = new pdfjsLib.TextLayer({
+                textContentSource: textContent,
+                container: textLayerDiv,
+                viewport: viewport,
+            });
+            await tl.render();
+
+            container.innerHTML = '';
+            container.appendChild(wrapper);
+            return true;
+        } catch (err) {
+            container.classList.add('flex', 'items-center', 'justify-center', 'text-center', 'text-xs', 'text-neutral-400', 'italic');
+            container.classList.remove('cursor-pointer');
+            container.innerHTML = 'Could not load PDF page. Check your directory path and file names under&nbsp;<a href="/settings/" class="text-primary-600 dark:text-primary-400 underline font-medium" onclick="event.stopPropagation()">Settings</a>.';
+            console.error('PDF render error:', err);
+            return false;
+        }
+    }
+
+    function parseBbox(str) {
+        if (!str) return null;
+        const parts = str.split(',').map(Number);
+        if (parts.length !== 4 || parts.some(isNaN)) return null;
+        return { l: parts[0], t: parts[1], r: parts[2], b: parts[3] };
+    }
+
+    function showPdfWarning(container, message) {
+        const block = container.closest('[data-pdf-block]');
+        if (!block) return;
+        const warning = block.querySelector('[data-pdf-warning]');
+        if (warning) {
+            warning.textContent = message;
+            warning.classList.remove('hidden');
+        }
+        const fallback = block.querySelector('[data-pdf-fallback]');
+        if (fallback) {
+            fallback.classList.remove('hidden');
+        }
+    }
+
+    function initPdfContainers(root) {
+        const containers = (root || document).querySelectorAll('[data-pdf-url]:not([data-pdf-loaded])');
+        containers.forEach(el => {
+            el.setAttribute('data-pdf-loaded', 'true');
+            const url = el.getAttribute('data-pdf-url');
+            const page = parseInt(el.getAttribute('data-pdf-page'), 10) || 1;
+            const bbox = parseBbox(el.getAttribute('data-pdf-bbox'));
+            renderPdfPage(el, url, page, bbox);
         });
-        await tl.render();
-
-        container.innerHTML = '';
-        container.appendChild(wrapper);
-        return true;
-    } catch (err) {
-        container.classList.add('flex', 'items-center', 'justify-center', 'text-center', 'text-xs', 'text-neutral-400', 'italic');
-        container.classList.remove('cursor-pointer');
-        container.innerHTML = 'Could not load PDF page. Check your directory path and file names under&nbsp;<a href="/settings/" class="text-primary-600 dark:text-primary-400 underline font-medium" onclick="event.stopPropagation()">Settings</a>.';
-        console.error('PDF render error:', err);
-        return false;
     }
-}
 
-function parseBbox(str) {
-    if (!str) return null;
-    const parts = str.split(',').map(Number);
-    if (parts.length !== 4 || parts.some(isNaN)) return null;
-    return { l: parts[0], t: parts[1], r: parts[2], b: parts[3] };
-}
-
-function showPdfWarning(container, message) {
-    const block = container.closest('[data-pdf-block]');
-    if (!block) return;
-    const warning = block.querySelector('[data-pdf-warning]');
-    if (warning) {
-        warning.textContent = message;
-        warning.classList.remove('hidden');
-    }
-    const fallback = block.querySelector('[data-pdf-fallback]');
-    if (fallback) {
-        fallback.classList.remove('hidden');
-    }
-}
-
-function initPdfContainers(root) {
-    const containers = (root || document).querySelectorAll('[data-pdf-url]:not([data-pdf-loaded])');
-    containers.forEach(el => {
-        el.setAttribute('data-pdf-loaded', 'true');
-        const url = el.getAttribute('data-pdf-url');
-        const page = parseInt(el.getAttribute('data-pdf-page'), 10) || 1;
-        const bbox = parseBbox(el.getAttribute('data-pdf-bbox'));
-        renderPdfPage(el, url, page, bbox);
+    // Init after HTMX injects results
+    document.addEventListener('htmx:afterSettle', (e) => {
+        initPdfContainers(e.detail.elt);
     });
-}
-
-// Init after HTMX injects results
-document.addEventListener('htmx:afterSettle', (e) => {
-    initPdfContainers(e.detail.elt);
-});
-document.addEventListener('DOMContentLoaded', () => {
-    initPdfContainers();
-});
+    document.addEventListener('DOMContentLoaded', () => {
+        initPdfContainers();
+    });
 </script>
 <style>
     .pdf-page {
         position: relative;
     }
+
     .pdf-page .textLayer {
         position: absolute;
         left: 0;
@@ -143,19 +144,23 @@ document.addEventListener('DOMContentLoaded', () => {
         opacity: 0.25;
         line-height: 1;
     }
+
     .pdf-page .textLayer ::selection {
         background: rgba(0, 100, 200, 0.4);
     }
+
     .pdf-bbox-highlight {
         background: rgba(14, 165, 133, 0.08);
         border: 2px solid rgba(14, 165, 133, 0.4);
         border-radius: 2px;
         pointer-events: none;
     }
+
     .pdf-collapse-gradient {
         --fade-color: #f1f5f9;
         background: linear-gradient(transparent 60%, var(--fade-color) 100%);
     }
+
     .dark .pdf-collapse-gradient {
         --fade-color: rgb(38 38 38);
     }
@@ -213,9 +218,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                 class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Province</label>
                             <select name="province"
                                 class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm border p-2 dark:text-neutral-100">
+                                <option value="" selected>Auto-detect from query</option>
+                                <option value="AB">Alberta</option>
+                                <option value="BC">British Columbia</option>
                                 <option value="ON">Ontario</option>
-                                <!-- Other provinces omitted for initial release -->
+                                <option value="QC">Quebec</option>
                             </select>
+                            <p class="mt-1 text-xs text-neutral-400 dark:text-neutral-500 italic">Optional: Overrides
+                                province in query</p>
                         </div>
                         <div>
                             <label
@@ -235,8 +245,8 @@ document.addEventListener('DOMContentLoaded', () => {
     <!-- Loading indicator template (hidden, cloned into results area on submit) -->
     <div id="loading-tpl" class="hidden">
         <div class="text-center py-12">
-            <svg class="animate-spin mx-auto h-8 w-8 text-accent-500"
-                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin mx-auto h-8 w-8 text-accent-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
@@ -265,14 +275,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     {% if initial_query %}
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var form = document.querySelector('[hx-post]');
-        if (form) {
-            document.getElementById('results-area').innerHTML =
-                document.getElementById('loading-tpl').innerHTML;
-            htmx.trigger(form, 'submit');
-        }
-    });
+        document.addEventListener('DOMContentLoaded', function () {
+            var form = document.querySelector('[hx-post]');
+            if (form) {
+                document.getElementById('results-area').innerHTML =
+                    document.getElementById('loading-tpl').innerHTML;
+                htmx.trigger(form, 'submit');
+            }
+        });
     </script>
     {% endif %}
 </div>
