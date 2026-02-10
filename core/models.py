@@ -2,6 +2,8 @@
 Core models for CodeChronicle.
 """
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.contrib.postgres.fields import ArrayField
+from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.utils import timezone
 
@@ -152,3 +154,129 @@ class SearchHistory(models.Model):
 
     def __str__(self):
         return f"{self.user or self.ip_address}: {self.query[:50]}"
+
+
+class CodeMap(models.Model):
+    """
+    Top-level map record that stores map identity for a specific code edition.
+    """
+    code_name = models.CharField(max_length=100)
+    map_code = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'code_maps'
+        verbose_name = 'Code Map'
+        verbose_name_plural = 'Code Maps'
+
+    def __str__(self):
+        return f"{self.map_code} ({self.code_name})"
+
+
+class CodeMapNode(models.Model):
+    """
+    Disaggregated map content for a specific section node.
+    """
+    code_map = models.ForeignKey(CodeMap, on_delete=models.CASCADE, related_name='nodes')
+    node_id = models.CharField(max_length=200)
+    title = models.CharField(max_length=500)
+    page = models.IntegerField(null=True, blank=True)
+    page_end = models.IntegerField(null=True, blank=True)
+    html = models.TextField(null=True, blank=True)
+    notes_html = models.TextField(null=True, blank=True)
+    keywords = ArrayField(models.CharField(max_length=100), null=True, blank=True)
+    bbox = models.JSONField(null=True, blank=True)
+    parent_id = models.CharField(max_length=200, null=True, blank=True)
+
+    class Meta:
+        db_table = 'code_map_nodes'
+        verbose_name = 'Code Map Node'
+        verbose_name_plural = 'Code Map Nodes'
+        indexes = [
+            models.Index(fields=['node_id'], name='code_mapnode_node_id_idx'),
+            GinIndex(fields=['keywords'], name='code_mapnode_keywords_gin'),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=['code_map', 'node_id'], name='code_map_node_unique'),
+        ]
+
+    def __str__(self):
+        return f"{self.code_map.map_code}:{self.node_id}"
+
+
+class CodeSystem(models.Model):
+    """
+    High-level code system (e.g., OBC, NBC, IUGP9).
+    """
+    code = models.CharField(max_length=20, unique=True)
+    display_name = models.CharField(max_length=200, blank=True, default='')
+    is_national = models.BooleanField(default=False)
+    document_type = models.CharField(
+        max_length=20,
+        default='code',
+        choices=[('code', 'code'), ('guide', 'guide')],
+    )
+
+    class Meta:
+        db_table = 'code_systems'
+        verbose_name = 'Code System'
+        verbose_name_plural = 'Code Systems'
+
+    def __str__(self):
+        return self.code
+
+
+class CodeEdition(models.Model):
+    """
+    A specific edition/version of a code system.
+    """
+    system = models.ForeignKey(CodeSystem, on_delete=models.CASCADE, related_name='editions')
+    edition_id = models.CharField(max_length=50)
+    year = models.IntegerField()
+    map_codes = ArrayField(models.CharField(max_length=100))
+    effective_date = models.DateField()
+    superseded_date = models.DateField(null=True, blank=True)
+    pdf_files = models.JSONField(null=True, blank=True)
+    download_url = models.CharField(max_length=500, blank=True, default='')
+    amendments = models.JSONField(null=True, blank=True)
+    regulation = models.CharField(max_length=200, blank=True, default='')
+    version_number = models.IntegerField(null=True, blank=True)
+    source = models.CharField(max_length=50, blank=True, default='')
+    source_url = models.CharField(max_length=500, blank=True, default='')
+    amendments_applied = models.JSONField(null=True, blank=True)
+    is_guide = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'code_editions'
+        verbose_name = 'Code Edition'
+        verbose_name_plural = 'Code Editions'
+        constraints = [
+            models.UniqueConstraint(fields=['system', 'edition_id'], name='code_system_edition_unique'),
+        ]
+        indexes = [
+            models.Index(fields=['system', 'effective_date'], name='code_edition_effective_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.system.code}_{self.edition_id}"
+
+    @property
+    def code_name(self) -> str:
+        return f"{self.system.code}_{self.edition_id}"
+
+
+class ProvinceCodeMap(models.Model):
+    """
+    Map a province abbreviation to its primary code system.
+    """
+    province = models.CharField(max_length=2, unique=True)
+    code_system = models.ForeignKey(CodeSystem, on_delete=models.CASCADE, related_name='provinces')
+
+    class Meta:
+        db_table = 'province_code_maps'
+        verbose_name = 'Province Code Map'
+        verbose_name_plural = 'Province Code Maps'
+
+    def __str__(self):
+        return f"{self.province} -> {self.code_system.code}"

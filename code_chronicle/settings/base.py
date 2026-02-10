@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',
+    'django.contrib.postgres',
     
     # Third-party apps
     'allauth',
@@ -140,7 +141,7 @@ AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME', 'building-code-maps')
 AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
 
-# Building code maps - empty means download from S3
+# Building code maps (optional; used for CCM regulations.json loading if provided)
 MAPS_DIR = os.environ.get('MAPS_DIR', '')
 
 

@@ -39,6 +39,7 @@
 - Think through how to handle what search UI displays when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).
   - check whether all subsections are returned; if so, display their parent; otherwise, display specific subsections? Can discuss.
 - search: don't double up if id and title are identical
+- show notes_html when relevant
 
 ## General
 - Implement: https://x.com/ryancarson/status/2016520542723924279

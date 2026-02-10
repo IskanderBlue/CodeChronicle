@@ -54,30 +54,8 @@
         </p>
         {% endif %}
 
-        <!-- Row 4: HTML content / PDF inline / Text content / Warning -->
-        {% if result.html_content %}
-        <div class="mt-4" x-data="{ expanded: false }">
-            <div class="relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-                :style="{ maxHeight: expanded ? 'none' : '200px' }">
-                <div class="p-4 text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none elaws-content">
-                    {{ result.html_content|safe }}
-                </div>
-                <div x-show="!expanded"
-                    class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-neutral-100 dark:from-neutral-800 to-transparent pointer-events-none">
-                </div>
-            </div>
-            <div class="flex justify-end mt-1">
-                <button x-show="expanded" @click="expanded = false"
-                    class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-                    Collapse
-                </button>
-                <button x-show="!expanded" @click="expanded = true"
-                    class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-                    Expand section
-                </button>
-            </div>
-        </div>
-        {% elif result.pdf_url %}
+        <!-- Row 4: PDF inline / HTML content / Warning -->
+        {% if result.pdf_url %}
         <div class="mt-4" x-data="{ expanded: false }" data-pdf-block>
             <div class="pdf-clip relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
                 :style="{ maxHeight: expanded ? 'none' : '200px' }">
@@ -103,13 +81,41 @@
                     Expand section
                 </button>
             </div>
-            {% if result.text %}
+            {% if result.html_content %}
+            <div
+                class="mt-4 hidden text-neutral-700 dark:text-neutral-300 text-sm prose dark:prose-invert prose-primary max-w-none markdown-content"
+                data-pdf-fallback>
+                {{ result.html_content|safe }}
+            </div>
+            {% elif result.text %}
             <div
                 class="mt-4 hidden text-neutral-700 dark:text-neutral-300 text-sm prose dark:prose-invert prose-primary max-w-none"
                 data-pdf-fallback>
                 {{ result.text|linebreaks }}
             </div>
             {% endif %}
+        </div>
+        {% elif result.html_content %}
+        <div class="mt-4" x-data="{ expanded: false }">
+            <div class="relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
+                :style="{ maxHeight: expanded ? 'none' : '200px' }">
+                <div class="p-4 text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
+                    {{ result.html_content|safe }}
+                </div>
+                <div x-show="!expanded"
+                    class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-neutral-100 dark:from-neutral-800 to-transparent pointer-events-none">
+                </div>
+            </div>
+            <div class="flex justify-end mt-1">
+                <button x-show="expanded" @click="expanded = false"
+                    class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
+                    Collapse
+                </button>
+                <button x-show="!expanded" @click="expanded = true"
+                    class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
+                    Expand section
+                </button>
+            </div>
         </div>
         {% elif result.text %}
         <div
@@ -136,11 +142,7 @@
                     d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p class="text-xs text-accent-700 dark:text-accent-400">
-                {% if not result.text_available %}
                 Full text not available for this code edition. Choose a PDF folder in <a href="/settings/" class="underline font-medium">Settings</a> to view inline.
-                {% else %}
-                Choose a PDF folder in <a href="/settings/" class="underline font-medium">Settings</a> to view this page inline.
-                {% endif %}
             </p>
         </div>
         {% endif %}

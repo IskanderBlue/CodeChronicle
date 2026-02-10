@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import User, SearchHistory
+from .models import (
+    CodeEdition,
+    CodeMap,
+    CodeMapNode,
+    CodeSystem,
+    ProvinceCodeMap,
+    SearchHistory,
+    User,
+)
 
 
 @admin.register(User)
@@ -16,3 +24,10 @@ class SearchHistoryAdmin(admin.ModelAdmin):
     list_filter = ['timestamp']
     search_fields = ['query', 'user__email']
     readonly_fields = ['parsed_params']
+
+
+admin.site.register(CodeMap)
+admin.site.register(CodeMapNode)
+admin.site.register(CodeSystem)
+admin.site.register(CodeEdition)
+admin.site.register(ProvinceCodeMap)

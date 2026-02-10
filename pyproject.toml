@@ -42,6 +42,7 @@ dependencies = [
     # Building code search extras
     "pymupdf>=1.23.0",
     "rapidfuzz>=3.5.0",
+    "markdown>=3.6",
     
     # Utilities
     "python-dotenv>=1.0",

@@ -18,11 +18,10 @@ from django.views.decorators.http import require_POST
 from api.formatters import format_search_results
 from api.llm_parser import parse_user_query
 from api.search import execute_search
-from config.code_metadata import PDF_EXPECTATIONS, get_pdf_filename
+from config.code_metadata import get_pdf_expectations, get_pdf_filename
 from core.models import SearchHistory
 
 logger = Logger(__name__)
-
 
 
 @login_required
@@ -45,9 +44,7 @@ def history(request):
     count_map = {s["latest_id"]: s["search_count"] for s in query_stats}
 
     # Fetch full records for the latest occurrence of each query
-    searches = list(
-        SearchHistory.objects.filter(id__in=latest_ids).order_by("-timestamp")
-    )
+    searches = list(SearchHistory.objects.filter(id__in=latest_ids).order_by("-timestamp"))
     for s in searches:
         s.search_count = count_map.get(s.id, 1)
 
@@ -164,7 +161,7 @@ def search_results(request):
         if request.user.is_authenticated:
             pdf_dir = request.user.pdf_directory
         formatted = format_search_results(search_results_data["results"], pdf_dir=pdf_dir or None)
-
+        logger.info("search frontend payload: %s", formatted)
         # Record search history
         try:
             # Extract IP for anonymous rate limiting/tracking
@@ -226,7 +223,7 @@ def user_settings(request):
         "settings.html",
         {
             "pdf_directory": request.user.pdf_directory,
-            "pdf_expectations": PDF_EXPECTATIONS,
+            "pdf_expectations": get_pdf_expectations(),
             "password_form": password_form,
         },
     )
@@ -236,9 +233,9 @@ def user_settings(request):
 def serve_pdf(request, code_edition: str, map_code: str):
     """Serve a PDF from the authenticated user's configured directory."""
     # Validate formats to prevent path traversal
-    if not re.match(r'^[A-Z]{2,5}_\d{4}$', code_edition):
+    if not re.match(r"^[A-Z]{2,5}_\d{4}$", code_edition):
         raise Http404
-    if not re.match(r'^[A-Z]{2,5}[A-Za-z0-9]*(_[A-Za-z0-9]+)?$', map_code):
+    if not re.match(r"^[A-Z]{2,5}[A-Za-z0-9]*(_[A-Za-z0-9]+)?$", map_code):
         raise Http404
 
     pdf_dir = request.user.pdf_directory
@@ -254,7 +251,7 @@ def serve_pdf(request, code_edition: str, map_code: str):
         raise Http404
 
     return FileResponse(
-        open(pdf_path, 'rb'),
-        content_type='application/pdf',
-        headers={'Content-Disposition': f'inline; filename="{filename}"'},
+        open(pdf_path, "rb"),
+        content_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )

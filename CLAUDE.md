@@ -34,7 +34,16 @@ ruff check --fix .
 python manage.py migrate
 python manage.py makemigrations
 
-# Start PostgreSQL (optional, SQLite works for dev)
+# Load code metadata (DB-backed)
+python manage.py load_code_metadata --source config/metadata.json
+
+# Export code metadata to JSON
+python manage.py export_code_metadata --output config/metadata.json
+
+# Load map JSONs into DB
+python manage.py load_maps --source ../CodeChronicle-Mapping/maps
+
+# Start PostgreSQL
 docker-compose up -d
 ```
 
@@ -44,7 +53,7 @@ docker-compose up -d
 
 - **core/** - Custom User model (email-only, no username via `AUTH_USER_MODEL = 'core.User'`), SearchHistory, QueryCache/QueryPrompt models, RateLimitMiddleware, and frontend views (HTMX-based)
 - **api/** - Django Ninja REST API. Key endpoints: `/api/search` (POST), `/api/history` (GET), `/api/codes` (GET), `/api/health` (GET)
-- **config/** - Static configuration: `code_metadata.py` defines CODE_EDITIONS (OBC 2006/2012/2024, NBC 2015/2020/2025) with `get_applicable_codes()` to resolve which editions apply at a given date. `keywords.py` has the valid keyword list. `map_loader.py` manages S3/local PDF map loading.
+- **config/** - Configuration helpers: `code_metadata.py` reads DB-backed code metadata (`get_applicable_codes()`), `keywords.py` has the valid keyword list.
 
 ### Request Flow
 
@@ -60,7 +69,7 @@ Django templates + HTMX + Alpine.js + Tailwind CSS (CDN). Templates live in `tem
 
 ### Settings
 
-Split settings in `code_chronicle/settings/`: `base.py`, `development.py`, `production.py`. Tests use `development` settings (configured in `pyproject.toml`). Key env vars: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `DATABASE_URL`, `MAPS_DIR` (empty = download from S3).
+Split settings in `code_chronicle/settings/`: `base.py`, `development.py`, `production.py`. Tests use `development` settings (configured in `pyproject.toml`). Key env vars: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `DATABASE_URL`.
 
 ### Rate Limiting & Subscriptions
 

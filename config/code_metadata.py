@@ -2,18 +2,14 @@
 Configuration for available building code editions and their metadata.
 
 Editions come from two sources:
-- Hardcoded entries (OBC 2024, NBC, NFC, NPC, NECB, BCBC, ABC, QCC, etc.)
-- CCM regulations.json (historical OBC versions loaded dynamically)
+- Hardcoded seed entries (OBC 2024, NBC, NFC, NPC, NECB, BCBC, ABC, QCC, etc.)
+- CCM regulations.json (loaded into the database via management commands)
 """
-import json
-import os
 from datetime import date
 from typing import Any, List, Optional, TypedDict
 
-from coloured_logger import Logger
+from django.db import models
 from typing_extensions import NotRequired
-
-logger = Logger(__name__)
 
 
 class Amendment(TypedDict):
@@ -35,6 +31,7 @@ class CodeEdition(TypedDict):
     source: NotRequired[str]  # "elaws", "pdf", "mcp"
     source_url: NotRequired[str]  # elaws URL or download link
     amendments_applied: NotRequired[List[dict[str, Any]]]  # CCM amendment list
+    is_guide: NotRequired[bool]
 
 
 # Master dictionary of code editions
@@ -278,27 +275,6 @@ PDF_DOWNLOAD_LINKS: dict[str, str] = {
 }
 
 
-PDF_EXPECTATIONS: list[dict[str, str | int | None]] = []
-for _system, _editions in {**CODE_EDITIONS, **GUIDE_EDITIONS}.items():
-    for _edition in _editions:
-        _year = _edition["year"]
-        _effective_date = _edition["effective_date"]
-        _code_key = f"{_system}_{_edition['edition_id']}"
-        _download_url = PDF_DOWNLOAD_LINKS.get(_code_key)
-        for _map_code, _filename in _edition.get("pdf_files", {}).items():
-            PDF_EXPECTATIONS.append(
-                {
-                    "system": _system,
-                    "year": _year,
-                    "effective_date": _effective_date,
-                    "map_code": _map_code,
-                    "filename": _filename,
-                    "download_url": _download_url,
-                }
-            )
-PDF_EXPECTATIONS.sort(key=lambda row: (row["system"], row["year"], row["map_code"]))
-
-
 # Map province abbreviations to provincial code systems
 PROVINCE_TO_CODE: dict[str, str] = {
     'ON': 'OBC',
@@ -311,153 +287,39 @@ PROVINCE_TO_CODE: dict[str, str] = {
 NATIONAL_CODES: list[str] = ['NBC', 'NFC', 'NPC', 'NECB']
 
 
-# ── CCM regulations.json loader ─────────────────────────────────────────────
+# CCM editions are loaded into the database via management commands.
 
 
-def _ccm_entry_to_edition(entry: dict[str, Any]) -> CodeEdition:
-    """Convert a single regulations.json entry to a CodeEdition."""
-    version = entry["version"]
-    version_number = entry["version_number"]
-    output_stem = entry["output_file"].removesuffix(".json")
-    edition_id = f"{version}_v{version_number:02d}"
-
-    edition: CodeEdition = {
-        "edition_id": edition_id,
-        "year": int(version),
-        "map_codes": [output_stem],
-        "effective_date": entry["effective_date"],
-        "source": entry.get("source", ""),
-        "regulation": entry.get("regulation", ""),
-        "version_number": version_number,
-    }
-    if entry.get("elaws_url"):
-        edition["source_url"] = entry["elaws_url"]
-    if entry.get("amendments_applied"):
-        edition["amendments_applied"] = entry["amendments_applied"]
-    return edition
-
-
-def _compute_superseded_dates(
-    ccm_editions: List[CodeEdition],
-    next_effective: Optional[str] = None,
-) -> None:
-    """
-    Sort CCM editions by effective_date and chain superseded_dates.
-
-    next_effective: the effective_date of the edition that follows the last CCM
-    entry (e.g. OBC 2024's "2025-01-01").
-    """
-    ccm_editions.sort(key=lambda e: e["effective_date"])
-    for i, edition in enumerate(ccm_editions):
-        if i + 1 < len(ccm_editions):
-            edition["superseded_date"] = ccm_editions[i + 1]["effective_date"]
-        else:
-            edition["superseded_date"] = next_effective
-
-
-def load_ccm_editions(regulations_path: str) -> None:
-    """
-    Load CCM regulations.json and merge OBC entries into CODE_EDITIONS.
-
-    Reads the file, converts entries to CodeEdition format, computes
-    superseded_dates, and prepends them to CODE_EDITIONS['OBC'] before the
-    existing OBC 2024 entry.
-    """
-    try:
-        with open(regulations_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        logger.warning("regulations.json not found at %s, skipping CCM load", regulations_path)
-        return
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse regulations.json: %s", e)
-        return
-
-    obc_entries = [e for e in data.get("OBC", []) if e.get("effective_date")]
-    if not obc_entries:
-        logger.warning("No OBC entries in regulations.json")
-        return
-
-    ccm_editions = [_ccm_entry_to_edition(entry) for entry in obc_entries]
-
-    obc_2024 = CODE_EDITIONS["OBC"][0]
-    _compute_superseded_dates(ccm_editions, next_effective=obc_2024["effective_date"])
-
-    CODE_EDITIONS["OBC"] = ccm_editions + [obc_2024]
-
-    logger.info("Loaded %d CCM OBC editions from regulations.json", len(ccm_editions))
-
-
-def reload_ccm_editions_from_s3() -> None:
-    """
-    Re-download regulations.json from S3 and reload CCM editions.
-
-    Useful when maps have been recompiled in CodeChronicle-Mapping.
-    """
-    import tempfile
-
-    import boto3
-    from django.conf import settings
-
-    if not settings.AWS_ACCESS_KEY_ID:
-        logger.error("AWS credentials not configured, cannot reload from S3")
-        return
-
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=settings.AWS_S3_REGION_NAME,
-    )
-
-    local_path = os.path.join(tempfile.gettempdir(), "regulations.json")
-    try:
-        s3.download_file(settings.AWS_STORAGE_BUCKET_NAME, "regulations.json", local_path)
-    except Exception as e:
-        logger.error("Failed to download regulations.json from S3: %s", e)
-        return
-
-    _reset_obc_editions()
-    load_ccm_editions(local_path)
-
-
-def _reset_obc_editions() -> None:
-    """Reset OBC editions to just the hardcoded OBC 2024 entry."""
-    CODE_EDITIONS["OBC"] = [
-        ed for ed in CODE_EDITIONS["OBC"] if ed["edition_id"] == "2024"
-    ]
-
-
-def _try_load_ccm_on_startup() -> None:
-    """Attempt to load CCM editions at module import time."""
-    try:
-        from django.conf import settings
-        maps_dir = getattr(settings, "MAPS_DIR", "")
-    except Exception:
-        maps_dir = os.environ.get("MAPS_DIR", "")
-
-    if maps_dir:
-        path = os.path.join(maps_dir, "regulations.json")
-        if os.path.exists(path):
-            load_ccm_editions(path)
-
-
-_try_load_ccm_on_startup()
-
-
-def _find_edition(code_name: str) -> Optional[CodeEdition]:
-    """Look up a CodeEdition dict by code_name like 'OBC_2024' or 'OBC_2012_v38'."""
+def _find_edition(code_name: str):
+    """Look up a CodeEdition model by code_name like 'OBC_2024' or 'OBC_2012_v38'."""
     parts = code_name.split('_', 1)
     if len(parts) != 2:
         return None
     system, edition_id = parts
-    for edition in CODE_EDITIONS.get(system, []):
-        if edition['edition_id'] == edition_id:
-            return edition
-    for edition in GUIDE_EDITIONS.get(system, []):
-        if edition['edition_id'] == edition_id:
-            return edition
-    return None
+    try:
+        from core.models import CodeEdition
+    except Exception:
+        return None
+    return (
+        CodeEdition.objects.select_related("system")
+        .filter(system__code=system, edition_id=edition_id)
+        .first()
+    )
+
+
+def get_code_display_name(system_code: str) -> str:
+    """
+    Get the display name for a code system (e.g., OBC -> Ontario Building Code).
+    """
+    try:
+        from core.models import CodeSystem
+    except Exception:
+        return system_code
+
+    system = CodeSystem.objects.filter(code=system_code).first()
+    if system and system.display_name:
+        return system.display_name
+    return system_code
 
 
 def get_map_codes(code_name: str) -> List[str]:
@@ -469,7 +331,7 @@ def get_map_codes(code_name: str) -> List[str]:
           'NBC_2025' -> ['NBC']
     """
     edition = _find_edition(code_name)
-    return edition['map_codes'] if edition else []
+    return list(edition.map_codes) if edition else []
 
 
 def get_source_url(code_name: str) -> Optional[str]:
@@ -482,7 +344,7 @@ def get_source_url(code_name: str) -> Optional[str]:
     edition = _find_edition(code_name)
     if not edition:
         return None
-    return edition.get('source_url')
+    return edition.source_url or None
 
 
 def get_pdf_filename(code_name: str, map_code: str) -> Optional[str]:
@@ -494,9 +356,38 @@ def get_pdf_filename(code_name: str, map_code: str) -> Optional[str]:
     Returns None for CCM editions (no publisher PDFs).
     """
     edition = _find_edition(code_name)
-    if not edition:
+    if not edition or not edition.pdf_files:
         return None
-    return edition.get('pdf_files', {}).get(map_code)
+    return edition.pdf_files.get(map_code)
+
+
+def get_pdf_expectations() -> list[dict[str, str | int | None]]:
+    """
+    Build PDF expectations from CodeEdition rows.
+    """
+    try:
+        from core.models import CodeEdition
+    except Exception:
+        return []
+
+    expectations: list[dict[str, str | int | None]] = []
+    editions = CodeEdition.objects.select_related("system").all()
+    for edition in editions:
+        if not edition.pdf_files:
+            continue
+        for map_code, filename in edition.pdf_files.items():
+            expectations.append(
+                {
+                    "system": edition.system.code,
+                    "year": edition.year,
+                    "effective_date": edition.effective_date.isoformat(),
+                    "map_code": map_code,
+                    "filename": filename,
+                    "download_url": edition.download_url or None,
+                }
+            )
+    expectations.sort(key=lambda row: (row["system"], row["year"], row["map_code"]))
+    return expectations
 
 
 def get_applicable_codes(province: str, search_date: date) -> List[str]:
@@ -505,38 +396,39 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
 
     Returns a list of code names (e.g., ['OBC_2012_v17', 'NBC_2015'])
     """
-    codes = []
+    codes: list[str] = []
 
-    # Check provincial code
-    code_system = PROVINCE_TO_CODE.get(province)
-    prov_editions = CODE_EDITIONS.get(code_system, []) if code_system else []
-    for edition in prov_editions:
-        effective = date.fromisoformat(edition['effective_date'])
-        superseded_str = edition.get('superseded_date')
-        superseded = (
-            date.fromisoformat(superseded_str)
-            if superseded_str
-            else date.max
+    try:
+        from core.models import CodeEdition, CodeSystem, ProvinceCodeMap
+    except Exception:
+        return codes
+
+    province_map = (
+        ProvinceCodeMap.objects.select_related("code_system")
+        .filter(province=province)
+        .first()
+    )
+    if province_map:
+        edition = (
+            CodeEdition.objects.filter(system=province_map.code_system)
+            .filter(effective_date__lte=search_date)
+            .filter(models.Q(superseded_date__isnull=True) | models.Q(superseded_date__gt=search_date))
+            .order_by("-effective_date")
+            .first()
         )
+        if edition:
+            codes.append(edition.code_name)
 
-        if effective <= search_date < superseded:
-            codes.append(f"{code_system}_{edition['edition_id']}")
-            break
-
-    # Check federal codes
-    for national_system in NATIONAL_CODES:
-        national_editions = CODE_EDITIONS.get(national_system, [])
-        for edition in national_editions:
-            effective = date.fromisoformat(edition['effective_date'])
-            superseded_str = edition.get('superseded_date')
-            superseded = (
-                date.fromisoformat(superseded_str)
-                if superseded_str
-                else date.max
-            )
-
-            if effective <= search_date < superseded:
-                codes.append(f"{national_system}_{edition['edition_id']}")
-                break
+    national_systems = CodeSystem.objects.filter(is_national=True)
+    for system in national_systems:
+        edition = (
+            CodeEdition.objects.filter(system=system)
+            .filter(effective_date__lte=search_date)
+            .filter(models.Q(superseded_date__isnull=True) | models.Q(superseded_date__gt=search_date))
+            .order_by("-effective_date")
+            .first()
+        )
+        if edition:
+            codes.append(edition.code_name)
 
     return codes

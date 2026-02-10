@@ -1,31 +1,26 @@
 """
 Django settings for local development.
 """
+
+import os
+
+import dj_database_url
+
 from .base import *  # noqa: F401, F403
 
 DEBUG = True
 
 # Database
-# Prefer DATABASE_URL (e.g., from Docker) else fallback to SQLite
-import os
-import dj_database_url
+# Requires DATABASE_URL (PostgreSQL)
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is required for development settings.")
 
-if DATABASE_URL:
-    DATABASES = {
-        'default': dj_database_url.parse(DATABASE_URL)
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',  # noqa: F405
-        }
-    }
+DATABASES = {"default": dj_database_url.parse(DATABASE_URL)}
 
 # Email backend for development (prints to console)
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # Disable HTTPS requirements for local development
 SECURE_SSL_REDIRECT = False

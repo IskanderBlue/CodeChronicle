@@ -16,17 +16,10 @@ fully compatible with `BuildingCodeMCP`.
 
 ## Changes
 
-### 1. Rename `MCP_MAPS_DIR` → `MAPS_DIR`
+### 1. Metadata Lives In DB
 
-All maps (existing MCP + CCM) go in one directory locally and one S3 bucket.
-No dual-directory setup.
-
-**Files:**
-- `code_chronicle/settings/base.py`: `MAPS_DIR = os.environ.get('MAPS_DIR', '')`
-- `config/map_loader.py`: `settings.MCP_MAPS_DIR` → `settings.MAPS_DIR`
-- `api/search.py`: all `MCP_MAPS_DIR` references → `MAPS_DIR`
-- `.env.example`: rename variable, update comment
-- `AGENTS.md`, `CLAUDE.md`: update references
+CCM metadata is loaded into the database via `load_code_metadata` instead of
+being read at app startup.
 
 ### 2. Update `CodeEdition` TypedDict
 
@@ -62,14 +55,14 @@ class CodeEdition(TypedDict):
 
 - **Keep** OBC 2024 entry as-is, adding `edition_id: "2024"`, `source: "mcp"`
 - **Remove** hardcoded OBC 2006 and OBC 2012 entries
-- **Add** `load_ccm_editions()` function that:
-  1. Reads `regulations.json` from `MAPS_DIR` (locally) or S3 (production)
+- **Add** `load_code_metadata --ccm-source <regulations.json>` which:
+  1. Reads `regulations.json`
   2. Converts each entry to `CodeEdition` format
   3. Computes `superseded_date` by sorting entries within each system by `effective_date`
      and chaining: each entry's `superseded_date` = next entry's `effective_date`
   4. The last CCM OBC entry (2012_v38, effective 2024-04-10) gets
      `superseded_date = "2025-01-01"` (when OBC 2024 takes over)
-  5. Appends to `CODE_EDITIONS['OBC']`
+  5. Upserts into the DB
 - **All other code systems untouched** (NBC, NFC, NPC, NECB, BCBC, ABC, QCC, etc.)
 
 ### 4. Update `_find_edition()`
@@ -115,23 +108,16 @@ automatically. CCM editions will have `map_codes = ['OBC_1997_v01']` (stem of
 
 ### 8. `regulations.json` loading strategy
 
-- **Local dev**: read from `MAPS_DIR/regulations.json` (CCM puts it alongside maps)
-- **Production**: download from S3 alongside maps
-- **Reload function**: `reload_ccm_editions()` that re-reads `regulations.json`
-  from S3 and refreshes `CODE_EDITIONS['OBC']` in-place. Callable from management
-  command or admin endpoint.
-- **Startup**: `load_ccm_editions()` called at module import time. If
-  `regulations.json` is missing, log a warning and leave CODE_EDITIONS with just
-  OBC 2024 (graceful degradation).
+- Load `regulations.json` via `load_code_metadata --ccm-source <path>`.
+- No startup-time loading; metadata changes take effect after command runs.
 
 ### 9. Files modified (summary)
 
 | File | Change |
 |------|--------|
-| `code_chronicle/settings/base.py` | `MCP_MAPS_DIR` → `MAPS_DIR` |
-| `config/code_metadata.py` | TypedDict update, remove OBC 2006/2012, add loader |
-| `config/map_loader.py` | `settings.MCP_MAPS_DIR` → `settings.MAPS_DIR` |
-| `api/search.py` | `MCP_MAPS_DIR` → `MAPS_DIR` references |
+| `core/models.py` | Add DB-backed metadata models |
+| `core/management/commands/load_code_metadata.py` | Seed/load metadata into DB |
+| `config/code_metadata.py` | DB-backed lookups |
 | `api/views.py` | Display name for CCM editions |
 | `api/tests/test_search.py` | Update for new edition_id format |
 | `.env.example` | Rename env var |

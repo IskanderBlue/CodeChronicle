@@ -1,106 +1,164 @@
 """
-Search execution logic combining applicability resolution and building-code-mcp.
+Search execution logic combining applicability resolution and DB-backed maps.
 """
 
-import json
-import os
-import tempfile
 from datetime import date
-from pathlib import Path
 from typing import Any, Dict, List
 
-import boto3
-from building_code_mcp import BuildingCodeMCP
+from building_code_mcp.mcp_server import SYNONYMS
 from coloured_logger import Logger
-from django.conf import settings
+from django.db.models import Q
 
 from config.code_metadata import get_applicable_codes, get_map_codes
+from core.models import CodeMapNode
 
 logger = Logger(__name__)
 
 
-def _get_maps_dir() -> str:
-    """
-    Get the maps directory path.
-    Uses MAPS_DIR setting if set, otherwise downloads maps from S3.
-    """
-    # Local maps dir takes precedence (development)
-    if settings.MAPS_DIR:
-        return settings.MAPS_DIR
+SEARCH_RESULT_LIMIT = 10  # Unified limit for search results
 
-    # Production: download from S3 to temp directory
-    if not settings.AWS_ACCESS_KEY_ID:
-        raise RuntimeError(
-            "MAPS_DIR not set and AWS credentials not configured. "
-            "Set MAPS_DIR for local development or configure AWS for production."
-        )
 
-    temp_dir = os.path.join(tempfile.gettempdir(), "mcp_maps")
-    os.makedirs(temp_dir, exist_ok=True)
+try:
+    from rapidfuzz import fuzz, process
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=settings.AWS_S3_REGION_NAME,
+    FUZZY_AVAILABLE = True
+except ImportError:
+    FUZZY_AVAILABLE = False
+    fuzz = None
+    process = None
+
+
+def _expand_query_with_synonyms(query_terms: set[str]) -> set[str]:
+    expanded = set(query_terms)
+    for term in query_terms:
+        if term in SYNONYMS:
+            expanded.update(SYNONYMS[term])
+    return expanded
+
+
+def _fuzzy_match_score(query_term: str, target_terms: set[str], threshold: int = 80) -> float:
+    if not FUZZY_AVAILABLE or not target_terms:
+        return 0.0
+    best_score = 0
+    for target in target_terms:
+        ratio = fuzz.ratio(query_term, target)
+        if ratio > best_score:
+            best_score = ratio
+    if best_score >= threshold:
+        return best_score / 100.0
+    return 0.0
+
+
+def _suggest_similar_keywords(query: str, map_code: str | None = None, limit: int = 3) -> list[str]:
+    if not FUZZY_AVAILABLE or not query:
+        return []
+
+    keyword_qs = CodeMapNode.objects.all()
+    if map_code:
+        keyword_qs = keyword_qs.filter(code_map__map_code=map_code)
+
+    keywords: set[str] = set()
+    for row in keyword_qs.values_list("keywords", flat=True):
+        if not row:
+            continue
+        for kw in row:
+            if isinstance(kw, str):
+                keywords.add(kw.lower())
+
+    if not keywords:
+        return []
+
+    matches = process.extract(query.lower(), list(keywords), limit=limit, score_cutoff=60)
+    return [match[0] for match in matches]
+
+
+def _search_code_db(query: str, map_code: str, limit: int) -> dict[str, Any]:
+    limit = max(1, min(limit, 50))
+
+    if not query or not isinstance(query, str):
+        return {"error": "Query is required", "query": "", "results": [], "total": 0}
+
+    query_lower = query.lower().strip()
+    if not query_lower:
+        return {"error": "Query cannot be empty", "query": query, "results": [], "total": 0}
+
+    query_terms = set(query_lower.split())
+    expanded_terms = _expand_query_with_synonyms(query_terms)
+
+    criteria = Q(node_id__icontains=query_lower)
+    for term in query_terms:
+        criteria |= Q(title__icontains=term)
+    if expanded_terms:
+        criteria |= Q(keywords__overlap=list(expanded_terms))
+
+    candidates = (
+        CodeMapNode.objects.filter(code_map__map_code=map_code)
+        .filter(criteria)
+        .only("node_id", "title", "page", "page_end", "keywords")
     )
 
-    # List and download all map files
-    try:
-        response = s3.list_objects_v2(
-            Bucket=settings.AWS_STORAGE_BUCKET_NAME,
-            Prefix="",  # All files in bucket root
-        )
+    results: list[dict[str, Any]] = []
+    for node in candidates:
+        section_id = node.node_id or ""
+        title = node.title or ""
+        keywords = set(kw.lower() for kw in (node.keywords or []))
+        title_words = set(title.lower().split())
+        all_terms = keywords | title_words
 
-        for obj in response.get("Contents", []):
-            key = obj["Key"]
-            if key.endswith(".json"):
-                local_path = os.path.join(temp_dir, key)
-                if not os.path.exists(local_path):
-                    logger.info("Downloading map: %s", key)
-                    s3.download_file(settings.AWS_STORAGE_BUCKET_NAME, key, local_path)
-    except Exception as e:
-        logger.error("Error downloading maps from S3: %s", e)
-        raise
+        score = 0.0
+        match_type = None
 
-    return temp_dir
+        if query_lower in section_id.lower():
+            score = 2.0 if section_id.lower().endswith(query_lower) else 1.5
+            match_type = "exact_id"
+        elif expanded_terms:
+            matches = expanded_terms & all_terms
+            if matches:
+                original_matches = query_terms & all_terms
+                if original_matches:
+                    score = len(original_matches) / len(query_terms)
+                    match_type = "exact"
+                else:
+                    score = (len(matches) / len(expanded_terms)) * 0.9
+                    match_type = "synonym"
 
+        if score == 0 and FUZZY_AVAILABLE:
+            fuzzy_scores = []
+            for term in query_terms:
+                fscore = _fuzzy_match_score(term, all_terms)
+                if fscore > 0:
+                    fuzzy_scores.append(fscore)
+            if fuzzy_scores:
+                score = (sum(fuzzy_scores) / len(query_terms)) * 0.8
+                match_type = "fuzzy"
 
-def _rekey_maps_by_stem(server: BuildingCodeMCP, directory: str) -> None:
-    """
-    Re-key maps that share a 'code' field by filename stem.
+        if score > 0:
+            result_item = {
+                "id": section_id,
+                "title": title,
+                "page": node.page,
+                "page_end": node.page_end,
+                "score": round(score, 3),
+            }
+            if match_type:
+                result_item["match_type"] = match_type
+            results.append(result_item)
 
-    BuildingCodeMCP._load_maps() keys by the JSON 'code' field, so CCM maps
-    that all have "code": "OBC" overwrite each other. This reloads them
-    keyed by filename stem (e.g. OBC_1997_v01) so each is individually
-    searchable, while preserving the original key for non-CCM maps.
-    """
-    maps_path = Path(directory)
-    if not maps_path.exists():
-        return
-    for json_file in maps_path.glob("*.json"):
-        stem = json_file.stem
-        if stem in server.maps or stem == "regulations":
-            continue
-        try:
-            with open(json_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            code_field = data.get("code", stem)
-            if code_field != stem:
-                server.maps[stem] = data
-        except Exception:
-            pass
+    results.sort(key=lambda x: x["score"], reverse=True)
+    limited_results = results[:limit]
 
-
-# Initialize MCP server with resolved maps directory
-maps_dir = _get_maps_dir()
-mcp_server = BuildingCodeMCP(maps_dir=maps_dir)
-
-# Re-key maps by filename stem so CCM maps (which all share "code": "OBC")
-# are individually addressable as OBC_1997_v01, OBC_2006_v03, etc.
-_rekey_maps_by_stem(mcp_server, maps_dir)
-
-SEARCH_RESULT_LIMIT = 10  # Unified limit for search results
+    response = {"results": limited_results, "total": len(results)}
+    if len(results) == 0:
+        similar = _suggest_similar_keywords(query, map_code)
+        if similar:
+            response["suggestion"] = (
+                f"No results for '{query}'. Did you mean: {', '.join(similar)}?"
+            )
+        else:
+            response["suggestion"] = (
+                f"No results for '{query}'. Try different keywords or check spelling."
+            )
+    return response
 
 
 def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -124,7 +182,7 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
 
     all_results = []
 
-    # Step 2: Search each code using MCP map identifiers
+    # Step 2: Search each code using DB-backed map identifiers
     for code_name in applicable_codes:
         map_codes = get_map_codes(code_name)
         if not map_codes:
@@ -133,25 +191,29 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
 
         for map_code in map_codes:
             try:
-                search_response = mcp_server.search_code(
+                search_response = _search_code_db(
                     query=" ".join(keywords),
-                    code=map_code,
+                    map_code=map_code,
                     limit=SEARCH_RESULT_LIMIT,
-                    verbose=True,
                 )
 
                 results = search_response.get("results", [])
 
-                # Build lookups from map data (search_code doesn't return these)
+                # Build lookups from DB (search_code doesn't return these)
                 bbox_lookup: Dict[str, Any] = {}
                 html_lookup: Dict[str, str] = {}
-                map_data = mcp_server.maps.get(map_code, {})
-                for section in map_data.get("sections", []):
-                    sid = section["id"]
-                    if section.get("bbox"):
-                        bbox_lookup[sid] = section["bbox"]
-                    if section.get("text") and not section.get("bbox"):
-                        html_lookup[sid] = section["text"]
+                result_ids = [r.get("id") for r in results if r.get("id")]
+                if result_ids:
+                    nodes = CodeMapNode.objects.filter(
+                        code_map__map_code=map_code,
+                        node_id__in=result_ids,
+                    ).values("node_id", "bbox", "html")
+                    for node in nodes:
+                        node_id = node["node_id"]
+                        if node.get("bbox"):
+                            bbox_lookup[node_id] = node["bbox"]
+                        if node.get("html"):
+                            html_lookup[node_id] = node["html"]
 
                 # Tag each result with edition info and the specific map it came from
                 for result in results:
