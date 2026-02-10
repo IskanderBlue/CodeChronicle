@@ -27,16 +27,19 @@
   - `title` (string)
   - `html` (text; nullable)
   - `notes_html` (text; nullable)
+  - `keywords` (ArrayField[str]; nullable)
   - `bbox` (JSONField or array; nullable)
   - `parent_id` (string; nullable; optional if we want hierarchy)
 - Indexes:
   - `(code_map, node_id)` unique index
   - optional `node_id` index for fast lookup
+  - GIN index on `keywords` for contains queries
 - Purpose: disaggregated map content used at query time without loading full JSON.
 
 ### Rationale
 - Disaggregation avoids loading the entire JSON payload into memory per request.
 - Keeps queries bounded to only the relevant sections returned by MCP.
+- Keyword filtering uses `ArrayField` + GIN for fast contains queries.
 
 ## Data Loading / Migration
 
@@ -91,3 +94,4 @@
 ## Assumptions and Defaults
 - `CodeMapNode` is the chosen term for disaggregated entities.
 - MCP search remains in place; only enrichment is moved to DB.
+

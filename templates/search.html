@@ -22,24 +22,45 @@
 
             const containerWidth = container.clientWidth || 600;
             const unscaledViewport = page.getViewport({ scale: 1 });
-            const scale = containerWidth / unscaledViewport.width;
-            const viewport = page.getViewport({ scale });
+            const pageWidth = unscaledViewport.width;
             const pageHeight = unscaledViewport.height;
 
-            // Create wrapper
+            // Detect two-page spread: aspect ratio > 1.4 (landscape)
+            const isSpread = pageWidth / pageHeight > 1.4;
+            let cropOffsetX = 0;
+            let logicalWidth = pageWidth;
+
+            if (isSpread && bbox) {
+                const midpoint = pageWidth / 2;
+                logicalWidth = pageWidth / 2;
+                if (bbox.l >= midpoint) {
+                    cropOffsetX = midpoint;
+                }
+            } else if (isSpread) {
+                logicalWidth = pageWidth / 2;
+            }
+
+            const scale = containerWidth / logicalWidth;
+            const viewport = page.getViewport({ scale });
+
+            // Create wrapper – sized to show only the logical page
             const wrapper = document.createElement('div');
             wrapper.className = 'pdf-page';
             wrapper.style.position = 'relative';
-            wrapper.style.width = viewport.width + 'px';
+            wrapper.style.width = (logicalWidth * scale) + 'px';
             wrapper.style.height = viewport.height + 'px';
+            wrapper.style.overflow = 'hidden';
 
-            // Canvas for rendering
+            // Canvas for rendering – full spread rendered, then shifted
             const canvas = document.createElement('canvas');
             const dpr = window.devicePixelRatio || 1;
             canvas.width = Math.floor(viewport.width * dpr);
             canvas.height = Math.floor(viewport.height * dpr);
             canvas.style.width = viewport.width + 'px';
             canvas.style.height = viewport.height + 'px';
+            if (cropOffsetX > 0) {
+                canvas.style.marginLeft = -(cropOffsetX * scale) + 'px';
+            }
             wrapper.appendChild(canvas);
 
             const ctx = canvas.getContext('2d');
@@ -48,7 +69,7 @@
 
             // Highlight bbox region and offset to focus on it
             if (bbox) {
-                const x = bbox.l * scale;
+                const x = (bbox.l - cropOffsetX) * scale;
                 const y = (pageHeight - bbox.t) * scale;
                 const w = (bbox.r - bbox.l) * scale;
                 const h = (bbox.t - bbox.b) * scale;
@@ -58,7 +79,6 @@
                 highlight.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
                 wrapper.appendChild(highlight);
 
-                // Shift page up so bbox is visible in collapsed view (overflow-hidden)
                 const offset = Math.max(0, y - 10);
                 wrapper.style.marginTop = -offset + 'px';
             }
@@ -68,6 +88,9 @@
             const textLayerDiv = document.createElement('div');
             textLayerDiv.className = 'textLayer';
             textLayerDiv.style.setProperty('--scale-factor', scale);
+            if (cropOffsetX > 0) {
+                textLayerDiv.style.left = -(cropOffsetX * scale) + 'px';
+            }
             wrapper.appendChild(textLayerDiv);
 
             const tl = new pdfjsLib.TextLayer({
