@@ -38,7 +38,6 @@ python manage.py makemigrations
 python manage.py load_code_metadata --source config/metadata.json
 
 # Export code metadata to JSON
-python manage.py export_code_metadata --output config/metadata.json
 
 # Load map JSONs into DB
 python manage.py load_maps --source ../CodeChronicle-Mapping/maps

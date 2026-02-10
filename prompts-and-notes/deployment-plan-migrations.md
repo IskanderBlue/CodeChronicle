@@ -53,7 +53,6 @@
   4. Render markdown to `html` at import time.
   5. Clear nodes for a map before re-insert (bulk insert).
 - `python manage.py load_code_metadata --source config/metadata.json`
-- `python manage.py export_code_metadata --output config/metadata.json`
 
 ### Migration
 - Single migration for map + metadata models.

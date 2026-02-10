@@ -57,7 +57,7 @@ from anthropic import Anthropic
 
 # Local
 from api.llm_parser import parse_user_query
-from config.code_metadata import CODE_EDITIONS
+from config.code_metadata import get_applicable_codes
 ```
 
 ### Naming Conventions
@@ -203,7 +203,6 @@ Required variables (see `.env.example`):
 - `DATABASE_URL` - PostgreSQL connection string
 - `ANTHROPIC_API_KEY` - Claude API key
 - `STRIPE_SECRET_KEY` - Stripe API key
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` - For S3 access
 
 ---
 

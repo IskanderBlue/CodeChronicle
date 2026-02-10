@@ -51,19 +51,13 @@ class CodeEdition(TypedDict):
     amendments_applied: NotRequired[List[dict]]    # CCM amendment list
 ```
 
-### 3. Update `CODE_EDITIONS` OBC entries
+### 3. Update code metadata loading (DB-first)
 
-- **Keep** OBC 2024 entry as-is, adding `edition_id: "2024"`, `source: "mcp"`
-- **Remove** hardcoded OBC 2006 and OBC 2012 entries
-- **Add** `load_code_metadata --ccm-source <regulations.json>` which:
-  1. Reads `regulations.json`
-  2. Converts each entry to `CodeEdition` format
-  3. Computes `superseded_date` by sorting entries within each system by `effective_date`
-     and chaining: each entry's `superseded_date` = next entry's `effective_date`
-  4. The last CCM OBC entry (2012_v38, effective 2024-04-10) gets
-     `superseded_date = "2025-01-01"` (when OBC 2024 takes over)
-  5. Upserts into the DB
-- **All other code systems untouched** (NBC, NFC, NPC, NECB, BCBC, ABC, QCC, etc.)
+- Use `load_code_metadata` to ingest CCM entries into the database.
+- Compute `superseded_date` by sorting editions by `effective_date` within each system
+  and chaining the next effective date.
+- Ensure OBC 2024 remains as the non-CCM edition that supersedes the last CCM OBC
+  version when applicable.
 
 ### 4. Update `_find_edition()`
 
@@ -91,7 +85,7 @@ automatically. CCM editions will have `map_codes = ['OBC_1997_v01']` (stem of
 
 ### 7. Update downstream callers
 
-- **`api/views.py` `list_available_codes()`**: uses `ed['year']` for display name.
+- `/api/codes` endpoint removed; use metadata export + DB-backed code listings instead.
   Update to also show `edition_id` or `version_number` for CCM entries so they're
   distinguishable. Consider whether we want to expose all 70 OBC versions in the
   API or group them.
@@ -129,5 +123,5 @@ automatically. CCM editions will have `map_codes = ['OBC_1997_v01']` (stem of
 - NBC / NFC / NPC / NECB / BCBC / ABC / QCC changes (stay as-is)
 - Transition period logic (future work)
 - CCM search adapter (maps are MCP-compatible, not needed)
-- `GUIDE_EDITIONS` changes
+- Guide editions changes
 - Use of `html`, `notes_html` fields in maps as fallback when `bbox` is not available.

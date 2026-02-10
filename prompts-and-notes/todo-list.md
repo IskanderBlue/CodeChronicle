@@ -12,8 +12,6 @@
 - ~~implement/test pdf display.~~ 
 	- ~~test with NBC 2025.~~
 	- done: PDF.js inline rendering with expand/collapse, user-specific PDF directory in settings, serve_pdf view
-- ~~settings: should include links to all of the pdfs we can source.~~
-	- done: added links from Canada_building_code_mcp/docs/PDF_DOWNLOAD_LINKS.md
 - ~~search history: shows "{{ result.title }}" rather than the actual title.~~
 	- done: changed to display actual title
 - ~~search history: should click through to the results.~~
@@ -34,6 +32,8 @@
   - done 
   - ideally to the specific section or subsection.
     - Not feasible
+- ~~settings: should include links to all of the pdfs we can source.~~
+	- done: added links from Canada_building_code_mcp/docs/PDF_DOWNLOAD_LINKS.md
 
 ## UI improvements
 - Think through how to handle what search UI displays when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).

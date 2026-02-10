@@ -88,22 +88,3 @@ def get_search_history(request):
 
     return {"success": True, "results": results, "error": None}
 
-
-@api.get("/codes")
-def list_available_codes(request):
-    """List all code editions in the system."""
-    from config.code_metadata import CODE_EDITIONS
-
-    data = []
-    for code_type, editions in CODE_EDITIONS.items():
-        for ed in editions:
-            data.append(
-                {
-                    "name": f"{code_type} {ed['edition_id']}",
-                    "province": code_type if code_type != "NBC" else "Federal",
-                    "status": "Current" if not ed.get("superseded_date") else "Historical",
-                    "effective_date": ed["effective_date"],
-                }
-            )
-
-    return {"success": True, "results": data, "error": None}

@@ -42,10 +42,10 @@ Database:
 └── PostgreSQL (users, subscriptions, code-year mappings)
 
 Infrastructure:
-├── AWS (via Terraform - existing setup)
-├── EC2 t4g.small (Django app - ARM for better price/performance)
-├── RDS PostgreSQL t4g.micro
-└── S3 (parsed code maps storage)
+├── GCP (Terraform)
+├── Compute Engine VM (e2-micro)
+├── Neon Postgres (managed)
+└── Cloudflare (DNS + proxy + Origin CA)
 
 AI/LLM:
 └── Anthropic Claude API (query parsing only - synthesis is post-MVP)
@@ -86,246 +86,37 @@ class SearchHistory(Model):
     result_count = IntegerField()
 ```
 
-### Code-Year Mappings (In Memory)
+### Code Editions (Database)
 
-Since we're loading maps into memory anyway, store code edition metadata there too:
-
-NOTE: example does not include versions between amendments. Final will include versions with each  marginal amendment.
-
-```python
-# config/code_metadata.py
-
-CODE_EDITIONS = {
-    'OBC': [
-        {
-            'year': 2024,
-            'map_file': 'OBC_2024.json',
-            'effective_date': '2024-01-01',
-            'superseded_date': None,  # Current
-            'amendments': [
-                # Amendment metadata for display only
-                {'reg': 'O. Reg. 163/24', 'date': '2024-01-01', 'desc': 'Base regulation'}
-            ]
-        },
-        {
-            'year': 2012,
-            'map_file': 'OBC_2012.json',
-            'effective_date': '2014-01-01',
-            'superseded_date': '2024-01-01',
-            'amendments': [
-                {'reg': 'O. Reg. 332/12', 'date': '2014-01-01', 'desc': 'Base regulation'},
-                {'reg': 'O. Reg. 88/19', 'date': '2019-07-01', 'desc': 'Cannabis extraction'},
-                # etc...
-            ]
-        },
-        {
-            'year': 2006,
-            'map_file': 'OBC_2006.json',
-            'effective_date': '2006-12-31',
-            'superseded_date': '2014-01-01',
-            'amendments': []
-        },
-    ],
-    'NBC': [
-        {
-            'year': 2020,
-            'map_file': 'NBC_2020.json',
-            'effective_date': '2020-01-01',
-            'superseded_date': None,
-            'amendments': []
-        },
-        {
-            'year': 2015,
-            'map_file': 'NBC_2015.json',
-            'effective_date': '2015-01-01',
-            'superseded_date': '2020-01-01',
-            'amendments': []
-        },
-    ]
-}
-
-def get_applicable_code(code_name: str, year: int) -> dict:
-    """
-    Find which code edition was in effect at a given year
-    
-    Example: code_name="OBC", year=1993
-    Returns: {'year': 1990, 'map_file': 'OBC_1990.json', ...}
-    """
-    from datetime import date
-    search_date = date(year, 12, 31)
-    
-    editions = CODE_EDITIONS.get(code_name, [])
-    
-    for edition in editions:
-        effective = date.fromisoformat(edition['effective_date'])
-        superseded = date.fromisoformat(edition['superseded_date']) if edition['superseded_date'] else date.today()
-        
-        if effective <= search_date < superseded:
-            return edition
-    
-    return None
-```
-
-**Why in memory instead of database?**
-- Compatible with building-code-mcp
-- Code editions change infrequently (every 3-5 years)
-- No need for complex queries
-- Faster access (no DB roundtrip)
+Code editions and amendments are stored in Postgres and loaded from
+`config/metadata.json` via `python manage.py load_code_metadata`.
+Lookups for “what applied on date X” use database queries (see
+`config/code_metadata.py:get_applicable_codes`).
 
 **Amendment handling:**
 - Amendments are metadata for display only ("this regulation was filed on X date")
-- Each CODE_EDITIONS entry will have include all amendments valid for its date range.
-- We don't need apply amendments dynamically
+- Editions include amendment metadata for their date range
 
-### S3 Map Storage
+### Map Storage (Postgres)
 
-```
-s3://building-code-maps/
-├── OBC_2024.json          # From e-Laws scraper
-├── OBC_2012.json
-├── OBC_2006.json
-├── NBC_2020.json          # From building-code-mcp
-├── NBC_2015.json
-└── metadata.json          # Map versions, update timestamps
-```
+Maps are stored in Postgres (Neon) using `CodeMap` + `CodeMapNode` tables. Source
+JSON files live in the mapping repo and are loaded into the DB via management
+commands.
 
-### In-Memory Map Loading
+**Source maps:**
+- `CodeChronicle-Mapping/maps/*.json` (OBC/NBC maps)
+- `config/metadata.json` (editions, amendments, province mappings)
 
-```python
-# config/map_loader.py
-
-class MapCache:
-    """
-    Singleton that loads maps from S3 on app startup
-    Maps stay in memory for fast access during API calls
-    """
-    _instance = None
-    _maps = {}
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._load_maps()
-        return cls._instance
-    
-    def _load_maps(self):
-        """Load all maps from S3 into memory on startup"""
-        import boto3
-        import json
-        
-        s3 = boto3.client('s3')
-        bucket = settings.MAPS_BUCKET
-        
-        # List all map files
-        response = s3.list_objects_v2(Bucket=bucket)
-        
-        for obj in response.get('Contents', []):
-            if obj['Key'].endswith('.json'):
-                # Download and parse
-                file_obj = s3.get_object(Bucket=bucket, Key=obj['Key'])
-                map_data = json.loads(file_obj['Body'].read())
-                
-                # Store in memory by code name
-                code_name = obj['Key'].replace('.json', '')
-                self._maps[code_name] = map_data
-        
-        print(f"Loaded {len(self._maps)} code maps into memory")
-    
-    def get_map(self, code_name: str) -> dict:
-        """Retrieve map from in-memory cache"""
-        return self._maps.get(code_name)
-    
-    def search_sections(self, code_name: str, keywords: list) -> list:
-        """
-        Search sections in a specific code map
-        Wrapper around building-code-mcp search logic
-        """
-        from building_code_mcp import search_code
-        
-        # Search using building-code-mcp
-        results = search_code(
-            query=" ".join(keywords),
-            code=code_name
-        )
-        
-        return results
-
-# Initialize on app startup
-# In Django settings.py or apps.py
-map_cache = MapCache()
+**Loading into Postgres:**
+```bash
+python manage.py load_code_metadata --source config/metadata.json
+python manage.py load_maps --source ../CodeChronicle-Mapping/maps
 ```
 
-### Map Building Process
+### Map Access
 
-```python
-# scripts/build_maps.py
-# Run manually when updating code data, NOT during deployment
-
-def build_obc_maps():
-    """
-    Scrape e-Laws and build OBC maps
-    Upload to S3 when complete
-    """
-    for year in [2006, 2012, 2024]:
-        sections = scrape_elaws_obc(year)
-        map_data = format_as_map(sections)
-        
-        # Save to S3
-        s3.put_object(
-            Bucket=settings.MAPS_BUCKET,
-            Key=f'OBC_{year}.json',
-            Body=json.dumps(map_data)
-        )
-        
-        print(f"Built and uploaded OBC_{year}.json")
-
-def import_nbc_maps():
-    """
-    Import NBC maps from building-code-mcp package
-    Upload to S3
-    """
-    from building_code_mcp import load_maps
-    
-    nbc_maps = load_maps()  # From their package
-    
-    for code_name, map_data in nbc_maps.items():
-        if code_name.startswith('NBC'):
-            s3.put_object(
-                Bucket=settings.MAPS_BUCKET,
-                Key=f'{code_name}.json',
-                Body=json.dumps(map_data)
-            )
-            
-            print(f"Imported and uploaded {code_name}.json")
-
-# Run this script manually when:
-# 1. New code edition released
-# 2. Building-code-mcp updates their indices
-# 3. Your parsing logic changes
-
-if __name__ == '__main__':
-    build_obc_maps()
-    import_nbc_maps()
-    print("All maps built and uploaded to S3")
-```
-
-### Deployment Map Loading
-
-```python
-# In Django settings.py or AppConfig.ready()
-
-from config.map_loader import map_cache
-
-# On application startup:
-# 1. Django starts
-# 2. MapCache singleton initializes
-# 3. All maps loaded from S3 into memory
-# 4. API calls reference in-memory maps (fast)
-
-# Maps are NOT rebuilt during deployment
-# Maps are NOT loaded per-request
-# Maps stay in memory until app restarts
-```
+API searches read directly from `CodeMapNode` with ORM queries. Add caching later
+only if profiling shows DB hot spots.
 
 ---
 
@@ -337,20 +128,11 @@ from config.map_loader import map_cache
 
 1. **Terraform Configuration**
    ```hcl
-   # terraform/main.tf
-   resource "aws_instance" "django_app" {
-     ami           = "ami-xxxxx"  # Ubuntu 24.04 ARM
-     instance_type = "t4g.small"  # ~$12/month (ARM, better value than t3)
-   }
-   
-   resource "aws_db_instance" "postgres" {
-     engine         = "postgres"
-     instance_class = "db.t4g.micro"  # ~$10/month (ARM)
-   }
-   
-   resource "aws_s3_bucket" "code_maps" {
-     bucket = "building-code-maps"
-     # Store parsed JSON maps here
+   # CodeChronicle-terraform/envs/prod/main.tf
+   # Modules: network, compute, secrets, neon, cloudflare
+   module "compute" {
+     source       = "../../modules/compute"
+     machine_type = "e2-micro"
    }
    ```
 
@@ -368,7 +150,6 @@ from config.map_loader import map_cache
    building-code-mcp>=1.2.0
    dj-stripe
    anthropic
-   boto3  # For S3 access
    python-dotenv
    gunicorn
    ```
@@ -386,10 +167,6 @@ from config.map_loader import map_cache
            'PORT': '5432',
        }
    }
-   
-   # S3 Configuration
-   AWS_STORAGE_BUCKET_NAME = 'building-code-maps'
-   MAPS_BUCKET = AWS_STORAGE_BUCKET_NAME
    ```
 
 **Week 2: Data Acquisition & Map Building**
@@ -397,127 +174,14 @@ from config.map_loader import map_cache
 This is the only moat we get. Separate repository for scraper & map updating. Rest goes into public repo.
 
 1. **e-Laws Scraper for OBC (2004-2024)**
-   ```python
-   # scripts/scrape_elaws.py
-   import requests
-   from bs4 import BeautifulSoup
-   from datetime import datetime
-   import json
-   import boto3
-   
-   def scrape_obc_version(year: int, regulation: str):
-       """
-       Scrape a specific OBC version from e-Laws
-       
-       Example: year=2012, regulation="120332" (O. Reg. 332/12)
-       """
-       url = f"https://www.ontario.ca/laws/regulation/{regulation}"
-       
-       # Fetch HTML
-       response = requests.get(url)
-       soup = BeautifulSoup(response.text, 'html.parser')
-       
-       sections = []
-       
-       # Parse section structure
-       # e-Laws has sections in <div class="section"> or similar
-       for section_div in soup.find_all('div', class_='section'):
-           section_id = extract_section_id(section_div)
-           title = extract_title(section_div)
-           text = extract_full_text(section_div)
-           keywords = extract_keywords(text)
-           
-           sections.append({
-               'id': section_id,
-               'title': title,
-               'text': text,  # OBC = Crown copyright, OK to store
-               'keywords': keywords,
-               'year': year,
-               'code': 'OBC'
-           })
-       
-       return sections
-   
-   def build_obc_maps():
-       """
-       Build maps for all OBC editions
-       Upload to S3 when complete
-       """
-       s3 = boto3.client('s3')
-       
-       # OBC editions with regulation numbers
-       editions = {
-           2024: "240163",  # O. Reg. 163/24
-           2012: "120332",  # O. Reg. 332/12
-           2006: "060350",  # O. Reg. 350/06
-       }
-       
-       for year, reg in editions.items():
-           print(f"Scraping OBC {year}...")
-           sections = scrape_obc_version(year, reg)
-           
-           # Format as map compatible with building-code-mcp
-           map_data = {
-               'code_name': f'OBC_{year}',
-               'year': year,
-               'province': 'ON',
-               'sections': sections,
-               'metadata': {
-                   'source': 'e-Laws',
-                   'scraped_date': str(datetime.now()),
-                   'regulation': f'O. Reg. {reg}'
-               }
-           }
-           
-           # Upload to S3
-           s3.put_object(
-               Bucket='building-code-maps',
-               Key=f'OBC_{year}.json',
-               Body=json.dumps(map_data, indent=2)
-           )
-           
-           print(f"✓ Uploaded OBC_{year}.json to S3")
-   
-   if __name__ == '__main__':
-       build_obc_maps()
-   ```
+   - Scrape HTML from e-Laws and emit JSON map files into
+     `CodeChronicle-Mapping/maps/`.
+   - Load into Postgres with:
+     `python manage.py load_maps --source ../CodeChronicle-Mapping/maps`
 
 2. **Import NBC Maps from building-code-mcp**
-   ```python
-   # scripts/import_nbc_maps.py
-   from building_code_mcp import load_maps
-   import boto3
-   import json
-   
-   def import_nbc_to_s3():
-       """
-       Import NBC indices from building-code-mcp package
-       Upload to our S3 bucket
-       
-       These contain coordinates but NO full text (NRC copyright)
-       """
-       s3 = boto3.client('s3')
-       
-       # Load maps from building-code-mcp
-       all_maps = load_maps()
-       
-       # Filter for NBC codes
-       for code_name, map_data in all_maps.items():
-           if code_name.startswith('NBC'):
-               print(f"Importing {code_name}...")
-               
-               # Upload to our S3
-               s3.put_object(
-                   Bucket='building-code-maps',
-                   Key=f'{code_name}.json',
-                   Body=json.dumps(map_data, indent=2)
-               )
-               
-               print(f"✓ Uploaded {code_name}.json to S3")
-   
-   if __name__ == '__main__':
-       import_nbc_to_s3()
-   ```
+   - Generate/normalize NBC map JSONs from `building-code-mcp`.
+   - Load into Postgres with the same `load_maps` command.
 
 ### Phase 2: Core Search Engine (Weeks 3-4)
 
@@ -885,24 +549,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
            ]
        }
    
-   @api.get("/codes", auth=django_auth)
-   def list_available_codes(request):
-       """List all code editions in the system"""
-       from api.models import CodeEdition
-       
-       codes = CodeEdition.objects.all().order_by('code_name', '-year')
-       
-       return {
-           "codes": [
-               {
-                   "name": f"{c.code_name} {c.year}",
-                   "province": c.province or "Federal",
-                   "effective_date": str(c.effective_date),
-                   "status": "Current" if not c.superseded_date else "Historical"
-               }
-               for c in codes
-           ]
-       }
+   # /api/codes endpoint removed (use code metadata + DB for code listings)
    ```
 
 2. **Subscription Middleware**
@@ -1232,47 +879,45 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
 
 2. **Terraform Deployment**
    ```bash
-   cd terraform/
+   cd CodeChronicle-terraform/envs/prod
    terraform init
-   terraform plan
-   terraform apply
+   terraform plan -var-file=prod.tfvars
+   terraform apply -var-file=prod.tfvars
    
    # Output will include:
-   # - EC2 instance IPs
-   # - RDS endpoint
-   # - S3 bucket names
+   # - public_ip
+   # - domain_name
+   # - neon_connection_string (sensitive)
    ```
 
 3. **Application Deployment**
    ```bash
-   # On EC2 instance
-   git clone <your-repo>
-   cd building-code-search
+   # On GCE VM
+   cd /opt/codechroniclenet
+   docker compose pull
+   docker compose up -d
    
-   # Install dependencies
-   pip install -r requirements.txt
-   
-   # Run migrations
-   python manage.py migrate
-   
-   # Collect static files
-   python manage.py collectstatic
-      
-   # Start with gunicorn
-   gunicorn building_code_search.wsgi:application --bind 0.0.0.0:8000
+   # Run migrations and seed data
+   docker exec -it <container> python manage.py migrate
+   docker exec -it <container> python manage.py load_code_metadata --source config/metadata.json
+   docker exec -it <container> python manage.py load_maps --source /opt/codechronicle-mapping/maps
    ```
 
 4. **Nginx Configuration**
    ```nginx
    # /etc/nginx/sites-available/buildingcode
    server {
-       listen 80;
-       server_name buildingcodesearch.com;
+       listen 443 ssl;
+       server_name app.yourdomain.com;
+       
+       ssl_certificate /etc/nginx/certs/origin.crt;
+       ssl_certificate_key /etc/nginx/certs/origin.key;
        
        location / {
            proxy_pass http://127.0.0.1:8000;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-Proto https;
        }
        
        location /static/ {
@@ -1374,11 +1019,11 @@ def parse_sections(text: str, page: int) -> list:
 ## Cost Estimates
 
 ### Infrastructure (Monthly)
-- AWS EC2 t4g.small (Django app): ~$12
-- AWS RDS t4g.micro (PostgreSQL): ~$10
-- AWS S3 (map storage): ~$2
-- Bandwidth: ~$3
-- **Total Infrastructure**: ~$27/month
+- GCP Compute Engine (e2-micro) VM
+- Neon Postgres (managed)
+- Cloudflare (DNS + proxy)
+- Bandwidth
+- **Total Infrastructure**: TBD (depends on usage and plan tiers)
 
 ### Services
 - Anthropic API (query parsing only, ~1000 queries/month): ~$10-30/month
@@ -1408,8 +1053,8 @@ At $30/month per Pro user:
 
 | Week | Focus | Deliverable |
 |------|-------|-------------|
-| 1 | Infrastructure | Terraform deployed, RDS + S3 configured |
-| 2 | Data pipeline | OBC scraped, NBC imported, maps in S3 |
+| 1 | Infrastructure | Terraform deployed, GCP + Neon + Cloudflare configured |
+| 2 | Data pipeline | OBC scraped, NBC imported, maps loaded into Postgres |
 | 3 | Query processing | LLM parser + code resolver working |
 | 4 | Search execution | building-code-mcp integration complete |
 | 5 | Backend API | Django Ninja endpoints functional |
@@ -1496,7 +1141,7 @@ For MVP, we only need:
 - Keyword validation ("does this query match any known terms?")
 - Simple result display
 
-CODE_EDITIONS handles the year→code mappings. Building-code-mcp handles the search.
+CodeEdition tables handle the year→code mappings. Building-code-mcp handles the search.
 
 Graph databases (Neo4j) would only be needed for:
 - Multi-hop reference traversal ("show all dependencies 3 levels deep")
@@ -1579,7 +1224,7 @@ For MVP, PostgreSQL + building-code-mcp handles all search needs.
    - Beta test with 5-10 engineers
    - Iterate on UX based on feedback
    - Finalize pricing based on actual costs
-   - Set up monitoring (Sentry, CloudWatch)
+   - Set up monitoring (Sentry, GCP Cloud Monitoring)
 
 ---
 

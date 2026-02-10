@@ -77,6 +77,4 @@ def get_amendments_for_section(section_id: str, code_edition: str) -> List[Dict[
     Mock function to retrieve amendments for a specific section.
     Real data would come from the historical metadata or a DB.
     """
-    # Placeholder: In a real implementation, we'd check CODE_EDITIONS
-    # and match amendment dates to the search date.
     return []

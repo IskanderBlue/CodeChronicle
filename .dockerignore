@@ -1,0 +1,11 @@
+.env
+.git
+.gitignore
+.pytest_cache
+.ruff_cache
+.coverage
+venv
+code_chronicle.egg-info
+prompts-and-notes
+__pycache__
+*.pyc
