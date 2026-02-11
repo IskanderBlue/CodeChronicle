@@ -82,3 +82,6 @@ ignore = ["E501"]  # Line length handled separately
 DJANGO_SETTINGS_MODULE = "code_chronicle.settings.development"
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore:The default scheme will be changed from 'http' to 'https' in Django 6.0.*:django.utils.deprecation.RemovedInDjango60Warning:djstripe\\.admin\\.forms",
+]

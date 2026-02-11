@@ -40,10 +40,15 @@
   - check whether all subsections are returned; if so, display their parent; otherwise, display specific subsections? Can discuss.
 - search: don't double up if id and title are identical
 - show notes_html when relevant
+- put link to pdf in upload ui
 
 ## General
 - Implement: https://x.com/ryancarson/status/2016520542723924279
 - Harden static asset versioning/caching: use Django hashed static filenames (Manifest storage), ensure deploy-time `collectstatic`, and keep Cloudflare caching safe for `/static/*`.
+- include sections explicitly
+- NBC first.
+- show date-based changes
+  - transition periods
 
 ## code dating — transition provisions to handle
 Several codes have conditional effective dates with grace periods for in-stream projects.

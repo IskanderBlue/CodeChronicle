@@ -2,13 +2,55 @@
 Django Ninja API endpoints for CodeChronicle.
 """
 
-from ninja import NinjaAPI
+import json
+
+from ninja import NinjaAPI, Schema
 
 api = NinjaAPI(
     title="CodeChronicle API",
     version="0.1.0",
     description="Historical Canadian Building Code Search API",
 )
+
+
+class ApiErrorResponse(Schema):
+    success: bool
+    results: list[dict] = []
+    error: str
+    meta: dict | None = None
+
+
+class CodeRow(Schema):
+    id: str
+    code: str
+    edition_id: str
+    year: int
+    name: str
+
+
+class CodesResponse(Schema):
+    success: bool
+    results: list[CodeRow]
+    error: str | None = None
+
+
+class SearchResponse(Schema):
+    success: bool
+    results: list[dict]
+    error: str | None = None
+    meta: dict | None = None
+
+
+class HistoryItem(Schema):
+    query: str
+    timestamp: str
+    result_count: int
+
+
+class HistoryResponse(Schema):
+    success: bool
+    results: list[HistoryItem]
+    error: str | None = None
 
 
 def _is_paid_user(user) -> bool:
@@ -59,14 +101,13 @@ def _load_code_rows_from_db() -> list[dict[str, str | int]]:
     editions = CodeEdition.objects.select_related("system").all()
     rows: list[dict[str, str | int]] = []
     for edition in editions:
-        display = edition.system.display_name or edition.system.code
         rows.append(
             {
                 "id": edition.code_name,
                 "code": edition.system.code,
                 "edition_id": edition.edition_id,
                 "year": edition.year,
-                "name": f"{display} {edition.year}".strip(),
+                "name": f"{edition.system.code} {edition.year}".strip(),
             }
         )
 
@@ -74,7 +115,10 @@ def _load_code_rows_from_db() -> list[dict[str, str | int]]:
     return rows
 
 
-@api.get("/codes")
+@api.get(
+    "/codes",
+    response={200: CodesResponse, 401: ApiErrorResponse, 403: ApiErrorResponse, 503: ApiErrorResponse},
+)
 def list_codes(request):
     """List known code editions from DB-backed metadata."""
     denied = _require_paid_api_access(request)
@@ -106,14 +150,46 @@ def health_check(request):
     return {"status": "ok"}
 
 
-@api.post("/search")
-def search(request, query: str):
+def _extract_query_from_request(request) -> str:
+    """Support both form-encoded and JSON bodies for search payloads."""
+    form_query = request.POST.get("query")
+    if isinstance(form_query, str) and form_query.strip():
+        return form_query.strip()
+
+    raw_body = request.body.decode("utf-8").strip() if request.body else ""
+    if not raw_body:
+        return ""
+
+    try:
+        body = json.loads(raw_body)
+    except json.JSONDecodeError:
+        return ""
+
+    query = body.get("query") if isinstance(body, dict) else None
+    if isinstance(query, str):
+        return query.strip()
+    return ""
+
+
+@api.post(
+    "/search",
+    response={200: SearchResponse, 400: ApiErrorResponse, 401: ApiErrorResponse, 403: ApiErrorResponse},
+)
+def search(request):
     """
     Search building codes with natural language query.
     """
     denied = _require_paid_api_access(request)
     if denied:
         return denied
+    query = _extract_query_from_request(request)
+    if not query:
+        return 400, {
+            "success": False,
+            "results": [],
+            "error": "Query is required.",
+            "meta": None,
+        }
 
     from api.formatters import format_search_results
     from api.llm_parser import parse_user_query
@@ -162,7 +238,7 @@ def search(request, query: str):
     }
 
 
-@api.get("/history")
+@api.get("/history", response={200: HistoryResponse, 401: ApiErrorResponse, 403: ApiErrorResponse})
 def get_search_history(request):
     """Return user's recent searches."""
     denied = _require_paid_api_access(request)
