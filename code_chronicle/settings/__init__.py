@@ -1,5 +1,4 @@
 """
 Settings package for code_chronicle.
-Imports development settings by default.
+Use DJANGO_SETTINGS_MODULE to select the appropriate settings module.
 """
-from .development import *  # noqa: F401, F403
