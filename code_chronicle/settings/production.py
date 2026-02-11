@@ -3,19 +3,35 @@ Django settings for production environment.
 """
 import os
 
+import dj_database_url
+
 from .base import *  # noqa: F401, F403
 
 DEBUG = False
 
-# Parse DATABASE_URL for PostgreSQL
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
+GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "")
+
+
+def _get_secret(secret_id):
+    """Fetch a secret from GCP Secret Manager, falling back to env vars."""
+    env_val = os.environ.get(secret_id.upper().replace("-", "_"))
+    if env_val:
+        return env_val
+    if not GCP_PROJECT_ID:
+        return ""
+    from google.cloud import secretmanager
+    client = secretmanager.SecretManagerServiceClient()
+    name = f"projects/{GCP_PROJECT_ID}/secrets/{secret_id}/versions/latest"
+    response = client.access_secret_version(name=name)
+    return response.payload.data.decode("UTF-8")
+
+
+DATABASE_URL = _get_secret("database-url")
 if DATABASE_URL:
-    import dj_database_url
     DATABASES = {
         'default': dj_database_url.parse(DATABASE_URL)
     }
 else:
-    # Fallback to explicit config
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -26,6 +42,8 @@ else:
             'PORT': os.environ.get('DB_PORT', '5432'),
         }
     }
+
+SECRET_KEY = _get_secret("django-secret-key") or SECRET_KEY
 
 # Security settings for production
 SECURE_SSL_REDIRECT = True
