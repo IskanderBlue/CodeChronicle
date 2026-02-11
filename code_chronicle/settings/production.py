@@ -19,14 +19,19 @@ def _get_secret(secret_id):
         return env_val
     if not GCP_PROJECT_ID:
         return ""
-    from google.cloud import secretmanager
-    client = secretmanager.SecretManagerServiceClient()
-    name = f"projects/{GCP_PROJECT_ID}/secrets/{secret_id}/versions/latest"
-    response = client.access_secret_version(name=name)
-    return response.payload.data.decode("UTF-8")
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{GCP_PROJECT_ID}/secrets/{secret_id}/versions/latest"
+        response = client.access_secret_version(name=name)
+        return response.payload.data.decode("UTF-8")
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error("Failed to fetch secret %s: %s", secret_id, exc)
+        return ""
 
 
-DATABASE_URL = _get_secret("database-url")
+DATABASE_URL = _get_secret("database_url")
 if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.parse(DATABASE_URL)
@@ -43,7 +48,13 @@ else:
         }
     }
 
-SECRET_KEY = _get_secret("django-secret-key") or SECRET_KEY
+SECRET_KEY = _get_secret("django_secret_key") or SECRET_KEY
+
+ALLOWED_HOSTS_STR = os.environ.get("ALLOWED_HOSTS", "")
+if ALLOWED_HOSTS_STR:
+    ALLOWED_HOSTS = [h.strip() for h in ALLOWED_HOSTS_STR.split(",")]
+
+CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS if h != "localhost"]
 
 # Security settings for production
 SECURE_SSL_REDIRECT = True
