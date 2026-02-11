@@ -43,6 +43,7 @@
 
 ## General
 - Implement: https://x.com/ryancarson/status/2016520542723924279
+- Harden static asset versioning/caching: use Django hashed static filenames (Manifest storage), ensure deploy-time `collectstatic`, and keep Cloudflare caching safe for `/static/*`.
 
 ## code dating — transition provisions to handle
 Several codes have conditional effective dates with grace periods for in-stream projects.
