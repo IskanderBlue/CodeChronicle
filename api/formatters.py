@@ -2,7 +2,6 @@
 Format search results for frontend display.
 """
 
-import os
 from typing import Any, Dict, List, Optional
 
 from config.code_metadata import get_code_display_name, get_pdf_filename, get_source_url
@@ -42,9 +41,7 @@ def format_search_results(
 
         pdf_url = None
         if pdf_dir and map_code and not source_url:
-            pdf_file = os.path.join(pdf_dir, pdf_filename) if pdf_filename else ""
-            if pdf_file and os.path.isfile(pdf_file):
-                pdf_url = f"/pdf/{code_edition}/{map_code}/"
+            pdf_url = f"/pdf/{code_edition}/{map_code}/"
 
         section_data = {
             "id": result.get("id"),
@@ -78,3 +75,4 @@ def get_amendments_for_section(section_id: str, code_edition: str) -> List[Dict[
     Real data would come from the historical metadata or a DB.
     """
     return []
+

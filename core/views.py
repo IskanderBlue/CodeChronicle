@@ -233,9 +233,9 @@ def user_settings(request):
 def serve_pdf(request, code_edition: str, map_code: str):
     """Serve a PDF from the authenticated user's configured directory."""
     # Validate formats to prevent path traversal
-    if not re.match(r"^[A-Z]{2,5}_\d{4}$", code_edition):
+    if not re.match(r"^[A-Z][A-Z0-9]{1,11}_\d{4}$", code_edition):
         raise Http404
-    if not re.match(r"^[A-Z]{2,5}[A-Za-z0-9]*(_[A-Za-z0-9]+)?$", map_code):
+    if not re.match(r"^[A-Z][A-Z0-9]{1,15}(?:_[A-Za-z0-9]+)*$", map_code):
         raise Http404
 
     pdf_dir = request.user.pdf_directory
@@ -255,3 +255,4 @@ def serve_pdf(request, code_edition: str, map_code: str):
         content_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
