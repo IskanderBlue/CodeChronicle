@@ -8,9 +8,31 @@
 
     const pdfCache = {};
 
+    async function fetchPdfDocument(url) {
+        const response = await fetch(url, { credentials: 'same-origin' });
+        if (!response.ok) {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                const payload = await response.json();
+                const details = payload.details || {};
+                const detailParts = Object.entries(details)
+                    .filter(([, value]) => value !== null && value !== '')
+                    .map(([key, value]) => `${key}: ${value}`);
+                const message = [payload.error || `HTTP ${response.status}`, ...detailParts].join(' | ');
+                throw new Error(message);
+            }
+
+            const text = (await response.text() || '').trim();
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+
+        const bytes = await response.arrayBuffer();
+        return pdfjsLib.getDocument({ data: bytes }).promise;
+    }
+
     function loadPdf(url) {
         if (!pdfCache[url]) {
-            pdfCache[url] = pdfjsLib.getDocument(url).promise;
+            pdfCache[url] = fetchPdfDocument(url);
         }
         return pdfCache[url];
     }
@@ -106,7 +128,24 @@
         } catch (err) {
             container.classList.add('flex', 'items-center', 'justify-center', 'text-center', 'text-xs', 'text-neutral-400', 'italic');
             container.classList.remove('cursor-pointer');
-            container.innerHTML = 'Could not load PDF page. Check your directory path and file names under&nbsp;<a href="/settings/" class="text-primary-600 dark:text-primary-400 underline font-medium" onclick="event.stopPropagation()">Settings</a>.';
+            const block = container.closest('[data-pdf-block]');
+            const fallback = block ? block.querySelector('[data-pdf-fallback]') : null;
+            const hasFallback = !!fallback;
+
+            if (hasFallback) {
+                container.innerHTML = '';
+                container.classList.remove('min-h-[100px]', 'flex', 'items-center', 'justify-center', 'text-center', 'text-xs', 'text-neutral-400', 'italic');
+                const warning = block.querySelector('[data-pdf-warning]');
+                if (warning) {
+                    warning.textContent = '';
+                    warning.classList.add('hidden');
+                }
+                fallback.classList.remove('hidden');
+            } else {
+                container.innerHTML = 'Could not load PDF page. Check your directory path and file names under&nbsp;<a href="/settings/" class="text-primary-600 dark:text-primary-400 underline font-medium" onclick="event.stopPropagation()">Settings</a>.';
+                const detail = err && err.message ? err.message : 'Unknown PDF loading error.';
+                showPdfWarning(container, detail);
+            }
             console.error('PDF render error:', err);
             return false;
         }

@@ -10,7 +10,7 @@ from coloured_logger import Logger
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, Http404
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -232,23 +232,38 @@ def user_settings(request):
 @login_required
 def serve_pdf(request, code_edition: str, map_code: str):
     """Serve a PDF from the authenticated user's configured directory."""
+    def error_response(status: int, reason: str, filename: str = "", pdf_path: str = ""):
+        return JsonResponse(
+            {
+                "error": reason,
+                "details": {
+                    "code_edition": code_edition,
+                    "map_code": map_code,
+                    "filename": filename or None,
+                    "pdf_directory": request.user.pdf_directory or None,
+                    "expected_path": pdf_path or None,
+                },
+            },
+            status=status,
+        )
+
     # Validate formats to prevent path traversal
     if not re.match(r"^[A-Z][A-Z0-9]{1,11}_\d{4}$", code_edition):
-        raise Http404
+        return error_response(400, "Invalid code_edition format.")
     if not re.match(r"^[A-Z][A-Z0-9]{1,15}(?:_[A-Za-z0-9]+)*$", map_code):
-        raise Http404
+        return error_response(400, "Invalid map_code format.")
 
     pdf_dir = request.user.pdf_directory
     if not pdf_dir:
-        raise Http404
+        return error_response(404, "No PDF directory configured for this user.")
 
     filename = get_pdf_filename(code_edition, map_code)
     if not filename:
-        raise Http404
+        return error_response(404, "No configured PDF filename for this code/map.")
 
     pdf_path = os.path.join(pdf_dir, filename)
     if not os.path.isfile(pdf_path):
-        raise Http404
+        return error_response(404, "PDF file not found at expected path.", filename=filename, pdf_path=pdf_path)
 
     return FileResponse(
         open(pdf_path, "rb"),

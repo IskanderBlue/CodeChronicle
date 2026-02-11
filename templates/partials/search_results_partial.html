@@ -66,6 +66,19 @@
                     @click="expanded = !expanded">
                     <p class="text-xs text-neutral-400 italic text-center py-8">Loading PDF page...</p>
                 </div>
+                {% if result.html_content %}
+                <div
+                    class="hidden p-4 text-neutral-700 dark:text-neutral-300 text-sm prose dark:prose-invert prose-primary max-w-none markdown-content"
+                    data-pdf-fallback>
+                    {{ result.html_content|safe }}
+                </div>
+                {% elif result.text %}
+                <div
+                    class="hidden p-4 text-neutral-700 dark:text-neutral-300 text-sm prose dark:prose-invert prose-primary max-w-none"
+                    data-pdf-fallback>
+                    {{ result.text|linebreaks }}
+                </div>
+                {% endif %}
                 <div x-show="!expanded"
                     class="absolute bottom-0 left-0 right-0 h-16 pdf-collapse-gradient pointer-events-none">
                 </div>
@@ -81,19 +94,6 @@
                     Expand section
                 </button>
             </div>
-            {% if result.html_content %}
-            <div
-                class="mt-4 hidden text-neutral-700 dark:text-neutral-300 text-sm prose dark:prose-invert prose-primary max-w-none markdown-content"
-                data-pdf-fallback>
-                {{ result.html_content|safe }}
-            </div>
-            {% elif result.text %}
-            <div
-                class="mt-4 hidden text-neutral-700 dark:text-neutral-300 text-sm prose dark:prose-invert prose-primary max-w-none"
-                data-pdf-fallback>
-                {{ result.text|linebreaks }}
-            </div>
-            {% endif %}
         </div>
         {% elif result.html_content %}
         <div class="mt-4" x-data="{ expanded: false }">
