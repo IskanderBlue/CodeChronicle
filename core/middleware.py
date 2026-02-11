@@ -3,6 +3,7 @@ Rate limiting middleware for search API.
 """
 from django.conf import settings
 from django.http import JsonResponse
+from django.shortcuts import render
 from django.utils import timezone
 
 
@@ -20,13 +21,29 @@ class RateLimitMiddleware:
         self.get_response = get_response
     
     def __call__(self, request):
-        # Only apply to search endpoints
-        if request.path.startswith('/api/search'):
+        # Only apply to write search endpoints.
+        if request.method == "POST" and self._is_limited_search_path(request.path):
             error_response = self.check_rate_limit(request)
             if error_response:
                 return error_response
         
         return self.get_response(request)
+
+    def _is_limited_search_path(self, path: str) -> bool:
+        """Return True for endpoints that execute a new search."""
+        return path.startswith("/api/search") or path.startswith("/search-results/")
+
+    def _build_rate_limit_response(self, request, payload: dict, status_code: int):
+        """Return HTMX-friendly HTML or JSON for API clients."""
+        is_htmx = request.headers.get("HX-Request") == "true"
+        if is_htmx:
+            return render(
+                request,
+                "partials/search_results_partial.html",
+                {"success": False, "error": payload["error"]},
+                status=status_code,
+            )
+        return JsonResponse(payload, status=status_code)
     
     def check_rate_limit(self, request):
         """Check if user has exceeded their daily limit."""
@@ -48,12 +65,13 @@ class RateLimitMiddleware:
             limit = settings.RATE_LIMIT_AUTHENTICATED
             
             if search_count >= limit:
-                return JsonResponse({
+                payload = {
                     'error': f'Daily limit reached ({limit} searches/day)',
                     'upgrade_url': '/pricing',
                     'searches_used': search_count,
                     'limit': limit,
-                }, status=429)
+                }
+                return self._build_rate_limit_response(request, payload, status_code=429)
         else:
             # Anonymous user - rate limit by IP
             ip = self.get_client_ip(request)
@@ -67,13 +85,14 @@ class RateLimitMiddleware:
             limit = settings.RATE_LIMIT_ANONYMOUS
             
             if search_count >= limit:
-                return JsonResponse({
+                payload = {
                     'error': f'Daily limit reached for anonymous users ({limit} search/day)',
                     'login_url': '/accounts/login/',
                     'signup_url': '/accounts/signup/',
                     'searches_used': search_count,
                     'limit': limit,
-                }, status=429)
+                }
+                return self._build_rate_limit_response(request, payload, status_code=429)
         
         return None
     
