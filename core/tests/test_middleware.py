@@ -22,15 +22,14 @@ class TestRateLimitMiddleware:
         self.get_response.assert_called_once()
 
     @patch('core.middleware.RateLimitMiddleware.check_rate_limit')
-    def test_middleware_calls_check_limit(self, mock_check):
-        """Middleware should call check_rate_limit for API search."""
+    def test_middleware_ignores_api_search_post(self, mock_check):
+        """API endpoint is not rate-limited in middleware."""
         request = MagicMock()
         request.method = "POST"
         request.path = "/api/search"
-        mock_check.return_value = None
         
         self.middleware(request)
-        mock_check.assert_called_once_with(request)
+        mock_check.assert_not_called()
         self.get_response.assert_called_once()
 
     @patch('core.middleware.RateLimitMiddleware.check_rate_limit')
@@ -61,7 +60,7 @@ class TestRateLimitMiddleware:
         """Middleware should return error response when limit is hit."""
         request = MagicMock()
         request.method = "POST"
-        request.path = "/api/search"
+        request.path = "/search-results/"
         mock_check.return_value = JsonResponse({"error": "limit"}, status=429)
         
         response = self.middleware(request)

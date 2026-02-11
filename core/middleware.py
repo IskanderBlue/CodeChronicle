@@ -30,8 +30,8 @@ class RateLimitMiddleware:
         return self.get_response(request)
 
     def _is_limited_search_path(self, path: str) -> bool:
-        """Return True for endpoints that execute a new search."""
-        return path.startswith("/api/search") or path.startswith("/search-results/")
+        """Return True for UI endpoints that execute a new search."""
+        return path.startswith("/search-results/")
 
     def _build_rate_limit_response(self, request, payload: dict, status_code: int):
         """Return HTMX-friendly HTML or JSON for API clients."""

@@ -79,6 +79,7 @@ def pricing(request):
             "features": [
                 "Free features",
                 "Unlimited searches",
+                "Direct API access",
                 "Full text extraction",
                 # "Advanced PDF maps",
                 # "Amendment alerts",

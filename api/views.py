@@ -3,13 +3,53 @@ Django Ninja API endpoints for CodeChronicle.
 """
 
 from ninja import NinjaAPI
-from ninja.security import django_auth
 
 api = NinjaAPI(
     title="CodeChronicle API",
     version="0.1.0",
     description="Historical Canadian Building Code Search API",
 )
+
+
+def _is_paid_user(user) -> bool:
+    """Return True when API access is allowed for this user."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "pro_courtesy", False):
+        return True
+    try:
+        return bool(getattr(user, "has_active_subscription", False))
+    except Exception:
+        return False
+
+
+def _require_paid_api_access(request):
+    """
+    Enforce API-only access for paid users.
+
+    Anonymous and free users should use the website UI endpoint instead.
+    """
+    user = request.user
+    if _is_paid_user(user):
+        return None
+
+    if not getattr(user, "is_authenticated", False):
+        return 401, {
+            "success": False,
+            "results": [],
+            "error": (
+                "Authentication required for direct API access. "
+                "Use the website UI or sign in to a paid account."
+            ),
+            "meta": {"upgrade_url": "/pricing", "ui_search_url": "/"},
+        }
+
+    return 403, {
+        "success": False,
+        "results": [],
+        "error": "Direct API access is a paid feature. Upgrade to Pro to use /api endpoints.",
+        "meta": {"upgrade_url": "/pricing", "ui_search_url": "/"},
+    }
 
 
 def _load_code_rows_from_db() -> list[dict[str, str | int]]:
@@ -37,6 +77,10 @@ def _load_code_rows_from_db() -> list[dict[str, str | int]]:
 @api.get("/codes")
 def list_codes(request):
     """List known code editions from DB-backed metadata."""
+    denied = _require_paid_api_access(request)
+    if denied:
+        return denied
+
     try:
         rows = _load_code_rows_from_db()
     except Exception as exc:
@@ -67,6 +111,10 @@ def search(request, query: str):
     """
     Search building codes with natural language query.
     """
+    denied = _require_paid_api_access(request)
+    if denied:
+        return denied
+
     from api.formatters import format_search_results
     from api.llm_parser import parse_user_query
     from api.search import execute_search
@@ -114,9 +162,13 @@ def search(request, query: str):
     }
 
 
-@api.get("/history", auth=django_auth)
+@api.get("/history")
 def get_search_history(request):
     """Return user's recent searches."""
+    denied = _require_paid_api_access(request)
+    if denied:
+        return denied
+
     from core.models import SearchHistory
 
     history = SearchHistory.objects.filter(user=request.user).order_by("-timestamp")[:20]
