@@ -3,14 +3,11 @@ Views for core app (frontend pages).
 """
 
 import os
-import re
 
 from allauth.account.forms import ChangePasswordForm
 from coloured_logger import Logger
 from django.conf import settings
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -18,7 +15,7 @@ from django.views.decorators.http import require_POST
 from api.formatters import format_search_results
 from api.llm_parser import parse_user_query
 from api.search import execute_search
-from config.code_metadata import get_pdf_expectations, get_pdf_filename
+from config.code_metadata import get_pdf_expectations
 from core.models import SearchHistory
 
 logger = Logger(__name__)
@@ -157,10 +154,7 @@ def search_results(request):
             )
 
         # Step 3: Format
-        pdf_dir = ""
-        if request.user.is_authenticated:
-            pdf_dir = request.user.pdf_directory
-        formatted = format_search_results(search_results_data["results"], pdf_dir=pdf_dir or None)
+        formatted = format_search_results(search_results_data["results"])
         logger.info("search frontend payload: %s", formatted)
         # Record search history
         try:
@@ -208,66 +202,14 @@ def search_results(request):
 
 @login_required
 def user_settings(request):
-    """User settings page (PDF directory configuration)."""
-    if request.method == "POST":
-        pdf_directory = request.POST.get("pdf_directory", "").strip()
-
-        request.user.pdf_directory = pdf_directory
-        request.user.save(update_fields=["pdf_directory"])
-        messages.success(request, "Settings saved.")
-        return redirect("core:user_settings")
-
+    """User settings page."""
     password_form = ChangePasswordForm(user=request.user)
     return render(
         request,
         "settings.html",
         {
-            "pdf_directory": request.user.pdf_directory,
             "pdf_expectations": get_pdf_expectations(),
             "password_form": password_form,
         },
-    )
-
-
-@login_required
-def serve_pdf(request, code_edition: str, map_code: str):
-    """Serve a PDF from the authenticated user's configured directory."""
-    def error_response(status: int, reason: str, filename: str = "", pdf_path: str = ""):
-        return JsonResponse(
-            {
-                "error": reason,
-                "details": {
-                    "code_edition": code_edition,
-                    "map_code": map_code,
-                    "filename": filename or None,
-                    "pdf_directory": request.user.pdf_directory or None,
-                    "expected_path": pdf_path or None,
-                },
-            },
-            status=status,
-        )
-
-    # Validate formats to prevent path traversal
-    if not re.match(r"^[A-Z][A-Z0-9]{1,11}_\d{4}$", code_edition):
-        return error_response(400, "Invalid code_edition format.")
-    if not re.match(r"^[A-Z][A-Z0-9]{1,15}(?:_[A-Za-z0-9]+)*$", map_code):
-        return error_response(400, "Invalid map_code format.")
-
-    pdf_dir = request.user.pdf_directory
-    if not pdf_dir:
-        return error_response(404, "No PDF directory configured for this user.")
-
-    filename = get_pdf_filename(code_edition, map_code)
-    if not filename:
-        return error_response(404, "No configured PDF filename for this code/map.")
-
-    pdf_path = os.path.join(pdf_dir, filename)
-    if not os.path.isfile(pdf_path):
-        return error_response(404, "PDF file not found at expected path.", filename=filename, pdf_path=pdf_path)
-
-    return FileResponse(
-        open(pdf_path, "rb"),
-        content_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 

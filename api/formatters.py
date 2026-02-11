@@ -2,7 +2,7 @@
 Format search results for frontend display.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from config.code_metadata import get_code_display_name, get_pdf_filename, get_source_url
 
@@ -18,7 +18,6 @@ def _build_code_display_name(code_edition: str) -> str:
 
 def format_search_results(
     results: List[Dict[str, Any]],
-    pdf_dir: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Transform raw search results into a format suitable for the frontend.
@@ -34,14 +33,10 @@ def format_search_results(
         pdf_filename = ""
         map_code = result.get("map_code", "")
         if map_code:
-            pdf_filename = get_pdf_filename(code_edition, map_code) or f"{map_code}.pdf"
+            pdf_filename = get_pdf_filename(code_edition, map_code) or ""
 
         html_content = result.get("html_content")
         source_url = get_source_url(code_edition)
-
-        pdf_url = None
-        if pdf_dir and map_code and not source_url:
-            pdf_url = f"/pdf/{code_edition}/{map_code}/"
 
         section_data = {
             "id": result.get("id"),
@@ -52,7 +47,6 @@ def format_search_results(
             "page_end": page_end,
             "bbox": result.get("bbox"),
             "score": result.get("score", 0),
-            "pdf_url": pdf_url,
             "pdf_filename": pdf_filename,
             "html_content": html_content,
             "source_url": source_url,

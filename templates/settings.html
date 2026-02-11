@@ -1,6 +1,107 @@
 {% extends 'base.html' %}
 
 {% block title %}CodeChronicle - Settings{% endblock %}
+{% block extra_head %}
+<script>
+    (function () {
+        const PDF_DB_NAME = 'codechronicle_pdf_cache';
+        const PDF_DB_VERSION = 1;
+        const PDF_DB_STORE = 'pdf_mappings';
+
+        function humanBytes(value) {
+            if (!Number.isFinite(value) || value <= 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let size = value;
+            let unit = 0;
+            while (size >= 1024 && unit < units.length - 1) {
+                size /= 1024;
+                unit += 1;
+            }
+            const decimals = unit === 0 ? 0 : 1;
+            return `${size.toFixed(decimals)} ${units[unit]}`;
+        }
+
+        function getPdfDb() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(PDF_DB_NAME, PDF_DB_VERSION);
+                request.onupgradeneeded = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains(PDF_DB_STORE)) {
+                        db.createObjectStore(PDF_DB_STORE, { keyPath: 'expected_key' });
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error || new Error('Could not open IndexedDB.'));
+            });
+        }
+
+        async function mappingCount() {
+            const db = await getPdfDb();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(PDF_DB_STORE, 'readonly');
+                const request = tx.objectStore(PDF_DB_STORE).count();
+                request.onsuccess = () => resolve(Number(request.result) || 0);
+                request.onerror = () => reject(request.error || new Error('Could not read PDF mapping count.'));
+            });
+        }
+
+        async function clearMappings() {
+            const db = await getPdfDb();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(PDF_DB_STORE, 'readwrite');
+                tx.oncomplete = () => resolve(undefined);
+                tx.onerror = () => reject(tx.error || new Error('Could not clear PDF mappings.'));
+                tx.objectStore(PDF_DB_STORE).clear();
+            });
+        }
+
+        async function refreshStorageUi(controls) {
+            const usageLabel = controls.querySelector('[data-pdf-storage-usage]');
+            const engineLabel = controls.querySelector('[data-pdf-storage-engine]');
+            const clearButton = controls.querySelector('[data-pdf-clear-cache]');
+
+            let count = 0;
+            try {
+                count = await mappingCount();
+            } catch (err) {
+                console.error(err);
+            }
+
+            let usageText = `${count} mapped file${count === 1 ? '' : 's'}`;
+            if (navigator.storage && navigator.storage.estimate) {
+                try {
+                    const estimate = await navigator.storage.estimate();
+                    usageText += ` | Storage: ${humanBytes(estimate.usage || 0)} / ${humanBytes(estimate.quota || 0)}`;
+                } catch (err) {
+                    console.error('Storage estimate failed:', err);
+                }
+            }
+
+            if (usageLabel) usageLabel.textContent = usageText;
+            if (engineLabel) {
+                const opfsAvailable = !!(navigator.storage && navigator.storage.getDirectory);
+                engineLabel.textContent = opfsAvailable ? 'IndexedDB cache (OPFS available)' : 'IndexedDB cache';
+            }
+            if (clearButton) clearButton.disabled = count === 0;
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const controls = document.querySelector('[data-pdf-storage-controls]');
+            if (!controls || !window.indexedDB) return;
+
+            const clearButton = controls.querySelector('[data-pdf-clear-cache]');
+            if (clearButton) {
+                clearButton.addEventListener('click', async () => {
+                    await clearMappings();
+                    await refreshStorageUi(controls);
+                });
+            }
+
+            await refreshStorageUi(controls);
+        });
+    })();
+</script>
+{% endblock %}
 
 {% block content %}
 <div class="max-w-2xl mx-auto px-4 py-8"
@@ -32,36 +133,24 @@
     <div x-show="tab === 'general'" x-cloak>
         <div class="bg-neutral-100 dark:bg-neutral-800 shadow sm:rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700">
             <div class="px-4 py-5 sm:p-6">
-                <h2 class="text-lg font-medium text-neutral-900 dark:text-white mb-1">PDF Directory</h2>
+                <h2 class="text-lg font-medium text-neutral-900 dark:text-white mb-1">Local PDF Cache</h2>
                 <p class="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
-                    Set the local directory containing your building code PDFs (e.g. <code
-                        class="text-xs bg-neutral-200 dark:bg-neutral-700 px-1 py-0.5 rounded">NBC2025p1.pdf</code>).
-                    PDFs will be rendered inline in search results.
+                    PDF mappings are stored in your browser only. Clear cached files here if you need to reset mappings.
                 </p>
-
-                <form method="post" class="space-y-4">
-                    {% csrf_token %}
-                    <div>
-                        <label for="pdf_directory"
-                            class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Directory
-                            Path</label>
-                        <input type="text" name="pdf_directory" id="pdf_directory" value="{{ pdf_directory }}"
-                            placeholder="C:\Users\you\Documents\building-codes"
-                            class="mt-1 block w-full rounded-md border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm p-3 border dark:text-neutral-100 dark:placeholder-neutral-500">
-                        <p class="mt-1 text-xs text-neutral-400 dark:text-neutral-500 italic">
-                            Leave blank to disable inline PDF display. Files should be named like
-                            <code class="bg-neutral-200 dark:bg-neutral-700 px-1 py-0.5 rounded">NBC2025p1.pdf</code>,
-                            <code class="bg-neutral-200 dark:bg-neutral-700 px-1 py-0.5 rounded">301880.pdf</code>,
-                            <code class="bg-neutral-200 dark:bg-neutral-700 px-1 py-0.5 rounded">301881.pdf</code>.
-                        </p>
-                    </div>
-                    <div class="flex justify-left">
-                        <button type="submit"
-                            class="min-w-40 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 shadow-sm">
-                            Save Settings
+                <div class="rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 px-4 py-3"
+                    data-pdf-storage-controls>
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                        <span data-pdf-storage-engine>IndexedDB cache</span>
+                        <span class="mx-1">|</span>
+                        <span data-pdf-storage-usage>0 mapped files</span>
+                    </p>
+                    <div class="mt-3">
+                        <button type="button" data-pdf-clear-cache
+                            class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            Clear cached PDFs
                         </button>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
         <div class="mt-6 bg-neutral-100 dark:bg-neutral-800 shadow sm:rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700">
@@ -71,7 +160,7 @@
                     Expected PDF Filenames
                 </h3>
                 <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                    Ensure the following filenames exist in your configured directory.
+                    Use these expected filenames when mapping files from search results.
                 </p>
                 <div class="mt-3 overflow-x-auto">
                     <table class="min-w-full text-sm text-left border border-neutral-200 dark:border-neutral-700">

@@ -47,12 +47,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     pro_courtesy = models.BooleanField(default=False, help_text="Grant Pro status without Stripe subscription")
     date_joined = models.DateTimeField(default=timezone.now)
 
-    # User-specific PDF directory (BYOD model for copyright compliance)
-    pdf_directory = models.CharField(
-        max_length=500, blank=True, default='',
-        help_text="Local directory path containing building code PDFs"
-    )
-
     # Stripe customer ID (managed by dj-stripe, but useful for quick lookup)
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
 

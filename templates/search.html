@@ -6,43 +6,249 @@
     import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.min.mjs';
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.worker.min.mjs';
 
-    const pdfCache = {};
+    const PDF_DB_NAME = 'codechronicle_pdf_cache';
+    const PDF_DB_VERSION = 1;
+    const PDF_DB_STORE = 'pdf_mappings';
+    const mappingRegistry = new Map();
+    const pdfDocumentCache = new Map();
+    let dbPromise = null;
 
-    async function fetchPdfDocument(url) {
-        const response = await fetch(url, { credentials: 'same-origin' });
-        if (!response.ok) {
-            const contentType = response.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-                const payload = await response.json();
-                const details = payload.details || {};
-                const detailParts = Object.entries(details)
-                    .filter(([, value]) => value !== null && value !== '')
-                    .map(([key, value]) => `${key}: ${value}`);
-                const message = [payload.error || `HTTP ${response.status}`, ...detailParts].join(' | ');
-                throw new Error(message);
+    function normalizeFilename(filename) {
+        return (filename || '').trim().toLowerCase();
+    }
+
+    function expectedKeyFor(filename) {
+        return normalizeFilename(filename);
+    }
+
+    function humanBytes(value) {
+        if (!Number.isFinite(value) || value <= 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let size = value;
+        let unit = 0;
+        while (size >= 1024 && unit < units.length - 1) {
+            size /= 1024;
+            unit += 1;
+        }
+        const decimals = unit === 0 ? 0 : 1;
+        return `${size.toFixed(decimals)} ${units[unit]}`;
+    }
+
+    function getPdfDb() {
+        if (dbPromise) return dbPromise;
+        dbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open(PDF_DB_NAME, PDF_DB_VERSION);
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                if (!db.objectStoreNames.contains(PDF_DB_STORE)) {
+                    db.createObjectStore(PDF_DB_STORE, { keyPath: 'expected_key' });
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error || new Error('Could not open IndexedDB.'));
+        });
+        return dbPromise;
+    }
+
+    async function idbReadAllMappings() {
+        const db = await getPdfDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(PDF_DB_STORE, 'readonly');
+            const store = tx.objectStore(PDF_DB_STORE);
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => reject(request.error || new Error('Could not read PDF mappings.'));
+        });
+    }
+
+    async function idbPutMapping(record) {
+        const db = await getPdfDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(PDF_DB_STORE, 'readwrite');
+            tx.oncomplete = () => resolve(undefined);
+            tx.onerror = () => reject(tx.error || new Error('Could not store PDF mapping.'));
+            tx.objectStore(PDF_DB_STORE).put(record);
+        });
+    }
+
+    async function idbDeleteMapping(expectedKey) {
+        const db = await getPdfDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(PDF_DB_STORE, 'readwrite');
+            tx.oncomplete = () => resolve(undefined);
+            tx.onerror = () => reject(tx.error || new Error('Could not delete PDF mapping.'));
+            tx.objectStore(PDF_DB_STORE).delete(expectedKey);
+        });
+    }
+
+    async function idbClearMappings() {
+        const db = await getPdfDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(PDF_DB_STORE, 'readwrite');
+            tx.oncomplete = () => resolve(undefined);
+            tx.onerror = () => reject(tx.error || new Error('Could not clear PDF mappings.'));
+            tx.objectStore(PDF_DB_STORE).clear();
+        });
+    }
+
+    function getMapping(expectedFilename) {
+        return mappingRegistry.get(expectedKeyFor(expectedFilename)) || null;
+    }
+
+    function clearPdfDocumentCache(expectedKey) {
+        for (const key of [...pdfDocumentCache.keys()]) {
+            if (key.startsWith(`${expectedKey}:`)) {
+                pdfDocumentCache.delete(key);
             }
-
-            const text = (await response.text() || '').trim();
-            throw new Error(text || `HTTP ${response.status}`);
         }
-
-        const bytes = await response.arrayBuffer();
-        return pdfjsLib.getDocument({ data: bytes }).promise;
     }
 
-    function loadPdf(url) {
-        if (!pdfCache[url]) {
-            pdfCache[url] = fetchPdfDocument(url);
-        }
-        return pdfCache[url];
+    async function savePdfMapping(expectedFilename, file) {
+        const expected_key = expectedKeyFor(expectedFilename);
+        if (!expected_key || !file) return;
+        const record = {
+            expected_key,
+            expected_filename: expectedFilename,
+            selected_filename: file.name || expectedFilename,
+            blob: file,
+            updated_at: Date.now(),
+            size: Number(file.size) || 0,
+        };
+        await idbPutMapping(record);
+        mappingRegistry.set(expected_key, record);
+        clearPdfDocumentCache(expected_key);
+        document.dispatchEvent(new CustomEvent('pdf-mapped', {
+            detail: { expectedFilename, expectedKey: expected_key },
+        }));
     }
 
-    async function renderPdfPage(container, url, pageNum, bbox) {
+    async function clearPdfMapping(expectedFilename) {
+        const expected_key = expectedKeyFor(expectedFilename);
+        if (!expected_key) return;
+        await idbDeleteMapping(expected_key);
+        mappingRegistry.delete(expected_key);
+        clearPdfDocumentCache(expected_key);
+        document.dispatchEvent(new CustomEvent('pdf-mapped', {
+            detail: { expectedFilename, expectedKey: expected_key },
+        }));
+    }
+
+    async function restorePdfMappings() {
         try {
-            const pdf = await loadPdf(url);
+            const records = await idbReadAllMappings();
+            records.forEach(record => {
+                if (record && record.expected_key && record.blob instanceof Blob) {
+                    mappingRegistry.set(record.expected_key, record);
+                }
+            });
+        } catch (err) {
+            console.error('Could not restore local PDF mappings:', err);
+        }
+    }
+
+    function parseBbox(str) {
+        if (!str) return null;
+        const parts = str.split(',').map(Number);
+        if (parts.length !== 4 || parts.some(isNaN)) return null;
+        return { l: parts[0], t: parts[1], r: parts[2], b: parts[3] };
+    }
+
+    function parsePdfPage(value) {
+        const page = parseInt(value, 10);
+        return Number.isFinite(page) && page > 0 ? page : 1;
+    }
+
+    function showPdfWarning(container, message) {
+        const block = container.closest('[data-pdf-block]');
+        if (!block) return;
+        const warning = block.querySelector('[data-pdf-warning]');
+        if (!warning) return;
+        warning.textContent = message || '';
+        warning.classList.toggle('hidden', !message);
+    }
+
+    function setFallbackVisibility(block, visible) {
+        const fallback = block.querySelector('[data-pdf-fallback]');
+        if (fallback) {
+            fallback.classList.toggle('hidden', !visible);
+        }
+    }
+
+    function setMappedLabel(block) {
+        const container = block.querySelector('[data-pdf-container]');
+        const expectedFilename = container?.getAttribute('data-pdf-expected-filename') || '';
+        const mapping = getMapping(expectedFilename);
+        const label = block.querySelector('[data-pdf-mapped-label]');
+        if (label) {
+            label.textContent = mapping
+                ? `Mapped to: ${mapping.selected_filename}`
+                : 'Not mapped yet.';
+        }
+    }
+
+    function hideMismatchPrompt(block) {
+        const mismatch = block.querySelector('[data-pdf-mismatch]');
+        if (mismatch) mismatch.classList.add('hidden');
+        block._pendingPdfFile = null;
+    }
+
+    function showMismatchPrompt(block, expectedFilename, selectedFilename) {
+        const mismatch = block.querySelector('[data-pdf-mismatch]');
+        if (!mismatch) return;
+        const text = mismatch.querySelector('[data-pdf-mismatch-text]');
+        if (text) {
+            text.textContent = `Selected file "${selectedFilename}" does not match expected "${expectedFilename}".`;
+        }
+        mismatch.classList.remove('hidden');
+    }
+
+    function renderBlockControls(block, state) {
+        const mount = block.querySelector('[data-pdf-controls-mount]');
+        if (!mount) return;
+        const pickerTemplate = block.querySelector('[data-pdf-picker-template]');
+        const mappedTemplate = block.querySelector('[data-pdf-mapped-template]');
+        const wantsPicker = state === 'picker';
+        const source = wantsPicker ? pickerTemplate : mappedTemplate;
+        if (!source) return;
+        mount.innerHTML = source.innerHTML;
+        if (!wantsPicker) {
+            hideMismatchPrompt(block);
+        }
+        setMappedLabel(block);
+    }
+
+    function showUnmappedState(container) {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+    }
+
+    async function loadPdfForExpectedFilename(expectedFilename) {
+        const mapping = getMapping(expectedFilename);
+        if (!mapping || !(mapping.blob instanceof Blob)) return null;
+        const cacheKey = `${mapping.expected_key}:${mapping.updated_at}`;
+        if (!pdfDocumentCache.has(cacheKey)) {
+            const bytes = await mapping.blob.arrayBuffer();
+            pdfDocumentCache.set(cacheKey, pdfjsLib.getDocument({ data: bytes }).promise);
+        }
+        return pdfDocumentCache.get(cacheKey);
+    }
+
+    async function renderPdfPage(container, expectedFilename, pageNum, bbox) {
+        try {
+            const pdf = await loadPdfForExpectedFilename(expectedFilename);
+            if (!pdf) {
+                showUnmappedState(container);
+                const block = container.closest('[data-pdf-block]');
+                if (block) {
+                    setFallbackVisibility(block, true);
+                    showPdfWarning(container, '');
+                    renderBlockControls(block, 'picker');
+                }
+                return false;
+            }
             const page = await pdf.getPage(pageNum);
 
-            const containerWidth = container.clientWidth || 600;
+            const containerWidth = container.clientWidth || container.parentElement?.clientWidth || 600;
             const unscaledViewport = page.getViewport({ scale: 1 });
             const pageWidth = unscaledViewport.width;
             const pageHeight = unscaledViewport.height;
@@ -124,71 +330,232 @@
 
             container.innerHTML = '';
             container.appendChild(wrapper);
+            container.classList.remove('hidden');
+            const block = container.closest('[data-pdf-block]');
+            if (block) {
+                setFallbackVisibility(block, false);
+                showPdfWarning(container, '');
+                renderBlockControls(block, 'mapped');
+            }
             return true;
         } catch (err) {
-            container.classList.add('flex', 'items-center', 'justify-center', 'text-center', 'text-xs', 'text-neutral-400', 'italic');
-            container.classList.remove('cursor-pointer');
             const block = container.closest('[data-pdf-block]');
-            const fallback = block ? block.querySelector('[data-pdf-fallback]') : null;
-            const hasFallback = !!fallback;
-
-            if (hasFallback) {
-                container.innerHTML = '';
-                container.classList.remove('min-h-[100px]', 'flex', 'items-center', 'justify-center', 'text-center', 'text-xs', 'text-neutral-400', 'italic');
-                const warning = block.querySelector('[data-pdf-warning]');
-                if (warning) {
-                    warning.textContent = '';
-                    warning.classList.add('hidden');
-                }
-                fallback.classList.remove('hidden');
-            } else {
-                container.innerHTML = 'Could not load PDF page. Check your directory path and file names under&nbsp;<a href="/settings/" class="text-primary-600 dark:text-primary-400 underline font-medium" onclick="event.stopPropagation()">Settings</a>.';
-                const detail = err && err.message ? err.message : 'Unknown PDF loading error.';
-                showPdfWarning(container, detail);
+            showUnmappedState(container);
+            if (block) {
+                setFallbackVisibility(block, true);
+                renderBlockControls(block, 'picker');
             }
+            const detail = err && err.message ? err.message : 'Unknown PDF loading error.';
+            showPdfWarning(container, detail);
             console.error('PDF render error:', err);
             return false;
         }
     }
 
-    function parseBbox(str) {
-        if (!str) return null;
-        const parts = str.split(',').map(Number);
-        if (parts.length !== 4 || parts.some(isNaN)) return null;
-        return { l: parts[0], t: parts[1], r: parts[2], b: parts[3] };
+    function isVisibleElement(element) {
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
     }
 
-    function showPdfWarning(container, message) {
-        const block = container.closest('[data-pdf-block]');
-        if (!block) return;
-        const warning = block.querySelector('[data-pdf-warning]');
-        if (warning) {
-            warning.textContent = message;
-            warning.classList.remove('hidden');
-        }
-        const fallback = block.querySelector('[data-pdf-fallback]');
-        if (fallback) {
-            fallback.classList.remove('hidden');
-        }
+    async function renderContainer(container) {
+        if (!container) return;
+        const expectedFilename = container.getAttribute('data-pdf-expected-filename') || '';
+        const page = parsePdfPage(container.getAttribute('data-pdf-page'));
+        const bbox = parseBbox(container.getAttribute('data-pdf-bbox'));
+        await renderPdfPage(container, expectedFilename, page, bbox);
     }
 
-    function initPdfContainers(root) {
-        const containers = (root || document).querySelectorAll('[data-pdf-url]:not([data-pdf-loaded])');
-        containers.forEach(el => {
-            el.setAttribute('data-pdf-loaded', 'true');
-            const url = el.getAttribute('data-pdf-url');
-            const page = parseInt(el.getAttribute('data-pdf-page'), 10) || 1;
-            const bbox = parseBbox(el.getAttribute('data-pdf-bbox'));
-            renderPdfPage(el, url, page, bbox);
+    async function handleFileCandidate(block, file, forceOverride = false) {
+        if (!block || !file) return;
+        const container = block.querySelector('[data-pdf-container]');
+        if (!container) return;
+
+        const expectedFilename = container.getAttribute('data-pdf-expected-filename') || '';
+        const expectedNormalized = normalizeFilename(expectedFilename);
+        const selectedNormalized = normalizeFilename(file.name);
+        const isPdfFile = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+        if (!isPdfFile) {
+            showPdfWarning(container, 'Selected file is not a PDF.');
+            return;
+        }
+
+        if (!forceOverride && expectedNormalized && selectedNormalized !== expectedNormalized) {
+            block._pendingPdfFile = file;
+            showMismatchPrompt(block, expectedFilename, file.name);
+            return;
+        }
+
+        hideMismatchPrompt(block);
+        await savePdfMapping(expectedFilename, file);
+    }
+
+    function bindBlockControls(block) {
+        if (block.dataset.pdfBound === 'true') return;
+        block.dataset.pdfBound = 'true';
+
+        const container = block.querySelector('[data-pdf-container]');
+        if (!container) return;
+        const expectedFilename = container.getAttribute('data-pdf-expected-filename') || '';
+
+        block.addEventListener('change', async (event) => {
+            const source = event.target instanceof Element ? event.target : null;
+            if (!source) return;
+            const fileInput = source.closest('[data-pdf-file-input]');
+            if (!fileInput || !block.contains(fileInput)) return;
+            const file = fileInput.files && fileInput.files[0];
+            await handleFileCandidate(block, file, false);
+            fileInput.value = '';
+        });
+
+        block.addEventListener('click', async (event) => {
+            const source = event.target instanceof Element ? event.target : null;
+            if (!source) return;
+            const button = source.closest('button');
+            if (!button || !block.contains(button)) return;
+
+            if (button.matches('[data-pdf-clear-mapping]')) {
+                await clearPdfMapping(expectedFilename);
+                return;
+            }
+            if (button.matches('[data-pdf-override-mapping]')) {
+                if (block._pendingPdfFile) {
+                    await handleFileCandidate(block, block._pendingPdfFile, true);
+                }
+                return;
+            }
+            if (button.matches('[data-pdf-cancel-mapping]')) {
+                hideMismatchPrompt(block);
+                return;
+            }
+            if (button.matches('[data-pdf-show-picker]')) {
+                renderBlockControls(block, 'picker');
+            }
+        });
+
+        block.addEventListener('dragover', (event) => {
+            const source = event.target instanceof Element ? event.target : null;
+            if (!source) return;
+            const dropzone = source.closest('[data-pdf-dropzone]');
+            if (!dropzone || !block.contains(dropzone)) return;
+            event.preventDefault();
+            dropzone.classList.add('pdf-dropzone-active');
+        });
+
+        block.addEventListener('dragleave', (event) => {
+            const source = event.target instanceof Element ? event.target : null;
+            if (!source) return;
+            const dropzone = source.closest('[data-pdf-dropzone]');
+            if (!dropzone || !block.contains(dropzone)) return;
+            dropzone.classList.remove('pdf-dropzone-active');
+        });
+
+        block.addEventListener('drop', async (event) => {
+            const source = event.target instanceof Element ? event.target : null;
+            if (!source) return;
+            const dropzone = source.closest('[data-pdf-dropzone]');
+            if (!dropzone || !block.contains(dropzone)) return;
+            event.preventDefault();
+            dropzone.classList.remove('pdf-dropzone-active');
+            const file = event.dataTransfer?.files?.[0];
+            await handleFileCandidate(block, file, false);
+        });
+
+        renderBlockControls(block, getMapping(expectedFilename) ? 'mapped' : 'picker');
+    }
+
+    function refreshMappedLabels(expectedKey = null) {
+        const blocks = document.querySelectorAll('[data-pdf-block]');
+        blocks.forEach(block => {
+            const container = block.querySelector('[data-pdf-container]');
+            const key = expectedKeyFor(container?.getAttribute('data-pdf-expected-filename'));
+            if (!expectedKey || expectedKey === key) {
+                setMappedLabel(block);
+            }
         });
     }
 
-    // Init after HTMX injects results
-    document.addEventListener('htmx:afterSettle', (e) => {
-        initPdfContainers(e.detail.elt);
+    async function refreshMatchingVisibleContainers(expectedKey = null) {
+        const containers = document.querySelectorAll('[data-pdf-container]');
+        for (const container of containers) {
+            const key = expectedKeyFor(container.getAttribute('data-pdf-expected-filename'));
+            if (expectedKey && key !== expectedKey) continue;
+            const block = container.closest('[data-pdf-block]');
+            if (!isVisibleElement(block || container)) continue;
+            await renderContainer(container);
+        }
+    }
+
+    async function updateStorageUi() {
+        const controls = document.querySelector('[data-pdf-storage-controls]');
+        if (!controls) return;
+        controls.classList.remove('hidden');
+
+        const entryCount = mappingRegistry.size;
+        const usageLabel = controls.querySelector('[data-pdf-storage-usage]');
+        const engineLabel = controls.querySelector('[data-pdf-storage-engine]');
+        const clearButton = controls.querySelector('[data-pdf-clear-cache]');
+
+        let estimateText = `${entryCount} mapped file${entryCount === 1 ? '' : 's'}`;
+        if (navigator.storage?.estimate) {
+            try {
+                const estimate = await navigator.storage.estimate();
+                const used = humanBytes(estimate?.usage || 0);
+                const quota = humanBytes(estimate?.quota || 0);
+                estimateText += ` | Storage: ${used} / ${quota}`;
+            } catch (err) {
+                console.error('Storage estimate failed:', err);
+            }
+        }
+
+        if (usageLabel) usageLabel.textContent = estimateText;
+        if (engineLabel) {
+            const opfsAvailable = !!(navigator.storage && navigator.storage.getDirectory);
+            engineLabel.textContent = opfsAvailable ? 'IndexedDB cache (OPFS available)' : 'IndexedDB cache';
+        }
+        if (clearButton) clearButton.disabled = entryCount === 0;
+    }
+
+    async function initPdfContainers(root) {
+        const blocks = (root || document).querySelectorAll('[data-pdf-block]');
+        for (const block of blocks) {
+            bindBlockControls(block);
+        }
+        await refreshMatchingVisibleContainers();
+        await updateStorageUi();
+    }
+
+    async function clearAllPdfMappings() {
+        await idbClearMappings();
+        mappingRegistry.clear();
+        pdfDocumentCache.clear();
+        document.dispatchEvent(new CustomEvent('pdf-mapped', {
+            detail: { expectedFilename: null, expectedKey: null },
+        }));
+    }
+
+    document.addEventListener('pdf-mapped', async (event) => {
+        const expectedKey = event.detail?.expectedKey || null;
+        refreshMappedLabels(expectedKey);
+        await refreshMatchingVisibleContainers(expectedKey);
+        await updateStorageUi();
     });
-    document.addEventListener('DOMContentLoaded', () => {
-        initPdfContainers();
+
+    // Init after HTMX injects results
+    document.addEventListener('htmx:afterSettle', async (e) => {
+        await initPdfContainers(e.detail.elt);
+    });
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await restorePdfMappings();
+        const clearButton = document.querySelector('[data-pdf-clear-cache]');
+        if (clearButton) {
+            clearButton.addEventListener('click', async () => {
+                await clearAllPdfMappings();
+            });
+        }
+        await initPdfContainers();
     });
 </script>
 <style>
@@ -225,6 +592,11 @@
 
     .dark .pdf-collapse-gradient {
         --fade-color: rgb(38 38 38);
+    }
+
+    .pdf-dropzone-active {
+        border-color: rgb(14 165 233);
+        background: rgba(14, 165, 233, 0.08);
     }
 </style>
 {% endblock %}
