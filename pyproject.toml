@@ -48,6 +48,7 @@ dependencies = [
     "markdown>=3.6",
     
     # Utilities
+    "coloured-logger>=1.0.1",
     "python-dotenv>=1.0",
     "dj-database-url>=2.1.0",
     "gunicorn>=21.0",
