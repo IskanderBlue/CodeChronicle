@@ -1,0 +1,43 @@
+# Build the CodeChronicle Docker image and push it to GitHub Container Registry (GHCR).
+#
+# This does NOT run the app — it only builds the image from the Dockerfile
+# and publishes it to ghcr.io so the production VM can pull it.
+#
+# On the VM, docker-compose.prod.yml pulls this image and runs it alongside nginx.
+
+name: Build and publish Docker image to GHCR
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    # The workflow needs to read the repo (checkout) and write to GHCR (push image).
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1. Check out the repo so Docker can access the Dockerfile and source code.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # 2. Log in to GHCR using the automatic GITHUB_TOKEN (no manual secrets needed).
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3. Build the image from the Dockerfile in the repo root and push to GHCR.
+      #    The VM pulls this image via: docker compose pull
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .                # Uses ./Dockerfile by default
+          push: true
+          tags: ghcr.io/iskanderblue/codechroniclenet:latest

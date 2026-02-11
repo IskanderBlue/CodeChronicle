@@ -68,8 +68,9 @@ Thumbs.db
 *.key
 secrets/
 
-# claude
+# ai
 .claude/
+.agents/
 
 # artifact
 nul
