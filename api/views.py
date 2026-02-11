@@ -12,6 +12,50 @@ api = NinjaAPI(
 )
 
 
+def _load_code_rows_from_db() -> list[dict[str, str | int]]:
+    """Primary source for code listings."""
+    from core.models import CodeEdition
+
+    editions = CodeEdition.objects.select_related("system").all()
+    rows: list[dict[str, str | int]] = []
+    for edition in editions:
+        display = edition.system.display_name or edition.system.code
+        rows.append(
+            {
+                "id": edition.code_name,
+                "code": edition.system.code,
+                "edition_id": edition.edition_id,
+                "year": edition.year,
+                "name": f"{display} {edition.year}".strip(),
+            }
+        )
+
+    rows.sort(key=lambda row: str(row["name"]))
+    return rows
+
+
+@api.get("/codes")
+def list_codes(request):
+    """List known code editions from DB-backed metadata."""
+    try:
+        rows = _load_code_rows_from_db()
+    except Exception as exc:
+        return 503, {
+            "success": False,
+            "results": [],
+            "error": f"Code metadata is unavailable from the database: {exc}",
+        }
+
+    if not rows:
+        return 503, {
+            "success": False,
+            "results": [],
+            "error": "Code metadata is unavailable from the database.",
+        }
+
+    return {"success": True, "results": rows, "error": None}
+
+
 @api.get("/health")
 def health_check(request):
     """Health check endpoint."""
@@ -87,4 +131,3 @@ def get_search_history(request):
     ]
 
     return {"success": True, "results": results, "error": None}
-

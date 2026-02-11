@@ -1,6 +1,10 @@
+from datetime import date
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
+
+from core.models import CodeEdition, CodeSystem
 
 User = get_user_model()
 
@@ -11,6 +15,14 @@ class TestApiEndpoints:
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpassword",
+        )
+        nbc = CodeSystem.objects.create(code="NBC", display_name="National Building Code", is_national=True)
+        CodeEdition.objects.create(
+            system=nbc,
+            edition_id="2025",
+            year=2025,
+            map_codes=["NBC"],
+            effective_date=date(2025, 1, 1),
         )
 
     def test_list_codes(self):
