@@ -240,12 +240,19 @@
 
     <footer class="bg-neutral-100 dark:bg-neutral-800 border-t border-neutral-200 dark:border-neutral-700 mt-auto">
         <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <p class="text-center text-neutral-500 dark:text-neutral-400 text-sm">
-                &copy; {{ now|date:"Y" }} CodeChronicle. All rights reserved.
-                <br>
-                <span class="text-xs">Disclaimer: This tool provides references only. Verify with official documents
-                    before use.</span>
-            </p>
+            <div class="flex flex-col items-center space-y-2">
+                <div class="flex items-center space-x-4 text-sm text-neutral-500 dark:text-neutral-400">
+                    <a href="{% url 'core:terms_of_service' %}" class="hover:text-neutral-700 dark:hover:text-neutral-200 hover:underline">Terms of Service</a>
+                    <span>&middot;</span>
+                    <a href="{% url 'core:privacy_policy' %}" class="hover:text-neutral-700 dark:hover:text-neutral-200 hover:underline">Privacy Policy</a>
+                </div>
+                <p class="text-neutral-500 dark:text-neutral-400 text-sm">
+                    &copy; {{ now|date:"Y" }} CodeChronicle. All rights reserved.
+                </p>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                    Disclaimer: This tool provides references only. Verify with official documents before use.
+                </p>
+            </div>
         </div>
     </footer>
 

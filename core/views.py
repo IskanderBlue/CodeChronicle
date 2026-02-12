@@ -52,41 +52,23 @@ def home(request):
     return render(request, "search.html", {"initial_query": initial_query})
 
 
-def pricing(request):
-    """Pricing and subscription tiers."""
-    is_authenticated = request.user.is_authenticated
-    has_active_sub = is_authenticated and getattr(request.user, "has_active_subscription", False)
+def terms_of_service(request):
+    """Terms of Service page."""
+    return render(request, "terms_of_service.html")
 
-    plans = [
-        {
-            "id": "free",
-            "name": "Free",
-            "price": "0",
-            "features": [
-                "1 Search per day (anonymous)",
-                "3 Searches per day (logged in)",
-                "Historical code search",
-                "Coordinates & Page info",
-            ],
-            "is_current": not is_authenticated or not has_active_sub,
-        },
-        {
-            "id": "pro",
-            "name": "Pro",
-            "price": "29",
-            "features": [
-                "Free features",
-                "Unlimited searches",
-                "Direct API access",
-                "Full text extraction",
-                # "Advanced PDF maps",
-                # "Amendment alerts",
-                # "Search history exports",
-            ],
-            "is_current": is_authenticated and has_active_sub,
-        },
-    ]
-    return render(request, "pricing.html", {"plans": plans})
+
+def privacy_policy(request):
+    """Privacy Policy page."""
+    return render(request, "privacy_policy.html")
+
+
+def pricing(request):
+    """Pricing and subscription tiers (early-access placeholder).
+
+    TODO: restore full Stripe pricing once business bank account is set up.
+    Original template is preserved at templates/pricing.html.
+    """
+    return render(request, "pricing_early_access.html")
 
 
 @login_required
