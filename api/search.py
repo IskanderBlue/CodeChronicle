@@ -72,24 +72,36 @@ def _suggest_similar_keywords(query: str, map_code: str | None = None, limit: in
     return [match[0] for match in matches]
 
 
-def _search_code_db(query: str, map_code: str, limit: int) -> dict[str, Any]:
+def _search_code_db(
+    query: str,
+    map_code: str,
+    limit: int,
+    section_references: list[str] | None = None,
+) -> dict[str, Any]:
     limit = max(1, min(limit, 50))
 
-    if not query or not isinstance(query, str):
+    has_query = query and isinstance(query, str) and query.strip()
+    has_sections = bool(section_references)
+
+    if not has_query and not has_sections:
         return {"error": "Query is required", "query": "", "results": [], "total": 0}
 
-    query_lower = query.lower().strip()
-    if not query_lower:
-        return {"error": "Query cannot be empty", "query": query, "results": [], "total": 0}
+    query_lower = query.lower().strip() if has_query else ""
+    query_terms = set(query_lower.split()) if query_lower else set()
+    expanded_terms = _expand_query_with_synonyms(query_terms) if query_terms else set()
 
-    query_terms = set(query_lower.split())
-    expanded_terms = _expand_query_with_synonyms(query_terms)
+    criteria = Q()
 
-    criteria = Q(node_id__icontains=query_lower)
-    for term in query_terms:
-        criteria |= Q(title__icontains=term)
-    if expanded_terms:
-        criteria |= Q(keywords__overlap=list(expanded_terms))
+    if query_lower:
+        criteria |= Q(node_id__icontains=query_lower)
+        for term in query_terms:
+            criteria |= Q(title__icontains=term)
+        if expanded_terms:
+            criteria |= Q(keywords__overlap=list(expanded_terms))
+
+    if has_sections:
+        for ref in section_references:
+            criteria |= Q(node_id__icontains=ref)
 
     candidates = (
         CodeMapNode.objects.filter(code_map__map_code=map_code)
@@ -108,10 +120,19 @@ def _search_code_db(query: str, map_code: str, limit: int) -> dict[str, Any]:
         score = 0.0
         match_type = None
 
-        if query_lower in section_id.lower():
+        if has_sections:
+            sid_lower = section_id.lower()
+            for ref in section_references:
+                if ref.lower() in sid_lower:
+                    ref_score = 2.5 if sid_lower.endswith(ref.lower()) else 2.0
+                    if ref_score > score:
+                        score = ref_score
+                        match_type = "section_ref"
+
+        if score == 0 and query_lower and query_lower in section_id.lower():
             score = 2.0 if section_id.lower().endswith(query_lower) else 1.5
             match_type = "exact_id"
-        elif expanded_terms:
+        elif score == 0 and expanded_terms:
             matches = expanded_terms & all_terms
             if matches:
                 original_matches = query_terms & all_terms
@@ -168,6 +189,7 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
     search_date_str = params.get("date")
     keywords = params.get("keywords", [])
     province = params.get("province", "ON")
+    section_references = params.get("section_references", [])
 
     try:
         search_date = date.fromisoformat(search_date_str)
@@ -195,6 +217,7 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
                     query=" ".join(keywords),
                     map_code=map_code,
                     limit=SEARCH_RESULT_LIMIT,
+                    section_references=section_references or None,
                 )
 
                 results = search_response.get("results", [])

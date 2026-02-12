@@ -13,7 +13,7 @@
 - Lint: `ruff check .` (optionally `--fix`)
 - Migrations: `python manage.py migrate`, `python manage.py makemigrations`
 - Load metadata: `python manage.py load_code_metadata --source config/metadata.json`
-- Load maps: `python manage.py load_maps --source ../CodeChronicle-Mapping/maps`
+- Load maps: `python manage.py load_maps --source ../CodeChronicleMapping/maps`
 - Optional Postgres: `docker-compose up -d`
 
 ### Architecture

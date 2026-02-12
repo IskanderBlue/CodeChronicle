@@ -2,13 +2,28 @@
 Claude-based query parser to extract structured search parameters from natural language.
 """
 
+import re
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import anthropic
 from django.conf import settings
 
 from config.keywords import VALID_KEYWORDS
+
+SECTION_REF_RE = re.compile(
+    r"\b((?:(?:table|[a-z])-)?\d{1,2}(?:\.\d{1,2}){1,4})\b",
+    re.IGNORECASE,
+)
+
+
+def extract_section_references(query: str) -> list[str]:
+    return SECTION_REF_RE.findall(query)
+
+
+def strip_section_references(query: str) -> str:
+    return SECTION_REF_RE.sub("", query).strip()
+
 
 # Tool definition for Claude
 PARSE_QUERY_TOOL = {
@@ -91,9 +106,22 @@ def get_query_hash(query: str) -> str:
 def parse_user_query(query: str) -> Dict[str, Any]:
     """
     Parse natural language query into structured parameters using Claude.
+    Section references (e.g. "9.10.14.5") are extracted via regex first.
+    If the query is *only* section references, the LLM call is skipped entirely.
     Checks QueryCache before calling API.
     """
     from core.models import QueryCache, QueryPrompt
+
+    section_refs = extract_section_references(query)
+    remaining_query = strip_section_references(query) if section_refs else query
+
+    if section_refs and not remaining_query:
+        return {
+            "date": date.today().isoformat(),
+            "keywords": [],
+            "section_references": section_refs,
+            "province": "ON",
+        }
 
     # 0. Prepare hashes
     query_hash = get_query_hash(query)
@@ -106,10 +134,12 @@ def parse_user_query(query: str) -> Dict[str, Any]:
     ).first()
 
     if cached:
-        # Cache Hit
         cached.hits += 1
         cached.save(update_fields=["hits"])
-        return cached.parsed_params
+        params = cached.parsed_params
+        if section_refs:
+            params["section_references"] = section_refs
+        return params
 
     # 2. Cache Miss - Call API
     if not settings.ANTHROPIC_API_KEY:
@@ -124,7 +154,7 @@ def parse_user_query(query: str) -> Dict[str, Any]:
             tools=[PARSE_QUERY_TOOL],
             tool_choice={"type": "tool", "name": "parse_building_code_query"},
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": query}],
+            messages=[{"role": "user", "content": remaining_query}],
         )
     except anthropic.AuthenticationError:
         raise ValueError(
@@ -142,21 +172,19 @@ def parse_user_query(query: str) -> Dict[str, Any]:
             keywords = params.get("keywords", [])
             valid_keywords = [k for k in keywords if k.lower() in VALID_KEYWORDS]
 
-            if not valid_keywords:
-                # If no valid keywords, try to use high-level terms if they were in the original query
-                # or raise a specific error that the user needs to be more specific.
+            if not valid_keywords and not section_refs:
                 raise ValueError(
                     "Query does not contain recognized building code keywords. "
                     "Try terms like: fire safety, structural, plumbing, electrical."
                 )
 
             params["keywords"] = valid_keywords
-            # Ensure province defaults to ON if missing
+            if section_refs:
+                params["section_references"] = section_refs
             if "province" not in params:
                 params["province"] = "ON"
 
             # 3. Save to Cache
-            # Ensure Prompt exists
             prompt_obj, _ = QueryPrompt.objects.get_or_create(
                 prompt_hash=prompt_hash, defaults={"content": prompt_content}
             )

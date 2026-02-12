@@ -40,7 +40,7 @@ python manage.py load_code_metadata --source config/metadata.json
 # Export code metadata to JSON
 
 # Load map JSONs into DB
-python manage.py load_maps --source ../CodeChronicle-Mapping/maps
+python manage.py load_maps --source ../CodeChronicleMapping/maps
 
 # Start PostgreSQL
 docker-compose up -d
