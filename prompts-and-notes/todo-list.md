@@ -34,8 +34,11 @@
     - Not feasible
 - ~~settings: should include links to all of the pdfs we can source.~~
 	- done: added links from Canada_building_code_mcp/docs/PDF_DOWNLOAD_LINKS.md
+- ~~include sections explicitly~~
+  - Numeric sections 2-5 1-2 digit sections separated by periods with optional table- or <single-letter>- checked.
 
 ## UI improvements
+- notify users if they get rate-limited
 - Think through how to handle what search UI displays when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).
   - check whether all subsections are returned; if so, display their parent; otherwise, display specific subsections? Can discuss.
 - search: don't double up if id and title are identical
@@ -43,9 +46,9 @@
 - put link to pdf in upload ui
 
 ## General
+- Use support@, billing@, privacy@, legal@, admin@, rob@ (codechronicle.ca) wherever appropriate. 
 - Implement: https://x.com/ryancarson/status/2016520542723924279
 - Harden static asset versioning/caching: use Django hashed static filenames (Manifest storage), ensure deploy-time `collectstatic`, and keep Cloudflare caching safe for `/static/*`.
-- include sections explicitly
 - NBC first.
 - show date-based changes
   - transition periods
