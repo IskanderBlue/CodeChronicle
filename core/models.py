@@ -75,15 +75,20 @@ class User(AbstractBaseUser, PermissionsMixin):
         if self.pro_courtesy:
             return True
 
-        # 2. Check Stripe
+        # 2. Check Stripe via dj-stripe
         from djstripe.models import Customer, Subscription
-        # dj-stripe uses 'subscriber' to link to the user model
+
         customer = Customer.objects.filter(subscriber=self).first()
+        if not customer and self.stripe_customer_id:
+            customer = Customer.objects.filter(id=self.stripe_customer_id).first()
+            if customer and not customer.subscriber:
+                customer.subscriber = self
+                customer.save(update_fields=["subscriber"])
         if not customer:
             return False
         return Subscription.objects.filter(
             customer=customer,
-            status__in=['active', 'trialing']
+            stripe_data__status__in=['active', 'trialing'],
         ).exists()
 
 

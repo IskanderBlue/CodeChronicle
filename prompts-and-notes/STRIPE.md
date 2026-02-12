@@ -31,15 +31,17 @@ Complete the Stripe subscription integration for CodeChronicle. The foundation i
 Add to `.env.example`:
 ```env
 STRIPE_PRO_PRICE_ID=price_...
-DJSTRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
 Add to `base.py` under Stripe section:
 ```python
-DJSTRIPE_WEBHOOK_SECRET = os.environ.get("DJSTRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID", "")
 DJSTRIPE_SUBSCRIBER_MODEL = "core.User"
 ```
+
+> **Note:** `DJSTRIPE_WEBHOOK_SECRET` is not needed. Since dj-stripe 2.9+, webhook
+> endpoints (including their signing secrets) are managed via the Django admin
+> `WebhookEndpoint` model, not settings.
 
 ### 0.2 Run dj-stripe migrations
 
@@ -123,38 +125,46 @@ path("stripe/cancel/", views.stripe_cancel, name="stripe_cancel"),
 
 ## Phase 2 — Webhooks (~2 hr)
 
-### 2.1 Confirm webhook endpoint + secret
+### 2.1 Create webhook endpoint via Django admin
 
-dj-stripe provides a webhook endpoint under the `/stripe/` include. In Stripe Dashboard, configure a webhook to:
-```
-https://yourdomain.com/stripe/webhook/
-```
+dj-stripe 2.9+ manages webhook endpoints via the `WebhookEndpoint` model in Django admin (not via settings). Each endpoint gets a unique UUID-based URL and its own signing secret stored in the database.
 
-Set `DJSTRIPE_WEBHOOK_SECRET` in `.env`.
+1. Go to Django Admin → dj-stripe → Webhook endpoints → Add
+2. Select the Stripe account and mode (test/live)
+3. Set the base URL to your domain (e.g. `https://yourdomain.com`)
+4. Save — dj-stripe creates the endpoint in Stripe and stores the secret automatically
+
+For local development with `stripe listen`:
+```bash
+# Generate a UUID, e.g. via: python -c "import uuid; print(uuid.uuid4())"
+stripe listen --forward-to localhost:8000/stripe/webhook/<your-uuid>/
+# Then create a WebhookEndpoint in Django admin (or shell) with that UUID and
+# the whsec_ secret printed by the CLI.
+```
 
 ### 2.2 Signal handlers for Customer ↔ User reconciliation
 
-dj-stripe already handles webhook ingestion and persists Stripe objects (Customer, Subscription, Invoice). You only need small "glue" via signals.
+dj-stripe handles webhook ingestion and persists Stripe objects (Customer, Subscription, Invoice). You only need small "glue" via Django signals using `@djstripe_receiver` (the recommended approach since dj-stripe 2.9+).
 
 **New file:** `core/stripe_handlers.py`
 
 ```python
-from djstripe import webhooks
+from djstripe.event_handlers import djstripe_receiver
 
-@webhooks.handler("customer.subscription.created")
-def handle_subscription_created(event, **kwargs):
+@djstripe_receiver("customer.subscription.created")
+def handle_subscription_created(sender, event, **kwargs):
     # Reconcile Customer.subscriber ↔ User
     # Sync stripe_customer_id if needed
     pass
 
-@webhooks.handler("customer.subscription.deleted")
-def handle_subscription_cancelled(event, **kwargs):
+@djstripe_receiver("customer.subscription.deleted")
+def handle_subscription_cancelled(sender, event, **kwargs):
     # dj-stripe handles status update automatically
     # Optional: send notification email
     pass
 
-@webhooks.handler("invoice.payment_failed")
-def handle_payment_failed(event, **kwargs):
+@djstripe_receiver("invoice.payment_failed")
+def handle_payment_failed(sender, event, **kwargs):
     # Optional: send payment failed email
     # Optional: set a flag for UI banner
     pass

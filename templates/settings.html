@@ -205,6 +205,33 @@
 
     <!-- Account Tab -->
     <div x-show="tab === 'account'" x-cloak>
+        <!-- Subscription -->
+        <div class="bg-neutral-100 dark:bg-neutral-800 shadow sm:rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700">
+            <div class="px-4 py-5 sm:p-6">
+                <h2 class="text-lg font-medium text-neutral-900 dark:text-white mb-1">Subscription</h2>
+                {% if request.user.has_active_subscription %}
+                <p class="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                    You are on the <span class="font-semibold text-success-600 dark:text-success-400">Pro</span> plan.
+                </p>
+                <form method="POST" action="{% url 'core:stripe_portal' %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                        class="min-w-40 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                        Manage Billing
+                    </button>
+                </form>
+                {% else %}
+                <p class="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                    You are on the <span class="font-semibold">Free</span> plan.
+                </p>
+                <a href="{% url 'core:pricing' %}"
+                    class="inline-flex items-center min-w-40 justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                    Upgrade to Pro
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- Sign Out -->
         <div class="my-6 bg-neutral-100 dark:bg-neutral-800 shadow sm:rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700">
             <div class="px-4 py-5 sm:p-6">

@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}CodeChronicle - Pro Activated{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto px-4 py-16 text-center">
+    {% if verified %}
+    <div class="mb-6">
+        <svg class="mx-auto h-16 w-16 text-success-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+    </div>
+    <h1 class="text-3xl font-bold text-neutral-900 dark:text-white mb-4">Welcome to Pro</h1>
+    <p class="text-neutral-500 dark:text-neutral-400 mb-2">
+        Your subscription is being activated. This may take up to a minute.
+    </p>
+    <p class="text-sm text-neutral-400 dark:text-neutral-500 mb-8">
+        If unlimited searches aren't available immediately, try refreshing the page.
+    </p>
+    {% else %}
+    <h1 class="text-3xl font-bold text-neutral-900 dark:text-white mb-4">Thank you</h1>
+    <p class="text-neutral-500 dark:text-neutral-400 mb-8">
+        If you completed checkout, your Pro subscription will be activated shortly.
+    </p>
+    {% endif %}
+    <a href="{% url 'core:home' %}"
+        class="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 shadow-sm">
+        Start searching
+    </a>
+</div>
+{% endblock %}

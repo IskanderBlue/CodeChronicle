@@ -13,9 +13,9 @@ from .models import (
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ['email', 'is_active', 'date_joined']
-    search_fields = ['email']
-    list_filter = ['is_active', 'is_staff']
+    list_display = ['email', 'is_active', 'pro_courtesy', 'stripe_customer_id', 'date_joined']
+    search_fields = ['email', 'stripe_customer_id']
+    list_filter = ['is_active', 'is_staff', 'pro_courtesy']
 
 
 @admin.register(SearchHistory)
