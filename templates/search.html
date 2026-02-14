@@ -707,6 +707,17 @@
         </div>
     </div>
 
+    <script>
+        // Allow HTMX to swap the response body on 429 (rate limit) so the
+        // notification banner replaces the loading spinner.
+        document.body.addEventListener('htmx:beforeSwap', function (evt) {
+            if (evt.detail.xhr.status === 429) {
+                evt.detail.shouldSwap = true;
+                evt.detail.isError = false;
+            }
+        });
+    </script>
+
     {% if initial_query %}
     <script>
         document.addEventListener('DOMContentLoaded', function () {

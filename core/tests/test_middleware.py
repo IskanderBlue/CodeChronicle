@@ -91,3 +91,25 @@ class TestRateLimitMiddleware:
         assert response.status_code == 429
         assert response["Content-Type"].startswith("text/html")
         assert b"Daily limit reached for anonymous users" in response.content
+
+    def test_authenticated_free_user_not_rate_limited(self, settings):
+        """Authenticated free users should never be rate limited."""
+        from core.models import User
+        settings.RATE_LIMIT_AUTHENTICATED = 3
+        user = User.objects.create_user(email="free@example.com", password="testpass")
+        # Create more searches than the old limit
+        for _ in range(10):
+            SearchHistory.objects.create(
+                user=user,
+                query="q",
+                parsed_params={},
+                result_count=0,
+                top_results=[],
+            )
+        request = self.factory.post(
+            "/search-results/",
+            HTTP_HX_REQUEST="true",
+        )
+        request.user = user
+        response = self.middleware.check_rate_limit(request)
+        assert response is None

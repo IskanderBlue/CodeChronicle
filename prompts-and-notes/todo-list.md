@@ -1,11 +1,11 @@
 # TODO list
 
 ## UI improvements
-- notify users if they get rate-limited
 - show notes_html when relevant
 
 ## General
 - Use support@, billing@, privacy@, legal@, admin@, rob@ (codechronicle.ca) wherever appropriate. 
+- refactor for clarity
 - Implement: https://x.com/ryancarson/status/2016520542723924279
 - Harden static asset versioning/caching: use Django hashed static filenames (Manifest storage), ensure deploy-time `collectstatic`, and keep Cloudflare caching safe for `/static/*`.
 - NBC first.
@@ -80,3 +80,5 @@ The `get_applicable_codes()` logic currently treats dates as hard cutoffs; these
   - presumably done; test when stripe gets verified bank account
 - ~~put link to pdf in upload ui~~
 	- done
+- ~~notify users if they get rate-limited~~
+  - done: rate-limit banner with signup/login (anon) or upgrade (authenticated) CTAs; free users no longer rate-limited
