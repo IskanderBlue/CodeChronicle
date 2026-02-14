@@ -1,8 +1,5 @@
 # TODO list
 
-## UI improvements
-- show notes_html when relevant
-
 ## General
 - Use support@, billing@, privacy@, legal@, admin@, rob@ (codechronicle.ca) wherever appropriate. 
 - refactor for clarity
@@ -82,3 +79,5 @@ The `get_applicable_codes()` logic currently treats dates as hard cutoffs; these
 	- done
 - ~~notify users if they get rate-limited~~
   - done: rate-limit banner with signup/login (anon) or upgrade (authenticated) CTAs; free users no longer rate-limited
+- ~~show notes_html when relevant~~
+	- done: pass notes_html through formatter, display below content with "Notes" separator

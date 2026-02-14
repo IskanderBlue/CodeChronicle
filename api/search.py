@@ -225,18 +225,21 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
                 # Build lookups from DB (search_code doesn't return these)
                 bbox_lookup: Dict[str, Any] = {}
                 html_lookup: Dict[str, str] = {}
+                notes_html_lookup: Dict[str, str] = {}
                 result_ids = [r.get("id") for r in results if r.get("id")]
                 if result_ids:
                     nodes = CodeMapNode.objects.filter(
                         code_map__map_code=map_code,
                         node_id__in=result_ids,
-                    ).values("node_id", "bbox", "html")
+                    ).values("node_id", "bbox", "html", "notes_html")
                     for node in nodes:
                         node_id = node["node_id"]
                         if node.get("bbox"):
                             bbox_lookup[node_id] = node["bbox"]
                         if node.get("html"):
                             html_lookup[node_id] = node["html"]
+                        if node.get("notes_html"):
+                            notes_html_lookup[node_id] = node["notes_html"]
 
                 # Tag each result with edition info and the specific map it came from
                 for result in results:
@@ -245,6 +248,7 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
                     result["source_date"] = search_date.isoformat()
                     result["bbox"] = bbox_lookup.get(result.get("id"))
                     result["html_content"] = html_lookup.get(result.get("id"))
+                    result["notes_html"] = notes_html_lookup.get(result.get("id"))
 
                 all_results.extend(results)
             except Exception as e:

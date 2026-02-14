@@ -41,6 +41,7 @@ def format_search_results(
             pdf_filename = get_pdf_filename(code_edition, map_code) or ""
 
         html_content = result.get("html_content")
+        notes_html = result.get("notes_html")
         source_url = get_source_url(code_edition)
 
         section_data = {
@@ -55,6 +56,7 @@ def format_search_results(
             "pdf_filename": pdf_filename,
             "pdf_download_url": get_download_url(code_edition) if pdf_filename else "",
             "html_content": html_content,
+            "notes_html": notes_html,
             "source_url": source_url,
         }
 
