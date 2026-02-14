@@ -1,8 +1,11 @@
 # TODO list
+- UI overrides date/province; API doesn’t
+  - api should too
 
 ## General
 - Use support@, billing@, privacy@, legal@, admin@, rob@ (codechronicle.ca) wherever appropriate. 
-- refactor for clarity
+- ~~refactor for clarity~~
+	- done: implemented refactor.md — service layer (services/search_service.py), split api/search.py into api/search/ package (engine.py + orchestration.py), split core/views.py into core/views/ package (search.py, history.py, billing.py, pages.py), added CI lint/test workflow (.github/workflows/ci.yml)
 - Implement: https://x.com/ryancarson/status/2016520542723924279
 - Harden static asset versioning/caching: use Django hashed static filenames (Manifest storage), ensure deploy-time `collectstatic`, and keep Cloudflare caching safe for `/static/*`.
 - NBC first.

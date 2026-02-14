@@ -9,8 +9,8 @@ from core.models import CodeEdition, CodeMap, CodeMapNode, CodeSystem, ProvinceC
 
 @pytest.fixture
 def mock_search_deps(db):
-    with patch('api.search.get_applicable_codes') as mock_codes, \
-         patch('api.search.get_map_codes') as mock_map_codes:
+    with patch('api.search.orchestration.get_applicable_codes') as mock_codes, \
+         patch('api.search.orchestration.get_map_codes') as mock_map_codes:
         mock_codes.return_value = ['NBC_2020', 'OBC_2024']
         mock_map_codes.side_effect = lambda code_name: {
             'NBC_2020': ['NBC'],
@@ -162,7 +162,7 @@ def test_get_applicable_codes_ontario_2010():
 @pytest.mark.django_db
 def test_execute_search_no_codes():
     """Test when no codes are found for the date."""
-    with patch('api.search.get_applicable_codes') as mock_codes:
+    with patch('api.search.orchestration.get_applicable_codes') as mock_codes:
         mock_codes.return_value = []
         params = {
             'date': '1950-01-01',

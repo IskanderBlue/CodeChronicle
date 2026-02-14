@@ -40,7 +40,7 @@ PARSE_QUERY_TOOL = {
             "keywords": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": f"Valid building code keywords. Only use terms from the master keyword list provided in system prompt.",
+                "description": "Valid building code keywords. Only use terms from the master keyword list provided in system prompt.",
             },
             "building_type": {
                 "type": "string",

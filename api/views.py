@@ -191,49 +191,30 @@ def search(request):
             "meta": None,
         }
 
-    from api.formatters import format_search_results
-    from api.llm_parser import parse_user_query
-    from api.search import execute_search
-    from core.models import SearchHistory
+    from services.search_service import run_search
 
-    # Step 1: Parse natural language with LLM
-    try:
-        params = parse_user_query(query)
-    except ValueError as e:
-        return {"success": False, "results": [], "error": str(e)}
-
-    # Step 2: Execute search
-    search_results = execute_search(params)
-
-    if "error" in search_results:
-        return {"success": False, "results": [], "error": search_results["error"]}
-
-    # Step 3: Format for display
-    formatted_results = format_search_results(search_results["results"])
-
-    # Step 4: Record the search in history
     ip = request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", ""))
     if ip and "," in ip:
         ip = ip.split(",")[0].strip()
 
-    SearchHistory.objects.create(
+    result = run_search(
+        query,
         user=request.user if request.user.is_authenticated else None,
         ip_address=ip if not request.user.is_authenticated else None,
-        query=query,
-        parsed_params=params,
-        result_count=len(formatted_results),
-        top_results=search_results["top_results_metadata"],
     )
+
+    if not result["success"]:
+        return {"success": False, "results": [], "error": result["error"]}
 
     return {
         "success": True,
-        "results": formatted_results,
+        "results": result["results"],
         "error": None,
         "meta": {
             "query": query,
-            "parsed_params": params,
-            "applicable_codes": search_results["applicable_codes"],
-            "result_count": len(formatted_results),
+            "parsed_params": result["parsed_params"],
+            "applicable_codes": result["applicable_codes"],
+            "result_count": len(result["results"]),
         },
     }
 

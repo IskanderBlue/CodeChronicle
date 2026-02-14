@@ -2,7 +2,7 @@
 URL configuration for code_chronicle project.
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import include, path
 
 from api.views import api
 

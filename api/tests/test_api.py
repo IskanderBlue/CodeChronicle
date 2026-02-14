@@ -98,9 +98,9 @@ class TestApiEndpoints:
         data = response.json()
         assert data["status"] == "ok"
 
-    @patch("api.llm_parser.parse_user_query", autospec=False)
-    @patch("api.search.execute_search", autospec=False)
-    @patch("api.formatters.format_search_results", autospec=False)
+    @patch("services.search_service.parse_user_query", autospec=False)
+    @patch("services.search_service.execute_search", autospec=False)
+    @patch("services.search_service.format_search_results", autospec=False)
     def test_search_allows_paid_user(self, mock_format, mock_execute, mock_parse):
         """Paid users can call search API."""
         self.client.force_login(self.paid_user)

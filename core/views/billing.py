@@ -1,8 +1,7 @@
 """
-Views for core app (frontend pages).
+Stripe billing views: checkout, portal, success/cancel callbacks.
 """
 
-from allauth.account.forms import ChangePasswordForm
 from coloured_logger import Logger
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -10,65 +9,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from api.formatters import format_search_results
-from api.llm_parser import parse_user_query
-from api.search import execute_search
-from config.code_metadata import get_pdf_expectations
-from core.models import SearchHistory
-
 logger = Logger(__name__)
-
-
-@login_required
-def history(request):
-    """User search history page."""
-    from django.db.models import Count, Max
-
-    # 200 distinct queries is reasonable for client-side filtering (Alpine.js)
-    history_limit = 200
-
-    # Group by query: get the latest record ID and search count per unique query
-    query_stats = list(
-        SearchHistory.objects.filter(user=request.user)
-        .values("query")
-        .annotate(search_count=Count("id"), latest_id=Max("id"))
-        .order_by("-latest_id")[:history_limit]
-    )
-
-    latest_ids = [s["latest_id"] for s in query_stats]
-    count_map = {s["latest_id"]: s["search_count"] for s in query_stats}
-
-    # Fetch full records for the latest occurrence of each query
-    searches = list(SearchHistory.objects.filter(id__in=latest_ids).order_by("-timestamp"))
-    for s in searches:
-        s.search_count = count_map.get(s.id, 1)
-
-    return render(request, "history.html", {"history": searches})
-
-
-def home(request):
-    """Main search page."""
-    initial_query = request.GET.get("q", "")
-    return render(request, "search.html", {"initial_query": initial_query})
-
-
-def terms_of_service(request):
-    """Terms of Service page."""
-    return render(request, "terms_of_service.html")
-
-
-def privacy_policy(request):
-    """Privacy Policy page."""
-    return render(request, "privacy_policy.html")
-
-
-def pricing(request):
-    """Pricing and subscription tiers (early-access placeholder).
-
-    TODO: restore full Stripe pricing once business bank account is set up.
-    Original template is preserved at templates/pricing.html.
-    """
-    return render(request, "pricing_early_access.html")
 
 
 @login_required
@@ -203,97 +144,6 @@ def create_customer_portal_session(request):
     return redirect(portal_session.url, code=303)
 
 
-@require_POST
-def search_results(request):
-    """HTMX search results view."""
-    query = request.POST.get("query", "")
-    date_override = request.POST.get("date")
-    province_override = request.POST.get("province")
-
-    try:
-        # Step 1: Parse query
-        params = parse_user_query(query)
-
-        # Override if manually specified
-        if date_override:
-            params["date"] = date_override
-        if province_override:
-            params["province"] = province_override
-
-        # Step 2: Search
-        search_results_data = execute_search(params)
-
-        if "error" in search_results_data:
-            return render(
-                request,
-                "partials/search_results_partial.html",
-                {"success": False, "error": search_results_data["error"]},
-            )
-
-        # Step 3: Format
-        formatted = format_search_results(search_results_data["results"])
-        logger.info("search frontend payload: %s", formatted)
-        # Record search history
-        try:
-            # Extract IP for anonymous rate limiting/tracking
-            x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-            if x_forwarded_for:
-                ip = x_forwarded_for.split(",")[0].strip()
-            else:
-                ip = request.META.get("REMOTE_ADDR")
-
-            SearchHistory.objects.create(
-                user=request.user if request.user.is_authenticated else None,
-                ip_address=ip if not request.user.is_authenticated else None,
-                query=query,
-                parsed_params=params,
-                result_count=len(formatted),
-                top_results=search_results_data.get("top_results_metadata", []),
-            )
-        except Exception as e:
-            # Don't fail the search if history tracking fails
-            logger.error("Error recording search history: %s", e)
-
-        return render(
-            request,
-            "partials/search_results_partial.html",
-            {
-                "success": True,
-                "results": formatted,
-                "meta": {"applicable_codes": search_results_data["applicable_codes"]},
-            },
-        )
-
-    except Exception as e:
-        error_msg = str(e)
-        # Handle Anthropic auth error specifically for better UX
-        if "401" in error_msg and "invalid x-api-key" in error_msg.lower():
-            error_msg = "Search engine authentication failure. Please check the ANTHROPIC_API_KEY in .env settings."
-
-        return render(
-            request,
-            "partials/search_results_partial.html",
-            {"success": False, "error": f"An unexpected error occurred: {error_msg}"},
-        )
-
-
-@login_required
-def user_settings(request):
-    """User settings page — syncs subscription status from Stripe."""
-    if request.user.stripe_customer_id:
-        _sync_subscription_status(request.user)
-
-    password_form = ChangePasswordForm(user=request.user)
-    return render(
-        request,
-        "settings.html",
-        {
-            "pdf_expectations": get_pdf_expectations(),
-            "password_form": password_form,
-        },
-    )
-
-
 def _sync_subscription_status(user):
     """Re-sync dj-stripe Subscription records from Stripe for this user."""
     import stripe
@@ -317,4 +167,3 @@ def _sync_subscription_status(user):
             Subscription.sync_from_stripe_data(sub_data)
     except Exception as e:
         logger.warning("_sync_subscription_status error: %s", e)
-

@@ -1,10 +1,13 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.http import JsonResponse
 from django.test import RequestFactory
+
 from core.middleware import RateLimitMiddleware
 from core.models import SearchHistory
-from unittest.mock import MagicMock, patch
+
 
 @pytest.mark.django_db
 class TestRateLimitMiddleware:
@@ -27,7 +30,7 @@ class TestRateLimitMiddleware:
         request = MagicMock()
         request.method = "POST"
         request.path = "/api/search"
-        
+
         self.middleware(request)
         mock_check.assert_not_called()
         self.get_response.assert_called_once()
@@ -62,7 +65,7 @@ class TestRateLimitMiddleware:
         request.method = "POST"
         request.path = "/search-results/"
         mock_check.return_value = JsonResponse({"error": "limit"}, status=429)
-        
+
         response = self.middleware(request)
         assert response.status_code == 429
         self.get_response.assert_not_called()
