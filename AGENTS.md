@@ -29,13 +29,18 @@
 - Env vars: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `DATABASE_URL`.
 
 ### Rate Limits & Subscriptions
-- Anonymous: 1 search/day. Authenticated free: 3/day. Pro: unlimited (Stripe/dj-stripe or `pro_courtesy`).
+- Anonymous: 1 search/day. Authenticated (free and Pro): unlimited.
+- When paid works
+  - Anonymous: 1 search/day. Authenticated free: 3/day. Pro: unlimited (Stripe/dj-stripe or `pro_courtesy`).
 
 ### Code Style
 - Ruff: `E,F,I,N,W`, line length 100, py312.
 - Typed function signatures.
 - API response: `{"success": bool, "data": {...}, "error": str|null, "meta": {...}}`.
 - Conventional commits (`feat:`, `fix:`, etc.).
+
+### Agent Notes
+- **Workspace root is `c:/Users/victu/Documents/repos/CodeChronicle`.** When using `cwd` in Bash calls, use this path exactly — do NOT concatenate it with itself.
 
 ### Historical Planning Notes (obsolete but context)
 - MVP: OBC full text + NBC coordinate index (BYOD). Maps stored in S3, loaded into memory at startup.
