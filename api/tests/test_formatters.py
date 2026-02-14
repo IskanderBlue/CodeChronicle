@@ -3,6 +3,7 @@ from api.formatters import format_search_results
 
 def test_format_search_results_uses_pdf_filename_and_html_content(monkeypatch):
     monkeypatch.setattr("api.formatters.get_pdf_filename", lambda _code, _map: "NBC2025p1.pdf")
+    monkeypatch.setattr("api.formatters.get_download_url", lambda _code: "https://example.com/dl")
     monkeypatch.setattr("api.formatters.get_source_url", lambda _code: None)
     monkeypatch.setattr("api.formatters.get_code_display_name", lambda _prefix: "National Building Code")
     monkeypatch.setattr("api.formatters.get_amendments_for_section", lambda _sid, _code: [])
@@ -24,6 +25,7 @@ def test_format_search_results_uses_pdf_filename_and_html_content(monkeypatch):
     assert len(formatted) == 1
     first = formatted[0]
     assert first["pdf_filename"] == "NBC2025p1.pdf"
+    assert first["pdf_download_url"] == "https://example.com/dl"
     assert first["html_content"] == "<p>Sample section HTML.</p>"
     assert "text" not in first
     assert "pdf_url" not in first
@@ -31,6 +33,7 @@ def test_format_search_results_uses_pdf_filename_and_html_content(monkeypatch):
 
 def test_format_search_results_sorts_by_score(monkeypatch):
     monkeypatch.setattr("api.formatters.get_pdf_filename", lambda _code, _map: "file.pdf")
+    monkeypatch.setattr("api.formatters.get_download_url", lambda _code: None)
     monkeypatch.setattr("api.formatters.get_source_url", lambda _code: None)
     monkeypatch.setattr("api.formatters.get_code_display_name", lambda _prefix: "Code")
     monkeypatch.setattr("api.formatters.get_amendments_for_section", lambda _sid, _code: [])

@@ -78,6 +78,19 @@ def get_pdf_filename(code_name: str, map_code: str) -> Optional[str]:
     return edition.pdf_files.get(map_code)
 
 
+def get_download_url(code_name: str) -> Optional[str]:
+    """
+    Get the publisher download URL for a code edition.
+
+    e.g., 'NBC_2025' -> 'https://nrc-publications...'
+    Returns None when no download URL is configured.
+    """
+    edition = _find_edition(code_name)
+    if not edition:
+        return None
+    return edition.download_url or None
+
+
 def get_pdf_expectations() -> list[dict[str, str | int | None]]:
     """
     Build PDF expectations from CodeEdition rows.

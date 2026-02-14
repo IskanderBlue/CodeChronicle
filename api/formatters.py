@@ -4,7 +4,12 @@ Format search results for frontend display.
 
 from typing import Any, Dict, List
 
-from config.code_metadata import get_code_display_name, get_pdf_filename, get_source_url
+from config.code_metadata import (
+    get_code_display_name,
+    get_download_url,
+    get_pdf_filename,
+    get_source_url,
+)
 
 
 def _build_code_display_name(code_edition: str) -> str:
@@ -48,6 +53,7 @@ def format_search_results(
             "bbox": result.get("bbox"),
             "score": result.get("score", 0),
             "pdf_filename": pdf_filename,
+            "pdf_download_url": get_download_url(code_edition) if pdf_filename else "",
             "html_content": html_content,
             "source_url": source_url,
         }
