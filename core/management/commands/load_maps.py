@@ -61,7 +61,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser) -> None:
         parser.add_argument(
             "--source",
-            default=Path("..") / "CodeChronicle-Mapping" / "maps",
+            default=Path("..") / "CodeChronicleMapping" / "maps",
             help="Directory containing map JSON files.",
         )
         parser.add_argument(

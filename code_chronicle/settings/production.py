@@ -125,7 +125,7 @@ EMAIL_USE_TLS = _resolve_runtime_setting("EMAIL_USE_TLS", "email_use_tls", "true
 DEFAULT_FROM_EMAIL = _resolve_runtime_setting(
     "DEFAULT_FROM_EMAIL",
     "default_from_email",
-    EMAIL_HOST_USER or "noreply@example.com",
+    EMAIL_HOST_USER or "admin@codechronicle.ca",
 )
 SERVER_EMAIL = os.environ.get("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 

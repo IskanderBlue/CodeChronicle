@@ -1,8 +1,10 @@
 {
   "folders": [
-    {"path": "C:/Users/victu/Documents/repos/Canada_building_code_mcp"},
+    {"path": "C:/Users/victu/Documents/repos/compound-runner"},
     {"path": "C:/Users/victu/Documents/repos/CodeChronicle"},
-    {"path": "C:/Users/victu/Documents/repos/CodeChronicle-Mapping"},
+    {"path": "C:/Users/victu/Documents/repos/CodeChronicleMapping"},
+    {"path": "C:/Users/victu/Documents/repos/CodeChronicleTerraform"},
+    {"path": "C:/Users/victu/Documents/repos/Canada_building_code_mcp"}
   ],
   "settings": {}
 }

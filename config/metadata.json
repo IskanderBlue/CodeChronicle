@@ -3070,9 +3070,9 @@
       {
         "edition_id": "2025",
         "year": 2025,
-        "map_codes": ["NBC"],
+        "map_codes": ["NBC2025"],
         "pdf_files": {
-          "NBC": "NBC2025p1.pdf"
+          "NBC2025": "NBC2025p1.pdf"
         },
         "effective_date": "2025-01-01",
         "superseded_date": null,
