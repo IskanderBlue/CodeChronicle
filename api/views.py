@@ -150,25 +150,48 @@ def health_check(request):
     return {"status": "ok"}
 
 
-def _extract_query_from_request(request) -> str:
-    """Support both form-encoded and JSON bodies for search payloads."""
+def _extract_search_params_from_request(request) -> dict[str, str | None]:
+    """
+    Extract query, date, and province from form-encoded or JSON bodies.
+
+    Returns a dict with keys ``query``, ``date``, and ``province``.
+    ``query`` is an empty string when absent; the other two are ``None``.
+    """
+    params: dict[str, str | None] = {"query": "", "date": None, "province": None}
+
+    # Form-encoded body takes priority (matches UI behaviour)
     form_query = request.POST.get("query")
     if isinstance(form_query, str) and form_query.strip():
-        return form_query.strip()
+        params["query"] = form_query.strip()
+        params["date"] = request.POST.get("date") or None
+        params["province"] = request.POST.get("province") or None
+        return params
 
     raw_body = request.body.decode("utf-8").strip() if request.body else ""
     if not raw_body:
-        return ""
+        return params
 
     try:
         body = json.loads(raw_body)
     except json.JSONDecodeError:
-        return ""
+        return params
 
-    query = body.get("query") if isinstance(body, dict) else None
+    if not isinstance(body, dict):
+        return params
+
+    query = body.get("query")
     if isinstance(query, str):
-        return query.strip()
-    return ""
+        params["query"] = query.strip()
+
+    date = body.get("date")
+    if isinstance(date, str) and date.strip():
+        params["date"] = date.strip()
+
+    province = body.get("province")
+    if isinstance(province, str) and province.strip():
+        params["province"] = province.strip()
+
+    return params
 
 
 @api.post(
@@ -178,11 +201,17 @@ def _extract_query_from_request(request) -> str:
 def search(request):
     """
     Search building codes with natural language query.
+
+    Optional JSON body fields:
+      - ``date`` (YYYY-MM-DD): overrides the LLM-parsed construction date.
+      - ``province`` (two-letter code, e.g. "ON"): overrides the LLM-parsed province.
     """
     denied = _require_paid_api_access(request)
     if denied:
         return denied
-    query = _extract_query_from_request(request)
+
+    search_params = _extract_search_params_from_request(request)
+    query = search_params["query"]
     if not query:
         return 400, {
             "success": False,
@@ -201,11 +230,18 @@ def search(request):
         query,
         user=request.user if request.user.is_authenticated else None,
         ip_address=ip if not request.user.is_authenticated else None,
+        date_override=search_params["date"],
+        province_override=search_params["province"],
     )
 
     if not result["success"]:
         return {"success": False, "results": [], "error": result["error"]}
 
+    overrides = {
+        k: v
+        for k, v in {"date": search_params["date"], "province": search_params["province"]}.items()
+        if v is not None
+    }
     return {
         "success": True,
         "results": result["results"],
@@ -215,6 +251,7 @@ def search(request):
             "parsed_params": result["parsed_params"],
             "applicable_codes": result["applicable_codes"],
             "result_count": len(result["results"]),
+            **({"overrides": overrides} if overrides else {}),
         },
     }
 

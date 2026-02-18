@@ -120,3 +120,42 @@ class TestApiEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
+
+    @patch("services.search_service.parse_user_query", autospec=False)
+    @patch("services.search_service.execute_search", autospec=False)
+    @patch("services.search_service.format_search_results", autospec=False)
+    def test_search_date_province_overrides(self, mock_format, mock_execute, mock_parse):
+        """date and province fields override LLM-parsed values in API search."""
+        import json
+
+        self.client.force_login(self.paid_user)
+        mock_parse.return_value = {"query": "fire separation", "province": "BC", "date": "2020-01-01"}
+        mock_execute.return_value = {
+            "results": [],
+            "top_results_metadata": [],
+            "applicable_codes": ["OBC_2024"],
+        }
+        mock_format.return_value = []
+
+        payload = json.dumps({"query": "fire separation", "date": "1995-06-01", "province": "ON"})
+        response = self.client.post(
+            '/api/search',
+            data=payload,
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+        # Overrides must be surfaced in meta so callers can confirm what was applied
+        assert data["meta"]["overrides"] == {"date": "1995-06-01", "province": "ON"}
+
+        # Confirm the overrides were actually passed into parse → execute pipeline
+        call_kwargs = mock_parse.call_args
+        # parse_user_query only receives the query string; overrides are applied after
+        assert call_kwargs[0][0] == "fire separation"
+
+        # The params dict passed to execute_search must reflect the overrides
+        execute_call_args = mock_execute.call_args[0][0]
+        assert execute_call_args["date"] == "1995-06-01"
+        assert execute_call_args["province"] == "ON"
