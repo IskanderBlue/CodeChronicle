@@ -7,6 +7,8 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 
+from core.ip_utils import extract_client_ip
+
 
 class RateLimitMiddleware:
     """
@@ -63,6 +65,8 @@ class RateLimitMiddleware:
         else:
             # Anonymous user - rate limit by IP
             ip = self.get_client_ip(request)
+            if not ip:
+                return None
 
             search_count = SearchHistory.objects.filter(
                 ip_address=ip, user__isnull=True, timestamp__date=today
@@ -84,9 +88,4 @@ class RateLimitMiddleware:
 
     def get_client_ip(self, request):
         """Extract client IP from request, handling proxies."""
-        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(",")[0].strip()
-        else:
-            ip = request.META.get("REMOTE_ADDR")
-        return ip
+        return extract_client_ip(request.META)

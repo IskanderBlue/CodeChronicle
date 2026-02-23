@@ -15,6 +15,7 @@ COPY code_chronicle /app/code_chronicle
 COPY api /app/api
 COPY core /app/core
 COPY config /app/config
+COPY services /app/services
 COPY templates /app/templates
 COPY scripts/entrypoint.sh /app/scripts/entrypoint.sh
 

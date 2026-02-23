@@ -68,7 +68,7 @@ Homepage = "https://github.com/IskanderBlue/CodeChronicle"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["code_chronicle*", "api*", "core*", "config*"]
+include = ["code_chronicle*", "api*", "core*", "config*", "services*"]
 
 [tool.ruff]
 line-length = 100

@@ -6,6 +6,8 @@ import json
 
 from ninja import NinjaAPI, Schema
 
+from core.ip_utils import extract_client_ip
+
 api = NinjaAPI(
     title="CodeChronicle API",
     version="0.1.0",
@@ -222,9 +224,7 @@ def search(request):
 
     from services.search_service import run_search
 
-    ip = request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", ""))
-    if ip and "," in ip:
-        ip = ip.split(",")[0].strip()
+    ip = extract_client_ip(request.META)
 
     result = run_search(
         query,

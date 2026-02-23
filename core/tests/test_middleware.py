@@ -116,3 +116,16 @@ class TestRateLimitMiddleware:
         request.user = user
         response = self.middleware.check_rate_limit(request)
         assert response is None
+
+    def test_invalid_forwarded_for_does_not_crash(self, settings):
+        """Invalid proxy IP values should not cause DB inet errors."""
+        settings.RATE_LIMIT_ANONYMOUS = 1
+        request = self.factory.post(
+            "/search-results/",
+            HTTP_HX_REQUEST="true",
+            HTTP_X_FORWARDED_FOR="unknown",
+        )
+        request.user = AnonymousUser()
+
+        response = self.middleware.check_rate_limit(request)
+        assert response is None

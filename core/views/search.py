@@ -6,6 +6,8 @@ from coloured_logger import Logger
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
 
+from core.ip_utils import extract_client_ip
+
 logger = Logger(__name__)
 
 
@@ -23,11 +25,7 @@ def search_results(request):
     province_override = request.POST.get("province")
 
     # Extract IP for anonymous tracking
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(",")[0].strip()
-    else:
-        ip = request.META.get("REMOTE_ADDR")
+    ip = extract_client_ip(request.META)
 
     from services.search_service import run_search
 
