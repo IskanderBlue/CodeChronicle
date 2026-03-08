@@ -270,6 +270,9 @@ def test_transition_compare_card_renders_banner_fields():
     assert "grace period" in html.lower()
     assert "Queried date" in html
     assert "Citation" in html
+    assert "data-transition-mobile-tabs" in html
+    assert "Matching version" in html
+    assert "Comparison version" in html
 
 
 def test_viewer_mode_template_renders_query_context_and_navigation():
@@ -315,3 +318,49 @@ def test_viewer_mode_template_renders_query_context_and_navigation():
     assert "Previous edition" in html
     assert "Next edition" in html
     assert 'data-pdf-page="98"' in html
+
+
+def test_mobile_accordion_and_grouped_cards_include_touch_friendly_markup():
+    html = render_to_string(
+        "partials/search_results_partial.html",
+        {
+            "success": True,
+            "meta": {"applicable_codes": ["NBC_2025"]},
+            "results": [
+                {
+                    "id": "B-3.2.9",
+                    "title": "Parent Section",
+                    "score": 0.96,
+                    "code_display_name": "National Building Code 2025",
+                    "group_type": "parent_children",
+                    "child_match_count": 2,
+                    "child_total_count": 2,
+                    "top_scoring_child_id": "B-3.2.9.2",
+                    "active_child": {"id": "B-3.2.9.2", "title": "Closures"},
+                    "children": [
+                        {
+                            "id": "B-3.2.9.1",
+                            "title": "General",
+                            "page": 120,
+                            "page_end": 120,
+                            "is_match": True,
+                            "is_top_scoring": False,
+                        },
+                        {
+                            "id": "B-3.2.9.2",
+                            "title": "Closures",
+                            "page": 121,
+                            "page_end": 121,
+                            "is_match": True,
+                            "is_top_scoring": True,
+                        },
+                    ],
+                    "amendments": [],
+                }
+            ],
+        },
+    )
+
+    assert "min-h-[84px]" in html
+    assert "py-3 text-sm" in html
+    assert "sm:flex-row" in html
