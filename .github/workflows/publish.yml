@@ -55,7 +55,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install dependencies
         run: pip install -e .[dev]
@@ -67,7 +67,7 @@ jobs:
         env:
           DJANGO_SETTINGS_MODULE: code_chronicle.settings.production
           ALLOWED_HOSTS: app.codechronicle.ca,codechronicle.ca,localhost
-          SECRET_KEY: ci-secret-key-0123456789abcdefghijklmnopqrstuvwxyz-ABCDEFG
+          SECRET_KEY: ci-for-check-only-secret-key-0123456789abcdefghijklmnopqrstuvwxyz-ABCDEFG
           DEBUG: "False"
         run: |
           python manage.py check
