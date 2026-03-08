@@ -26,6 +26,11 @@
                     Grouped result · {{ result.child_match_count }}/{{ result.child_total_count }} child matches
                 </p>
                 {% endif %}
+                {% if result.result_type == 'transition_compare' %}
+                <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                    Transition compare
+                </p>
+                {% endif %}
                 <h3 class="mt-2 text-lg font-bold text-neutral-900 dark:text-white">
                     {{ result.id }} &mdash; {{ result.title }}
                 </h3>
@@ -96,167 +101,51 @@
         </div>
         {% endif %}
 
-        {% if result.source_url %}
-        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-            <a href="{{ result.source_url }}" target="_blank" rel="noopener noreferrer"
-               class="inline-flex items-center gap-1 text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-                View on e-Laws
-            </a>
-        </p>
-        {% endif %}
-
-        {% if result.pdf_filename %}
-        <div class="mt-4" x-data="{ expanded: false }" data-pdf-block>
-            <div class="pdf-clip relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-                :style="{ maxHeight: expanded ? 'none' : '200px' }">
-                <div data-pdf-container data-pdf-expected-filename="{{ result.pdf_filename }}"
-                    data-pdf-page="{{ result.page|default:'1' }}"
-                    data-pdf-page-end="{{ result.page_end|default:result.page|default:'1' }}"
-                    {% if result.initial_page_top or result.initial_page_top == 0 %}data-pdf-initial-page-top="{{ result.initial_page_top }}"{% endif %}
-                    {% if result.final_page_bottom or result.final_page_bottom == 0 %}data-pdf-final-page-bottom="{{ result.final_page_bottom }}"{% endif %}
-                    class="hidden w-full bg-neutral-200 dark:bg-neutral-900 min-h-[100px]"></div>
-                {% if result.html_content %}
-                <div
-                    class="p-4 text-neutral-700 dark:text-neutral-300 text-sm prose dark:prose-invert prose-primary max-w-none markdown-content"
-                    data-pdf-fallback>
-                    {{ result.html_content|safe }}
+        {% if result.result_type == 'transition_compare' %}
+        <div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-800 dark:bg-emerald-900/20">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Transition context</p>
+                    <p class="mt-1 text-sm text-emerald-900 dark:text-emerald-100">
+                        {{ result.transition_context.transition_type_display|default:result.transition_context.transition_type|title }}
+                    </p>
                 </div>
-                {% endif %}
-                <div class="border-t border-neutral-200 dark:border-neutral-700 p-3 bg-neutral-100 dark:bg-neutral-800"
-                    data-pdf-controls-mount></div>
-                <template data-pdf-picker-template>
-                    <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                        Expected PDF:
-                        {% if result.pdf_download_url %}
-                        <a class="font-mono text-xs text-primary-600 dark:text-primary-400 underline font-medium"
-                            href="{{ result.pdf_download_url }}" target="_blank" rel="noopener noreferrer">
-                            {{ result.pdf_filename }}
-                        </a>
-                        {% else %}
-                        <code class="font-mono text-xs">{{ result.pdf_filename }}</code>
+                <div class="text-xs text-emerald-800 dark:text-emerald-200 space-y-1">
+                    <p><span class="font-semibold">Queried date:</span> {{ result.transition_context.query_date }}</p>
+                    <p><span class="font-semibold">New version effective:</span> {{ result.transition_context.new_version_effective_date }}</p>
+                    <p><span class="font-semibold">Old version last overlap date:</span> {{ result.transition_context.old_version_last_date }}</p>
+                </div>
+            </div>
+            <p class="mt-3 text-sm text-emerald-900 dark:text-emerald-100">{{ result.transition_context.applicability_text }}</p>
+            <p class="mt-2 text-xs text-emerald-800 dark:text-emerald-200"><span class="font-semibold">Citation:</span> {{ result.transition_context.citation_text }}</p>
+        </div>
+
+        <div class="mt-4 grid gap-4 lg:grid-cols-2">
+            {% for version in result.versions %}
+            <div class="rounded-lg border p-4 {% if version.transition_context.is_primary %}border-primary-300 bg-primary-50/60 dark:border-primary-500 dark:bg-primary-900/20{% else %}border-neutral-200 bg-white/70 dark:border-neutral-700 dark:bg-neutral-900/40{% endif %}">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-semibold text-neutral-900 dark:text-white">{{ version.code_display_name }}</p>
+                        {% if version.page %}
+                        <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                            {% if version.page_end and version.page_end != version.page %}
+                            Pages {{ version.page }}&ndash;{{ version.page_end }}
+                            {% else %}
+                            Page {{ version.page }}
+                            {% endif %}
+                        </p>
                         {% endif %}
-                    </p>
-                    <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400" data-pdf-mapped-label>
-                        Not mapped yet.
-                    </p>
-                    <p class="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
-                        Local only. File stays in your browser and is not uploaded.
-                    </p>
-                    <div class="flex flex-wrap gap-2">
-                        <label
-                            class="mt-2 inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-primary-300 text-primary-700 dark:border-primary-500 dark:text-primary-300 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20">
-                            Choose PDF
-                            <input type="file" accept="application/pdf" class="hidden" data-pdf-file-input>
-                        </label>
-                        <button type="button" data-pdf-clear-mapping
-                            class="mt-2 inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-                            Clear mapping
-                        </button>
                     </div>
-                    <div data-pdf-dropzone
-                        class="mt-2 min-h-[70px] rounded border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">
-                        Drop a PDF here
-                    </div>
-                    <div class="mt-2 hidden rounded border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
-                        data-pdf-mismatch>
-                        <p data-pdf-mismatch-text></p>
-                        <div class="mt-2 flex gap-2">
-                            <button type="button" data-pdf-override-mapping
-                                class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40">
-                                Use selected file
-                            </button>
-                            <button type="button" data-pdf-cancel-mapping
-                                class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </template>
-                <template data-pdf-mapped-template>
-                    <div class="flex flex-wrap gap-2">
-                        <button type="button" data-pdf-show-picker
-                            x-show="expanded"
-                            class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-                            Change mapping
-                        </button>
-                        <button type="button" data-pdf-clear-mapping
-                            x-show="expanded"
-                            class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-                            Clear mapping
-                        </button>
-                    </div>
-                </template>
-                <div x-show="!expanded"
-                    class="absolute bottom-0 left-0 right-0 h-16 pdf-collapse-gradient pointer-events-none">
+                    <span class="rounded border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide {% if version.transition_context.is_primary %}border-primary-300 text-primary-700 dark:border-primary-500 dark:text-primary-300{% else %}border-neutral-300 text-neutral-600 dark:border-neutral-600 dark:text-neutral-300{% endif %}">
+                        {% if version.transition_context.is_primary %}Matches query{% else %}Comparison edition{% endif %}
+                    </span>
                 </div>
+                {% include "partials/_result_document_block.html" with result=version %}
             </div>
-            <div class="mt-2 hidden text-xs text-neutral-500 dark:text-neutral-400" data-pdf-warning></div>
-            <div class="flex justify-end mt-1">
-                <button x-show="expanded" @click="expanded = false"
-                    class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-                    Collapse
-                </button>
-                <button x-show="!expanded" @click="expanded = true"
-                    class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-                    Expand section
-                </button>
-            </div>
+            {% endfor %}
         </div>
-        {% elif result.html_content %}
-        <div class="mt-4" x-data="{ expanded: false }">
-            <div class="relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-                :style="{ maxHeight: expanded ? 'none' : '200px' }">
-                <div class="p-4 text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
-                    {{ result.html_content|safe }}
-                </div>
-                <div x-show="!expanded"
-                    class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-neutral-100 dark:from-neutral-800 to-transparent pointer-events-none">
-                </div>
-            </div>
-            <div class="flex justify-end mt-1">
-                <button x-show="expanded" @click="expanded = false"
-                    class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-                    Collapse
-                </button>
-                <button x-show="!expanded" @click="expanded = true"
-                    class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-                    Expand section
-                </button>
-            </div>
-        </div>
-        {% elif result.source_url %}
-        <div></div>
         {% else %}
-        <div
-            class="mt-4 flex items-center p-3 bg-accent-50 dark:bg-accent-900/20 rounded-md border border-accent-200 dark:border-accent-800">
-            <svg class="h-5 w-5 text-accent-400 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24"
-                stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p class="text-xs text-accent-700 dark:text-accent-400">
-                Full text not available for this code edition.
-            </p>
-        </div>
-        {% endif %}
-
-        {% if result.amendments %}
-        <div class="mt-4 text-xs text-danger-500 font-medium">
-            {{ result.amendments|length }} Amendments Apply
-        </div>
-        {% endif %}
-
-        {% if result.notes_html %}
-            <div class="mt-4 border-t border-neutral-200 dark:border-neutral-700 pt-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">Notes</p>
-                <div class="text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
-                    {{ result.notes_html|safe }}
-                </div>
-            </div>
+        {% include "partials/_result_document_block.html" with result=result %}
         {% endif %}
 
         <div class="mt-4 border-t border-neutral-200 dark:border-neutral-700 pt-3" data-result-justification>

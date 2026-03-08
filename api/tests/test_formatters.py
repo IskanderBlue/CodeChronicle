@@ -228,3 +228,66 @@ def test_group_results_keeps_single_child_match_standalone():
     assert len(grouped_results) == 1
     assert grouped_results[0].get("group_type") is None
     assert grouped_results[0]["id"] == "Table-9.10.3.1.-A"
+
+
+def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch):
+    monkeypatch.setattr(
+        formatters,
+        "get_pdf_filename",
+        lambda code_edition, map_code: f"{code_edition}-{map_code}.pdf",
+    )
+    monkeypatch.setattr(formatters, "get_download_url", lambda code_edition: "")
+    monkeypatch.setattr(formatters, "get_source_url", lambda code_edition: "")
+    monkeypatch.setattr(formatters, "_build_code_display_name", lambda code_edition: code_edition)
+    monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results: {})
+
+    formatted_results = formatters.format_search_results(
+        [
+            {
+                "id": "B-3.2.9.",
+                "title": "Fire Separations",
+                "code_edition": "BCBC_2024",
+                "map_code": "BCBC2024",
+                "page": 120,
+                "page_end": 122,
+                "score": 1.0,
+                "transition_context": {
+                    "old_edition": "BCBC_2018",
+                    "new_edition": "BCBC_2024",
+                    "query_date": "2024-06-01",
+                    "new_version_effective_date": "2024-03-08",
+                    "old_version_last_date": "2025-03-09",
+                    "transition_type": "grace_period",
+                    "transition_type_display": "grace period",
+                    "applicability_text": "Applies during overlap.",
+                    "citation_text": "Transition regulation",
+                    "is_primary": True,
+                },
+            },
+            {
+                "id": "B-3.2.9.",
+                "title": "Fire Separations",
+                "code_edition": "BCBC_2018",
+                "map_code": "BCBC2018",
+                "page": 98,
+                "page_end": 101,
+                "score": 0.94,
+                "transition_context": {
+                    "old_edition": "BCBC_2018",
+                    "new_edition": "BCBC_2024",
+                    "query_date": "2024-06-01",
+                    "new_version_effective_date": "2024-03-08",
+                    "old_version_last_date": "2025-03-09",
+                    "transition_type": "grace_period",
+                    "transition_type_display": "grace period",
+                    "applicability_text": "Applies during overlap.",
+                    "citation_text": "Transition regulation",
+                    "is_primary": False,
+                },
+            },
+        ]
+    )
+
+    assert len(formatted_results) == 1
+    assert formatted_results[0]["result_type"] == "transition_compare"
+    assert len(formatted_results[0]["versions"]) == 2

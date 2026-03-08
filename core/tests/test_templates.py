@@ -216,3 +216,56 @@ def test_mixed_grouped_and_standalone_results_render_together():
 
     assert "B-3.2.9" in html
     assert "Table-9.10.3.1.-A" in html
+
+
+def test_transition_compare_card_renders_banner_fields():
+    html = render_to_string(
+        "partials/search_results_partial.html",
+        {
+            "success": True,
+            "meta": {"applicable_codes": ["BCBC_2024"]},
+            "results": [
+                {
+                    "id": "B-3.2.9.",
+                    "title": "Fire Separations",
+                    "score": 1.0,
+                    "code_display_name": "British Columbia Building Code 2024",
+                    "result_type": "transition_compare",
+                    "transition_context": {
+                        "query_date": "2024-06-01",
+                        "new_version_effective_date": "2024-03-08",
+                        "old_version_last_date": "2025-03-09",
+                        "transition_type": "grace_period",
+                        "transition_type_display": "grace period",
+                        "applicability_text": "Applies during overlap.",
+                        "citation_text": "Transition regulation",
+                    },
+                    "versions": [
+                        {
+                            "id": "B-3.2.9.",
+                            "title": "Fire Separations",
+                            "code_display_name": "British Columbia Building Code 2024",
+                            "page": 120,
+                            "page_end": 122,
+                            "transition_context": {"is_primary": True},
+                            "amendments": [],
+                        },
+                        {
+                            "id": "B-3.2.9.",
+                            "title": "Fire Separations",
+                            "code_display_name": "British Columbia Building Code 2018",
+                            "page": 98,
+                            "page_end": 101,
+                            "transition_context": {"is_primary": False},
+                            "amendments": [],
+                        },
+                    ],
+                    "amendments": [],
+                }
+            ],
+        },
+    )
+
+    assert "grace period" in html.lower()
+    assert "Queried date" in html
+    assert "Citation" in html

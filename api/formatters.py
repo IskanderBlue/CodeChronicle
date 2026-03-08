@@ -61,6 +61,8 @@ def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
         "notes_html": result.get("notes_html"),
         "source_url": get_source_url(code_edition),
         "group_type": None,
+        "result_type": None,
+        "transition_context": result.get("transition_context"),
     }
     section_data["amendments"] = get_amendments_for_section(
         str(result.get("id") or ""), code_edition
@@ -204,11 +206,70 @@ def group_formatted_results(
     return output
 
 
+def merge_transition_compare_results(
+    formatted_results: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    transition_groups: Dict[tuple[str, str, str], Dict[str, Dict[str, Any]]] = {}
+    for result in formatted_results:
+        transition_context = result.get("transition_context")
+        if not transition_context or result.get("group_type") == "parent_children":
+            continue
+        key = (
+            str(result.get("id") or ""),
+            str(transition_context.get("new_edition") or ""),
+            str(transition_context.get("old_edition") or ""),
+        )
+        edition = str(result.get("code") or "")
+        transition_groups.setdefault(key, {})[edition] = result
+
+    consumed_keys: set[tuple[str, str, str]] = set()
+    output: List[Dict[str, Any]] = []
+    for result in formatted_results:
+        transition_context = result.get("transition_context")
+        if not transition_context or result.get("group_type") == "parent_children":
+            output.append(result)
+            continue
+
+        key = (
+            str(result.get("id") or ""),
+            str(transition_context.get("new_edition") or ""),
+            str(transition_context.get("old_edition") or ""),
+        )
+        grouped_versions = transition_groups.get(key, {})
+        if key in consumed_keys:
+            continue
+
+        new_version = grouped_versions.get(str(transition_context.get("new_edition") or ""))
+        old_version = grouped_versions.get(str(transition_context.get("old_edition") or ""))
+        if not new_version or not old_version:
+            output.append(result)
+            continue
+
+        consumed_keys.add(key)
+        output.append(
+            {
+                "id": result.get("id"),
+                "title": new_version.get("title")
+                or old_version.get("title")
+                or result.get("title"),
+                "code_display_name": new_version.get("code_display_name")
+                or result.get("code_display_name"),
+                "score": max(new_version.get("score", 0), old_version.get("score", 0)),
+                "result_type": "transition_compare",
+                "transition_context": transition_context,
+                "versions": [new_version, old_version],
+            }
+        )
+
+    return output
+
+
 def format_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Transform raw search results into a format suitable for the frontend."""
     formatted = [_format_single_result(result) for result in results]
     formatted.sort(key=lambda item: item.get("score", 0), reverse=True)
-    return group_formatted_results(formatted)
+    grouped = group_formatted_results(formatted)
+    return merge_transition_compare_results(grouped)
 
 
 def get_amendments_for_section(section_id: str, code_edition: str) -> List[Dict[str, Any]]:
