@@ -5,7 +5,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List
 
-
 TRANSITIONS_PATH = Path(__file__).with_name("transitions.json")
 REQUIRED_FIELDS = {
     "old_edition",

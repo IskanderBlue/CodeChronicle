@@ -5,13 +5,13 @@ Format search results for frontend display.
 import re
 from typing import Any, Dict, Iterable, List, Tuple
 
-from core.models import CodeMapNode
 from config.code_metadata import (
     get_code_display_name,
     get_download_url,
     get_pdf_filename,
     get_source_url,
 )
+from core.models import CodeMapNode
 
 
 def _build_code_display_name(code_edition: str) -> str:
