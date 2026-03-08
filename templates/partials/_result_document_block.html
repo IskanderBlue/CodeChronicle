@@ -146,6 +146,31 @@
 </div>
 {% endif %}
 
+{% if show_browse_link|default:True %}
+<form method="get" action="{% url 'core:viewer_mode' %}" class="mt-4 flex justify-start">
+    {% firstof result.transition_context.query_date result.source_date '' as browse_query_date %}
+    {% firstof result.transition_context.new_edition result.code '' as browse_query_code %}
+    <input type="hidden" name="id" value="{{ result.viewer_node_id|default:result.id }}">
+    <input type="hidden" name="title" value="{{ result.viewer_title|default:result.title }}">
+    <input type="hidden" name="code" value="{{ result.code }}">
+    <input type="hidden" name="code_display_name" value="{{ result.code_display_name }}">
+    <input type="hidden" name="map_code" value="{{ result.map_code }}">
+    <input type="hidden" name="page" value="{{ result.page|default:'' }}">
+    <input type="hidden" name="page_end" value="{{ result.page_end|default:'' }}">
+    <input type="hidden" name="initial_page_top" value="{{ result.initial_page_top|default:'' }}">
+    <input type="hidden" name="final_page_bottom" value="{{ result.final_page_bottom|default:'' }}">
+    <input type="hidden" name="pdf_filename" value="{{ result.pdf_filename|default:'' }}">
+    <input type="hidden" name="pdf_download_url" value="{{ result.pdf_download_url|default:'' }}">
+    <input type="hidden" name="source_url" value="{{ result.source_url|default:'' }}">
+    <input type="hidden" name="query_date" value="{{ browse_query_date }}">
+    <input type="hidden" name="query_code" value="{{ browse_query_code }}">
+    <button type="submit"
+        class="inline-flex items-center rounded border border-primary-300 px-3 py-2 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:border-primary-500 dark:text-primary-300 dark:hover:bg-primary-900/20">
+        Browse in context
+    </button>
+</form>
+{% endif %}
+
 {% if result.amendments %}
 <div class="mt-4 text-xs text-danger-500 font-medium">
     {{ result.amendments|length }} Amendments Apply
