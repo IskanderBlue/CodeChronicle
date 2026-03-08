@@ -1,15 +1,11 @@
 # TODO list
 
 ## General
+- `scripts/extract_keywords.py` only iterates `sections` — also include `tables` keywords when rebuilding the keyword list.
+- Add a "Parsed via OCR; may contain errors." note to PDF-derived table markdown displayed in search results. e-Laws tables (OBC) have exact text and don't need this disclaimer.
 - Implement: https://x.com/ryancarson/status/2016520542723924279
 - Harden static asset versioning/caching: use Django hashed static filenames (Manifest storage), ensure deploy-time `collectstatic`, and keep Cloudflare caching safe for `/static/*`.
 - NBC first.
-- show date-based changes
-  - transition periods
-
-## Ponder
-- Think through how to handle what search UI displays when sections and subsections are both returned (e.g. B-3.2.9 & B-3.2.9.1).
-  - check whether all subsections are returned; if so, display their parent; otherwise, display specific subsections? Can discuss.
 
 
 ## code dating — transition provisions to handle

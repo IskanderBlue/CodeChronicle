@@ -4,6 +4,7 @@ Django Ninja API endpoints for CodeChronicle.
 
 import json
 
+from django.db import connection
 from ninja import NinjaAPI, Schema
 
 from core.ip_utils import extract_client_ip
@@ -41,6 +42,12 @@ class SearchResponse(Schema):
     results: list[dict]
     error: str | None = None
     meta: dict | None = None
+
+
+class HealthResponse(Schema):
+    status: str
+    database: str
+    detail: str | None = None
 
 
 class HistoryItem(Schema):
@@ -146,10 +153,17 @@ def list_codes(request):
     return {"success": True, "results": rows, "error": None}
 
 
-@api.get("/health")
+@api.get("/health", response={200: HealthResponse, 503: HealthResponse})
 def health_check(request):
     """Health check endpoint."""
-    return {"status": "ok"}
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception as exc:
+        return 503, {"status": "error", "database": "unavailable", "detail": str(exc)}
+
+    return {"status": "ok", "database": "ok"}
 
 
 def _extract_search_params_from_request(request) -> dict[str, str | None]:

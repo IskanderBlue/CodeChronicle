@@ -97,6 +97,19 @@ class TestApiEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
+        assert data["database"] == "ok"
+
+    @patch("api.views.connection.cursor")
+    def test_health_returns_503_when_database_is_unavailable(self, mock_cursor):
+        """Health endpoint reports database failures to deploy smoke tests."""
+        mock_cursor.side_effect = RuntimeError("database unavailable")
+
+        response = self.client.get('/api/health')
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["status"] == "error"
+        assert data["database"] == "unavailable"
 
     @patch("services.search_service.parse_user_query", autospec=False)
     @patch("services.search_service.execute_search", autospec=False)
