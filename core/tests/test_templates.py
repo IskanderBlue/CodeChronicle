@@ -70,3 +70,149 @@ def test_search_results_partial_initializes_first_result_as_open_accordion_item(
 
     assert 'activeResult: "3.1.1.1"' in html
     assert html.count('@click="activeResult = ') == 2
+
+
+def test_grouped_result_renders_parent_header_and_children():
+    html = render_to_string(
+        "partials/search_results_partial.html",
+        {
+            "success": True,
+            "meta": {"applicable_codes": ["NBC_2025"]},
+            "results": [
+                {
+                    "id": "B-3.2.9",
+                    "title": "Parent Section",
+                    "score": 0.96,
+                    "code_display_name": "National Building Code 2025",
+                    "group_type": "parent_children",
+                    "child_match_count": 5,
+                    "child_total_count": 5,
+                    "top_scoring_child_id": "B-3.2.9.2",
+                    "active_child": {"id": "B-3.2.9.2", "title": "Closures"},
+                    "children": [
+                        {
+                            "id": "B-3.2.9.1",
+                            "title": "General",
+                            "page": 120,
+                            "page_end": 120,
+                            "is_match": True,
+                            "is_top_scoring": False,
+                        },
+                        {
+                            "id": "B-3.2.9.2",
+                            "title": "Closures",
+                            "page": 121,
+                            "page_end": 121,
+                            "is_match": True,
+                            "is_top_scoring": True,
+                        },
+                    ],
+                    "amendments": [],
+                }
+            ],
+        },
+    )
+
+    assert "B-3.2.9" in html
+    assert "B-3.2.9.1" in html
+    assert "B-3.2.9.2" in html
+    assert "Matching children" in html
+
+
+def test_grouped_result_marks_top_scoring_child():
+    html = render_to_string(
+        "partials/search_results_partial.html",
+        {
+            "success": True,
+            "meta": {"applicable_codes": ["NBC_2025"]},
+            "results": [
+                {
+                    "id": "B-3.2.9",
+                    "title": "Parent Section",
+                    "score": 0.96,
+                    "code_display_name": "National Building Code 2025",
+                    "group_type": "parent_children",
+                    "child_match_count": 2,
+                    "child_total_count": 2,
+                    "top_scoring_child_id": "B-3.2.9.2",
+                    "active_child": {"id": "B-3.2.9.2", "title": "Closures"},
+                    "children": [
+                        {
+                            "id": "B-3.2.9.1",
+                            "title": "General",
+                            "page": 120,
+                            "page_end": 120,
+                            "is_match": True,
+                            "is_top_scoring": False,
+                        },
+                        {
+                            "id": "B-3.2.9.2",
+                            "title": "Closures",
+                            "page": 121,
+                            "page_end": 121,
+                            "is_match": True,
+                            "is_top_scoring": True,
+                        },
+                    ],
+                    "amendments": [],
+                }
+            ],
+        },
+    )
+
+    assert 'data-top-scoring-child="B-3.2.9.2"' in html
+    assert "Top match" in html
+
+
+def test_mixed_grouped_and_standalone_results_render_together():
+    html = render_to_string(
+        "partials/search_results_partial.html",
+        {
+            "success": True,
+            "meta": {"applicable_codes": ["NBC_2025"]},
+            "results": [
+                {
+                    "id": "B-3.2.9",
+                    "title": "Parent Section",
+                    "score": 0.96,
+                    "code_display_name": "National Building Code 2025",
+                    "group_type": "parent_children",
+                    "child_match_count": 2,
+                    "child_total_count": 2,
+                    "top_scoring_child_id": "B-3.2.9.2",
+                    "active_child": {"id": "B-3.2.9.2", "title": "Closures"},
+                    "children": [
+                        {
+                            "id": "B-3.2.9.1",
+                            "title": "General",
+                            "page": 120,
+                            "page_end": 120,
+                            "is_match": True,
+                            "is_top_scoring": False,
+                        },
+                        {
+                            "id": "B-3.2.9.2",
+                            "title": "Closures",
+                            "page": 121,
+                            "page_end": 121,
+                            "is_match": True,
+                            "is_top_scoring": True,
+                        },
+                    ],
+                    "amendments": [],
+                },
+                {
+                    "id": "Table-9.10.3.1.-A",
+                    "title": "Standalone Table",
+                    "score": 0.8,
+                    "code_display_name": "National Building Code 2025",
+                    "page": 130,
+                    "page_end": 131,
+                    "amendments": [],
+                },
+            ],
+        },
+    )
+
+    assert "B-3.2.9" in html
+    assert "Table-9.10.3.1.-A" in html
