@@ -51,7 +51,8 @@ def format_search_results(
             "code_display_name": _build_code_display_name(code_edition),
             "page": page,
             "page_end": page_end,
-            "bbox": result.get("bbox"),
+            "initial_page_top": result.get("initial_page_top"),
+            "final_page_bottom": result.get("final_page_bottom"),
             "score": result.get("score", 0),
             "pdf_filename": pdf_filename,
             "pdf_download_url": get_download_url(code_edition) if pdf_filename else "",
@@ -77,4 +78,3 @@ def get_amendments_for_section(section_id: str, code_edition: str) -> List[Dict[
     Real data would come from the historical metadata or a DB.
     """
     return []
-

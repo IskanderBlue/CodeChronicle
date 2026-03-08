@@ -146,11 +146,10 @@
         }
     }
 
-    function parseBbox(str) {
-        if (!str) return null;
-        const parts = str.split(',').map(Number);
-        if (parts.length !== 4 || parts.some(isNaN)) return null;
-        return { l: parts[0], t: parts[1], r: parts[2], b: parts[3] };
+    function parsePdfFloat(value) {
+        if (value === null || value === undefined || value === '') return null;
+        const parsed = parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : null;
     }
 
     function parsePdfPage(value) {
@@ -214,7 +213,62 @@
         if (!wantsPicker) {
             hideMismatchPrompt(block);
         }
+        renderPageControls(block, mount, wantsPicker);
         setMappedLabel(block);
+    }
+
+    function getResultSpan(container) {
+        if (!container) return null;
+        return {
+            startPage: parsePdfPage(container.getAttribute('data-pdf-page')),
+            endPage: parsePdfPage(container.getAttribute('data-pdf-page-end')),
+            initialPageTop: parsePdfFloat(container.getAttribute('data-pdf-initial-page-top')),
+            finalPageBottom: parsePdfFloat(container.getAttribute('data-pdf-final-page-bottom')),
+        };
+    }
+
+    function getCurrentResultPage(block, span) {
+        const fallback = span?.startPage || 1;
+        const current = parsePdfPage(block?.dataset.currentPage || fallback);
+        if (!span) return current;
+        return Math.min(Math.max(current, span.startPage), span.endPage);
+    }
+
+    function renderPageControls(block, mount, wantsPicker) {
+        const container = block.querySelector('[data-pdf-container]');
+        const span = getResultSpan(container);
+        if (!span || wantsPicker) return;
+
+        const currentPage = getCurrentResultPage(block, span);
+        block.dataset.currentPage = String(currentPage);
+
+        const nav = document.createElement('div');
+        nav.className = 'mt-3 flex items-center justify-between gap-2 border-t border-neutral-200 pt-3 text-xs dark:border-neutral-700';
+
+        const prevButton = document.createElement('button');
+        prevButton.type = 'button';
+        prevButton.dataset.pdfPrevPage = 'true';
+        prevButton.className = 'inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-200 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed';
+        prevButton.textContent = 'Previous page';
+        prevButton.disabled = currentPage <= span.startPage;
+
+        const label = document.createElement('p');
+        label.className = 'text-neutral-500 dark:text-neutral-400';
+        label.textContent = span.startPage === span.endPage
+            ? `Page ${currentPage}`
+            : `Page ${currentPage} of ${span.startPage}-${span.endPage}`;
+
+        const nextButton = document.createElement('button');
+        nextButton.type = 'button';
+        nextButton.dataset.pdfNextPage = 'true';
+        nextButton.className = prevButton.className;
+        nextButton.textContent = 'Next page';
+        nextButton.disabled = currentPage >= span.endPage;
+
+        nav.appendChild(prevButton);
+        nav.appendChild(label);
+        nav.appendChild(nextButton);
+        mount.appendChild(nav);
     }
 
     function showUnmappedState(container) {
@@ -233,7 +287,7 @@
         return pdfDocumentCache.get(cacheKey);
     }
 
-    async function renderPdfPage(container, expectedFilename, pageNum, bbox) {
+    async function renderPdfPage(container, expectedFilename, pageNum, span) {
         try {
             const pdf = await loadPdfForExpectedFilename(expectedFilename);
             if (!pdf) {
@@ -253,30 +307,23 @@
             const pageWidth = unscaledViewport.width;
             const pageHeight = unscaledViewport.height;
 
-            // Detect two-page spread: aspect ratio > 1.4 (landscape)
-            const isSpread = pageWidth / pageHeight > 1.4;
-            let cropOffsetX = 0;
-            let logicalWidth = pageWidth;
-
-            if (isSpread && bbox) {
-                const midpoint = pageWidth / 2;
-                logicalWidth = pageWidth / 2;
-                if (bbox.l >= midpoint) {
-                    cropOffsetX = midpoint;
-                }
-            } else if (isSpread) {
-                logicalWidth = pageWidth / 2;
-            }
-
-            const scale = containerWidth / logicalWidth;
+            const scale = containerWidth / pageWidth;
             const viewport = page.getViewport({ scale });
+
+            const isFirstPage = span && pageNum === span.startPage;
+            const isLastPage = span && pageNum === span.endPage;
+            const topBoundary = isFirstPage ? span.initialPageTop : null;
+            const bottomBoundary = isLastPage ? span.finalPageBottom : null;
+            const topClip = topBoundary === null ? 0 : Math.max(0, (pageHeight - topBoundary) * scale);
+            const bottomClip = bottomBoundary === null ? 0 : Math.max(0, bottomBoundary * scale);
+            const visibleHeight = Math.max(40, viewport.height - topClip - bottomClip);
 
             // Create wrapper – sized to show only the logical page
             const wrapper = document.createElement('div');
             wrapper.className = 'pdf-page';
             wrapper.style.position = 'relative';
-            wrapper.style.width = (logicalWidth * scale) + 'px';
-            wrapper.style.height = viewport.height + 'px';
+            wrapper.style.width = viewport.width + 'px';
+            wrapper.style.height = visibleHeight + 'px';
             wrapper.style.overflow = 'hidden';
 
             // Canvas for rendering – full spread rendered, then shifted
@@ -286,8 +333,8 @@
             canvas.height = Math.floor(viewport.height * dpr);
             canvas.style.width = viewport.width + 'px';
             canvas.style.height = viewport.height + 'px';
-            if (cropOffsetX > 0) {
-                canvas.style.marginLeft = -(cropOffsetX * scale) + 'px';
+            if (topClip > 0) {
+                canvas.style.marginTop = -topClip + 'px';
             }
             wrapper.appendChild(canvas);
 
@@ -295,29 +342,13 @@
             ctx.scale(dpr, dpr);
             await page.render({ canvasContext: ctx, viewport }).promise;
 
-            // Highlight bbox region and offset to focus on it
-            if (bbox) {
-                const x = (bbox.l - cropOffsetX) * scale;
-                const y = (pageHeight - bbox.t) * scale;
-                const w = (bbox.r - bbox.l) * scale;
-                const h = (bbox.t - bbox.b) * scale;
-
-                const highlight = document.createElement('div');
-                highlight.className = 'pdf-bbox-highlight';
-                highlight.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
-                wrapper.appendChild(highlight);
-
-                const offset = Math.max(0, y - 10);
-                wrapper.style.marginTop = -offset + 'px';
-            }
-
             // Text layer for selection
             const textContent = await page.getTextContent();
             const textLayerDiv = document.createElement('div');
             textLayerDiv.className = 'textLayer';
             textLayerDiv.style.setProperty('--scale-factor', scale);
-            if (cropOffsetX > 0) {
-                textLayerDiv.style.left = -(cropOffsetX * scale) + 'px';
+            if (topClip > 0) {
+                textLayerDiv.style.top = -topClip + 'px';
             }
             wrapper.appendChild(textLayerDiv);
 
@@ -361,9 +392,10 @@
     async function renderContainer(container) {
         if (!container) return;
         const expectedFilename = container.getAttribute('data-pdf-expected-filename') || '';
-        const page = parsePdfPage(container.getAttribute('data-pdf-page'));
-        const bbox = parseBbox(container.getAttribute('data-pdf-bbox'));
-        await renderPdfPage(container, expectedFilename, page, bbox);
+        const span = getResultSpan(container);
+        const block = container.closest('[data-pdf-block]');
+        const page = getCurrentResultPage(block, span);
+        await renderPdfPage(container, expectedFilename, page, span);
     }
 
     async function handleFileCandidate(block, file, forceOverride = false) {
@@ -431,6 +463,20 @@
             }
             if (button.matches('[data-pdf-show-picker]')) {
                 renderBlockControls(block, 'picker');
+                return;
+            }
+            if (button.matches('[data-pdf-prev-page]')) {
+                const span = getResultSpan(container);
+                if (!span) return;
+                block.dataset.currentPage = String(Math.max(span.startPage, getCurrentResultPage(block, span) - 1));
+                await renderContainer(container);
+                return;
+            }
+            if (button.matches('[data-pdf-next-page]')) {
+                const span = getResultSpan(container);
+                if (!span) return;
+                block.dataset.currentPage = String(Math.min(span.endPage, getCurrentResultPage(block, span) + 1));
+                await renderContainer(container);
             }
         });
 
@@ -576,13 +622,6 @@
 
     .pdf-page .textLayer ::selection {
         background: rgba(0, 100, 200, 0.4);
-    }
-
-    .pdf-bbox-highlight {
-        background: rgba(14, 165, 133, 0.08);
-        border: 2px solid rgba(14, 165, 133, 0.4);
-        border-radius: 2px;
-        pointer-events: none;
     }
 
     .pdf-collapse-gradient {

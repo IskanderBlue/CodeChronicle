@@ -10,29 +10,43 @@
     </p>
 </div>
 
+<div x-data='{ activeResult: {% if results %}"{{ results.0.id|escapejs }}"{% else %}null{% endif %} }' class="space-y-4" data-results-accordion>
 {% for result in results %}
 <div
-    class="bg-neutral-100 dark:bg-neutral-800 shadow rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 hover:border-primary-300 dark:hover:border-primary-500 transition-colors">
-    <div class="px-4 py-5 sm:p-6">
-        <!-- Row 1: Code display name + score badge -->
-        <div class="flex justify-between items-start">
+    class="bg-neutral-100 dark:bg-neutral-800 shadow rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 transition-colors"
+    :class="activeResult === '{{ result.id|escapejs }}' ? 'border-primary-400 dark:border-primary-500' : 'hover:border-primary-300 dark:hover:border-primary-500'">
+    <button type="button" class="w-full px-4 py-5 text-left sm:p-6" @click="activeResult = '{{ result.id|escapejs }}'">
+        <div class="flex justify-between items-start gap-4">
             <div>
                 <p class="text-sm text-primary-600 dark:text-primary-400 font-medium">
                     {{ result.code_display_name }}
                 </p>
+                <h3 class="mt-2 text-lg font-bold text-neutral-900 dark:text-white">
+                    {{ result.id }} &mdash; {{ result.title }}
+                </h3>
+                {% if result.source_url %}
+                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">View on e-Laws</p>
+                {% elif result.page %}
+                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                    {% if result.page_end and result.page_end != result.page %}
+                    Pages {{ result.page }}&ndash;{{ result.page_end }}
+                    {% else %}
+                    Page {{ result.page }}
+                    {% endif %}
+                </p>
+                {% endif %}
             </div>
-            <span
-                class="bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-medium px-2.5 py-0.5 rounded border border-neutral-300 dark:border-neutral-600">
-                Score: {{ result.score|floatformat:2 }}
-            </span>
+            <div class="flex flex-col items-end gap-2">
+                <span
+                    class="bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-medium px-2.5 py-0.5 rounded border border-neutral-300 dark:border-neutral-600">
+                    Score: {{ result.score|floatformat:2 }}
+                </span>
+                <span class="text-xs text-primary-600 dark:text-primary-400 font-medium" x-text="activeResult === '{{ result.id|escapejs }}' ? 'Open' : 'Expand'"></span>
+            </div>
         </div>
+    </button>
 
-        <!-- Row 2: Section ID & title -->
-        <h3 class="mt-2 text-lg font-bold text-neutral-900 dark:text-white">
-            {{ result.id }} &mdash; {{ result.title }}
-        </h3>
-
-        <!-- Row 3: Page range or e-Laws link -->
+    <div class="px-4 pb-5 sm:px-6 sm:pb-6" x-show="activeResult === '{{ result.id|escapejs }}'">
         {% if result.source_url %}
         <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
             <a href="{{ result.source_url }}" target="_blank" rel="noopener noreferrer"
@@ -44,24 +58,17 @@
                 View on e-Laws
             </a>
         </p>
-        {% elif result.page %}
-        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-            {% if result.page_end and result.page_end != result.page %}
-            Pages {{ result.page }}&ndash;{{ result.page_end }}
-            {% else %}
-            Page {{ result.page }}
-            {% endif %}
-        </p>
         {% endif %}
 
-        <!-- Row 4: PDF inline / HTML content / Warning -->
         {% if result.pdf_filename %}
         <div class="mt-4" x-data="{ expanded: false }" data-pdf-block>
             <div class="pdf-clip relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
                 :style="{ maxHeight: expanded ? 'none' : '200px' }">
                 <div data-pdf-container data-pdf-expected-filename="{{ result.pdf_filename }}"
                     data-pdf-page="{{ result.page|default:'1' }}"
-                    {% if result.bbox %}data-pdf-bbox="{{ result.bbox.l }},{{ result.bbox.t }},{{ result.bbox.r }},{{ result.bbox.b }}"{% endif %}
+                    data-pdf-page-end="{{ result.page_end|default:result.page|default:'1' }}"
+                    {% if result.initial_page_top or result.initial_page_top == 0 %}data-pdf-initial-page-top="{{ result.initial_page_top }}"{% endif %}
+                    {% if result.final_page_bottom or result.final_page_bottom == 0 %}data-pdf-final-page-bottom="{{ result.final_page_bottom }}"{% endif %}
                     class="hidden w-full bg-neutral-200 dark:bg-neutral-900 min-h-[100px]"></div>
                 {% if result.html_content %}
                 <div
@@ -195,16 +202,27 @@
         {% endif %}
 
         {% if result.notes_html %}
-        <div class="mt-4 border-t border-neutral-200 dark:border-neutral-700 pt-3">
-            <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">Notes</p>
-            <div class="text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
-                {{ result.notes_html|safe }}
+            <div class="mt-4 border-t border-neutral-200 dark:border-neutral-700 pt-3">
+                <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">Notes</p>
+                <div class="text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
+                    {{ result.notes_html|safe }}
+                </div>
             </div>
-        </div>
         {% endif %}
+
+        <div class="mt-4 border-t border-neutral-200 dark:border-neutral-700 pt-3" data-result-justification>
+            <button type="button"
+                class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                Result justification
+            </button>
+            <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+                Scoring details are not shown yet.
+            </p>
+        </div>
     </div>
 </div>
 {% endfor %}
+</div>
 
 {% if not results %}
 <div

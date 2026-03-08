@@ -56,7 +56,8 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
                 results = search_response.get("results", [])
 
                 # Build lookups from DB (search_code doesn't return these)
-                bbox_lookup: Dict[str, Any] = {}
+                initial_page_top_lookup: Dict[str, float] = {}
+                final_page_bottom_lookup: Dict[str, float] = {}
                 html_lookup: Dict[str, str] = {}
                 notes_html_lookup: Dict[str, str] = {}
                 result_ids = [r.get("id") for r in results if r.get("id")]
@@ -64,11 +65,19 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
                     nodes = CodeMapNode.objects.filter(
                         code_map__map_code=map_code,
                         node_id__in=result_ids,
-                    ).values("node_id", "bbox", "html", "notes_html")
+                    ).values(
+                        "node_id",
+                        "initial_page_top",
+                        "final_page_bottom",
+                        "html",
+                        "notes_html",
+                    )
                     for node in nodes:
                         node_id = node["node_id"]
-                        if node.get("bbox"):
-                            bbox_lookup[node_id] = node["bbox"]
+                        if node.get("initial_page_top") is not None:
+                            initial_page_top_lookup[node_id] = node["initial_page_top"]
+                        if node.get("final_page_bottom") is not None:
+                            final_page_bottom_lookup[node_id] = node["final_page_bottom"]
                         if node.get("html"):
                             html_lookup[node_id] = node["html"]
                         if node.get("notes_html"):
@@ -79,7 +88,8 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
                     result["code_edition"] = code_name
                     result["map_code"] = map_code
                     result["source_date"] = search_date.isoformat()
-                    result["bbox"] = bbox_lookup.get(result.get("id"))
+                    result["initial_page_top"] = initial_page_top_lookup.get(result.get("id"))
+                    result["final_page_bottom"] = final_page_bottom_lookup.get(result.get("id"))
                     result["html_content"] = html_lookup.get(result.get("id"))
                     result["notes_html"] = notes_html_lookup.get(result.get("id"))
 

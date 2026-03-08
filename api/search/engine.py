@@ -100,7 +100,15 @@ def _search_code_db(
     candidates = (
         CodeMapNode.objects.filter(code_map__map_code=map_code)
         .filter(criteria)
-        .only("node_id", "title", "page", "page_end", "keywords")
+        .only(
+            "node_id",
+            "title",
+            "page",
+            "page_end",
+            "initial_page_top",
+            "final_page_bottom",
+            "keywords",
+        )
     )
 
     results: list[dict[str, Any]] = []
@@ -153,6 +161,8 @@ def _search_code_db(
                 "title": title,
                 "page": node.page,
                 "page_end": node.page_end,
+                "initial_page_top": node.initial_page_top,
+                "final_page_bottom": node.final_page_bottom,
                 "score": round(score, 3),
             }
             if match_type:

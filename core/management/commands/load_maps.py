@@ -24,6 +24,29 @@ def _render_markdown(content: Optional[str]) -> Optional[str]:
     return md.markdown(content, extensions=["tables", "fenced_code"])
 
 
+def _coerce_float(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_span_bounds(entry: dict) -> tuple[Optional[float], Optional[float]]:
+    initial_page_top = _coerce_float(entry.get("initial_page_top"))
+    final_page_bottom = _coerce_float(entry.get("final_page_bottom"))
+
+    legacy_bbox = entry.get("bbox")
+    if isinstance(legacy_bbox, dict):
+        if initial_page_top is None:
+            initial_page_top = _coerce_float(legacy_bbox.get("t"))
+        if final_page_bottom is None:
+            final_page_bottom = _coerce_float(legacy_bbox.get("b"))
+
+    return initial_page_top, final_page_bottom
+
+
 def _find_code_name_for_map_code(map_code: str) -> Optional[str]:
     edition = (
         CodeEdition.objects.filter(map_codes__contains=[map_code])
@@ -114,6 +137,7 @@ class Command(BaseCommand):
                     node_id = section.get("id")
                     if not node_id:
                         continue
+                    initial_page_top, final_page_bottom = _extract_span_bounds(section)
                     keywords = section.get("keywords")
                     if not isinstance(keywords, list):
                         keywords = None
@@ -129,10 +153,11 @@ class Command(BaseCommand):
                             title=section.get("title", ""),
                             page=section.get("page"),
                             page_end=section.get("page_end"),
+                            initial_page_top=initial_page_top,
+                            final_page_bottom=final_page_bottom,
                             html=rendered_html,
                             notes_html=section.get("notes_html"),
                             keywords=keywords,
-                            bbox=section.get("bbox"),
                             parent_id=section.get("parent_id"),
                         )
                         continue
@@ -144,12 +169,14 @@ class Command(BaseCommand):
                         existing.page = section.get("page")
                     if existing.page_end is None and section.get("page_end") is not None:
                         existing.page_end = section.get("page_end")
+                    if existing.initial_page_top is None and initial_page_top is not None:
+                        existing.initial_page_top = initial_page_top
+                    if existing.final_page_bottom is None and final_page_bottom is not None:
+                        existing.final_page_bottom = final_page_bottom
                     if not existing.html and rendered_html:
                         existing.html = rendered_html
                     if not existing.notes_html and section.get("notes_html"):
                         existing.notes_html = section.get("notes_html")
-                    if existing.bbox is None and section.get("bbox") is not None:
-                        existing.bbox = section.get("bbox")
                     if not existing.parent_id and section.get("parent_id"):
                         existing.parent_id = section.get("parent_id")
                     if keywords:
