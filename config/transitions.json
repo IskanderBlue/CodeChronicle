@@ -1,0 +1,47 @@
+[
+  {
+    "old_edition": "BCBC_2018",
+    "new_edition": "BCBC_2024",
+    "overlap_start": "2024-03-08",
+    "overlap_end": "2025-03-09",
+    "transition_type": "in_stream_project",
+    "applicability_text": "2018 earthquake design and adaptable dwelling unit requirements may continue for permits applied for until 2025-03-09; certain in-stream projects remain exempt.",
+    "citation_text": "BCBC 2024 transition provisions for earthquake design and adaptable dwelling units"
+  },
+  {
+    "old_edition": "QCC_Building_2015",
+    "new_edition": "QCC_Building_2020",
+    "overlap_start": "2025-04-17",
+    "overlap_end": "2026-10-17",
+    "transition_type": "grace_period",
+    "applicability_text": "Chapter I as it read on 2025-04-16 may still apply when covered work begins before 2026-10-17.",
+    "citation_text": "Order in Council 437-2025, 2025 G.O. 2, 994"
+  },
+  {
+    "old_edition": "QECB_2015",
+    "new_edition": "QECB_2020",
+    "overlap_start": "2024-07-13",
+    "overlap_end": "2025-01-13",
+    "transition_type": "grace_period",
+    "applicability_text": "Chapter I.1 as it read on 2024-07-12 may still apply to work covered by sections 1.1.2 and 1.1.3 when work begins before 2025-01-13.",
+    "citation_text": "Order in Council 850-2024, 2024 G.O. 2, 1868"
+  },
+  {
+    "old_edition": "QPC_2015",
+    "new_edition": "QPC_2020",
+    "overlap_start": "2024-07-11",
+    "overlap_end": "2025-01-11",
+    "transition_type": "grace_period",
+    "applicability_text": "Chapter III as it read on 2024-07-10 may still apply to plumbing work that begins before 2025-01-11.",
+    "citation_text": "Order in Council 983-2024, 2024 G.O. 2, 2635, amended by Order in Council 1071-2024, 2024 G.O. 2, 3129"
+  },
+  {
+    "old_edition": "QSC_2015",
+    "new_edition": "QSC_2020",
+    "overlap_start": "2025-04-17",
+    "overlap_end": "2026-10-17",
+    "transition_type": "phased_coming_into_force",
+    "applicability_text": "Chapter VIII as it read on 2025-04-16 may still apply before 2026-10-17, while some provisions come into force later on separate dates.",
+    "citation_text": "Order in Council 438-2025, 2025 G.O. 2, 1175"
+  }
+]
