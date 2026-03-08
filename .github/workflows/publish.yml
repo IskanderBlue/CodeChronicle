@@ -119,7 +119,7 @@ jobs:
             --project "${{ vars.GCP_PROJECT_ID }}" \
             --zone "${{ vars.GCP_ZONE }}" \
             --tunnel-through-iap \
-            --command "sudo /home/codechroniclenet/deploy-web.sh ghcr.io/iskanderblue/codechroniclenet:${DEPLOY_TAG}"
+            --command "sudo bash /home/codechroniclenet/deploy-web.sh ghcr.io/iskanderblue/codechroniclenet:${DEPLOY_TAG}"
 
       - name: Smoke test production health endpoint
         run: |
