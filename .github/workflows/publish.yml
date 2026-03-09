@@ -67,9 +67,9 @@ jobs:
         env:
           DJANGO_SETTINGS_MODULE: code_chronicle.settings.production
           ALLOWED_HOSTS: app.codechronicle.ca,codechronicle.ca,localhost
-          SECRET_KEY: ci-secret-key-0123456789abcdefghijklmnopqrstuvwxyz-ABCDEFG
           DEBUG: "False"
         run: |
+          set SECRET_KEY=check-only-secret-key-%GITHUB_RUN_ID%-%GITHUB_SHA%
           python manage.py check
           python manage.py check --deploy --fail-level WARNING
 
@@ -104,6 +104,9 @@ jobs:
       DEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_tag || github.sha }}
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -119,7 +122,7 @@ jobs:
             --project "${{ vars.GCP_PROJECT_ID }}" \
             --zone "${{ vars.GCP_ZONE }}" \
             --tunnel-through-iap \
-            --command "sudo /home/codechroniclenet/deploy-web.sh ghcr.io/iskanderblue/codechroniclenet:${DEPLOY_TAG}"
+            --command "sudo bash /home/codechroniclenet/deploy-web.sh ghcr.io/iskanderblue/codechroniclenet:${DEPLOY_TAG}"
 
       - name: Smoke test production health endpoint
         run: |
