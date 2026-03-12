@@ -489,6 +489,8 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
                         const wrapper = await buildPageElement(pdf, p, slotWidth, { highlight });
                         slot.innerHTML = '';
                         slot.appendChild(wrapper);
+                        // Adjust slot to actual page height (may differ from page-1 estimate)
+                        slot.style.height = 'auto';
                     } catch (err) {
                         console.error(`Failed to render page ${p}:`, err);
                     }
