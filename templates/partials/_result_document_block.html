@@ -146,11 +146,11 @@
 </div>
 {% endif %}
 
-{% if show_browse_link|default:True %}
+{% if show_browse_link|default:True and result.pdf_filename %}
 {% firstof result.transition_context.query_date result.source_date '' as browse_query_date %}
 {% firstof result.transition_context.new_edition result.code '' as browse_query_code %}
-<div class="mt-4 flex justify-start{% if result.pdf_filename and not result.source_url %} hidden{% endif %}"
-    {% if result.pdf_filename and not result.source_url %}data-browse-expected-filename="{{ result.pdf_filename }}"{% endif %}>
+<div class="mt-4 flex justify-start{% if not result.source_url %} hidden{% endif %}"
+    {% if not result.source_url %}data-browse-expected-filename="{{ result.pdf_filename }}"{% endif %}>
     <button type="button"
         data-viewer-open
         data-viewer-result='{"id":"{{ result.viewer_node_id|default:result.id|escapejs }}","title":"{{ result.viewer_title|default:result.title|escapejs }}","code":"{{ result.code|escapejs }}","code_display_name":"{{ result.code_display_name|escapejs }}","map_code":"{{ result.map_code|escapejs }}","page":{% if result.page %}{{ result.page }}{% else %}null{% endif %},"page_end":{% if result.page_end %}{{ result.page_end }}{% else %}null{% endif %},"initial_page_top":{% if result.initial_page_top or result.initial_page_top == 0 %}{{ result.initial_page_top }}{% else %}null{% endif %},"final_page_bottom":{% if result.final_page_bottom or result.final_page_bottom == 0 %}{{ result.final_page_bottom }}{% else %}null{% endif %},"pdf_filename":"{{ result.pdf_filename|default:""|escapejs }}","pdf_download_url":"{{ result.pdf_download_url|default:""|escapejs }}","source_url":"{{ result.source_url|default:""|escapejs }}","query_date":"{{ browse_query_date|escapejs }}","query_code":"{{ browse_query_code|escapejs }}"}'
