@@ -418,7 +418,7 @@
         if (!btn) return;
         try {
             const result = JSON.parse(btn.getAttribute('data-edition-result'));
-            document.dispatchEvent(new CustomEvent('viewer-edition-update', { detail: result }));
+            window.dispatchEvent(new CustomEvent('viewer-edition-update', { detail: result }));
         } catch (err) {
             console.error('Could not parse edition result data:', err);
         }

@@ -67,9 +67,9 @@ jobs:
         env:
           DJANGO_SETTINGS_MODULE: code_chronicle.settings.production
           ALLOWED_HOSTS: app.codechronicle.ca,codechronicle.ca,localhost
+          SECRET_KEY: ci-for-check-only-secret-key-0123456789abcdefghijklmnopqrstuvwxyz-ABCDEFG
           DEBUG: "False"
         run: |
-          set SECRET_KEY=check-only-secret-key-%GITHUB_RUN_ID%-%GITHUB_SHA%
           python manage.py check
           python manage.py check --deploy --fail-level WARNING
 
