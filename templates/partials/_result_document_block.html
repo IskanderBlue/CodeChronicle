@@ -1,0 +1,178 @@
+{% if result.pdf_filename %}
+<div class="mt-4" {% if not shared_expand %}x-data="{ expanded: false }"{% endif %} data-pdf-block>
+    <div class="pdf-clip relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
+        :style="{ maxHeight: expanded ? 'none' : '200px' }">
+        <div data-pdf-container data-pdf-expected-filename="{{ result.pdf_filename }}"
+            data-pdf-page="{{ result.page|default:'1' }}"
+            data-pdf-page-end="{{ result.page_end|default:result.page|default:'1' }}"
+            {% if result.initial_page_top or result.initial_page_top == 0 %}data-pdf-initial-page-top="{{ result.initial_page_top }}"{% endif %}
+            {% if result.final_page_bottom or result.final_page_bottom == 0 %}data-pdf-final-page-bottom="{{ result.final_page_bottom }}"{% endif %}
+            class="hidden w-full bg-neutral-200 dark:bg-neutral-900 min-h-[100px]"></div>
+        {% if result.html_content %}
+        <div
+            class="p-4 text-neutral-700 dark:text-neutral-300 text-sm prose dark:prose-invert prose-primary max-w-none markdown-content"
+            data-pdf-fallback>
+            {{ result.html_content|safe }}
+        </div>
+        {% endif %}
+        <div class="border-t border-neutral-200 dark:border-neutral-700 p-3 bg-neutral-100 dark:bg-neutral-800"
+            data-pdf-controls-mount></div>
+        <template data-pdf-picker-template>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                Expected PDF:
+                {% if result.pdf_download_url %}
+                <a class="font-mono text-xs text-primary-600 dark:text-primary-400 underline font-medium"
+                    href="{{ result.pdf_download_url }}" target="_blank" rel="noopener noreferrer">
+                    {{ result.pdf_filename }}
+                </a>
+                {% else %}
+                <code class="font-mono text-xs">{{ result.pdf_filename }}</code>
+                {% endif %}
+            </p>
+            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400" data-pdf-mapped-label>
+                Not mapped yet.
+            </p>
+            <p class="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                Local only. File stays in your browser and is not uploaded.
+            </p>
+            <div class="flex flex-wrap gap-2">
+                <label
+                    class="mt-2 inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-primary-300 text-primary-700 dark:border-primary-500 dark:text-primary-300 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                    Choose PDF
+                    <input type="file" accept="application/pdf" class="hidden" data-pdf-file-input>
+                </label>
+                <button type="button" data-pdf-clear-mapping
+                    class="mt-2 inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
+                    Clear mapping
+                </button>
+            </div>
+            <div data-pdf-dropzone
+                class="mt-2 min-h-[70px] rounded border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">
+                Drop a PDF here
+            </div>
+            <div class="mt-2 hidden rounded border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+                data-pdf-mismatch>
+                <p data-pdf-mismatch-text></p>
+                <div class="mt-2 flex gap-2">
+                    <button type="button" data-pdf-override-mapping
+                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40">
+                        Use selected file
+                    </button>
+                    <button type="button" data-pdf-cancel-mapping
+                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </template>
+        <template data-pdf-mapped-template>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" data-pdf-show-picker
+                    x-show="expanded"
+                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
+                    Change mapping
+                </button>
+                <button type="button" data-pdf-clear-mapping
+                    x-show="expanded"
+                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
+                    Clear mapping
+                </button>
+            </div>
+        </template>
+        <div x-show="!expanded"
+            class="absolute bottom-0 left-0 right-0 h-16 pdf-collapse-gradient pointer-events-none">
+        </div>
+    </div>
+    <div class="mt-2 hidden text-xs text-neutral-500 dark:text-neutral-400" data-pdf-warning></div>
+    <div class="flex justify-end mt-1">
+        <button x-show="expanded" @click="expanded = false"
+            class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
+            Collapse
+        </button>
+        <button x-show="!expanded" @click="expanded = true"
+            class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
+            Expand provision
+        </button>
+    </div>
+</div>
+{% elif result.html_content %}
+<div class="mt-4" {% if not shared_expand %}x-data="{ expanded: false, showDiff: true }"{% endif %}>
+    <div class="relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
+        :style="{ maxHeight: expanded ? 'none' : '200px' }">
+        {% if result.diff_html %}
+        <div x-show="showDiff" class="p-4 text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
+            {{ result.diff_html|safe }}
+        </div>
+        <div x-show="!showDiff" class="p-4 text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
+            {{ result.html_content|safe }}
+        </div>
+        {% else %}
+        <div class="p-4 text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
+            {{ result.html_content|safe }}
+        </div>
+        {% endif %}
+        <div x-show="!expanded"
+            class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-neutral-100 dark:from-neutral-800 to-transparent pointer-events-none">
+        </div>
+    </div>
+    <div class="flex justify-end gap-3 mt-1">
+        {% if result.diff_html %}
+        <button @click="showDiff = !showDiff"
+            class="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 font-medium"
+            x-text="showDiff ? 'Show original' : 'Show diff'">
+        </button>
+        {% endif %}
+        <button x-show="expanded" @click="expanded = false"
+            class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
+            Collapse
+        </button>
+        <button x-show="!expanded" @click="expanded = true"
+            class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
+            Expand provision
+        </button>
+    </div>
+</div>
+{% elif result.source_url %}
+<div></div>
+{% else %}
+<div
+    class="mt-4 flex items-center p-3 bg-accent-50 dark:bg-accent-900/20 rounded-md border border-accent-200 dark:border-accent-800">
+    <svg class="h-5 w-5 text-accent-400 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24"
+        stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <p class="text-xs text-accent-700 dark:text-accent-400">
+        Full text not available for this code edition.
+    </p>
+</div>
+{% endif %}
+
+{% if show_browse_link|default:True and result.pdf_filename or result.html_content %}
+{% firstof result.transition_context.query_date result.source_date '' as browse_query_date %}
+{% firstof result.transition_context.new_edition result.code '' as browse_query_code %}
+<div class="mt-4 flex justify-start{% if not result.source_url %} hidden{% endif %}"
+    {% if not result.source_url %}data-browse-expected-filename="{{ result.pdf_filename }}"{% endif %}>
+    <button type="button"
+        data-viewer-open
+        data-viewer-result='{"id":"{{ result.viewer_node_id|default:result.id|escapejs }}","title":"{{ result.viewer_title|default:result.title|escapejs }}","code":"{{ result.code|escapejs }}","code_display_name":"{{ result.code_display_name|escapejs }}","map_code":"{{ result.map_code|escapejs }}","page":{% if result.page %}{{ result.page }}{% else %}null{% endif %},"page_end":{% if result.page_end %}{{ result.page_end }}{% else %}null{% endif %},"initial_page_top":{% if result.initial_page_top or result.initial_page_top == 0 %}{{ result.initial_page_top }}{% else %}null{% endif %},"final_page_bottom":{% if result.final_page_bottom or result.final_page_bottom == 0 %}{{ result.final_page_bottom }}{% else %}null{% endif %},"pdf_filename":"{{ result.pdf_filename|default:""|escapejs }}","pdf_download_url":"{{ result.pdf_download_url|default:""|escapejs }}","source_url":"{{ result.source_url|default:""|escapejs }}","query_date":"{{ browse_query_date|escapejs }}","query_code":"{{ browse_query_code|escapejs }}","fragment":"section-{{ result.id|slugify }}"}'
+        class="inline-flex items-center rounded border border-primary-300 px-3 py-2 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:border-primary-500 dark:text-primary-300 dark:hover:bg-primary-900/20">
+        Browse in context
+    </button>
+</div>
+{% endif %}
+
+{% if result.amendments %}
+<div class="mt-4 text-xs text-danger-500 font-medium">
+    {{ result.amendments|length }} Amendments Apply
+</div>
+{% endif %}
+
+{% if result.notes_html %}
+<div class="mt-4 border-t border-neutral-200 dark:border-neutral-700 pt-3">
+    <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">Notes</p>
+    <div class="text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
+        {{ result.notes_html|safe }}
+    </div>
+</div>
+{% endif %}

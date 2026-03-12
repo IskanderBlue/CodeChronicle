@@ -104,6 +104,9 @@ jobs:
       DEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_tag || github.sha }}
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:

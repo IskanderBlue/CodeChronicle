@@ -1,0 +1,26 @@
+{% if edition.effective_date %}
+<div class="space-y-2 text-sm text-neutral-700 dark:text-neutral-300">
+    <div class="flex flex-wrap gap-x-4 gap-y-1">
+        <p><span class="font-semibold">Effective:</span> {{ edition.effective_date }}</p>
+        {% if edition.superseded_date %}
+        <p><span class="font-semibold">Superseded:</span> {{ edition.superseded_date }}</p>
+        {% else %}
+        <p><span class="font-semibold">Status:</span> Current</p>
+        {% endif %}
+    </div>
+    {% for t in edition.transitions %}
+    <div class="opacity-50">
+        <p class="text-xs">
+            <span class="font-semibold">{{ t.transition_type|title }}:</span>
+            {% if t.old_edition == edition.code_name %}
+            lingering validity {{ t.overlap_start }} &ndash; {{ t.overlap_end }} (superseded by {{ t.new_edition }})
+            {% else %}
+            overlap {{ t.overlap_start }} &ndash; {{ t.overlap_end }} (supersedes {{ t.old_edition }})
+            {% endif %}
+        </p>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-xs text-neutral-400 dark:text-neutral-500">No edition date information available.</p>
+{% endif %}

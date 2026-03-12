@@ -16,6 +16,9 @@ SECTION_REF_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Matches YYYY-MM-DD, YYYY/MM/DD, or bare 4-digit years (1900–2099)
+_DATE_LIKE_RE = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|\b(19|20)\d{2}\b")
+
 
 def extract_section_references(query: str) -> list[str]:
     return SECTION_REF_RE.findall(query)
@@ -84,7 +87,7 @@ CRITICAL: Keywords must ONLY come from this master list:
 
 Do NOT use keywords outside this list. If query contains no valid keywords, return empty array for keywords.
 If the user mentions a year but not a specific date, assume January 1st of that year (YYYY-01-01).
-If no date or year is mentioned, use today's date: {date.today().isoformat()}."""
+If no date or year is mentioned, use today's date (provided in the user message)."""
 
 
 def get_prompt_hash(content: str) -> str:
@@ -124,7 +127,11 @@ def parse_user_query(query: str) -> Dict[str, Any]:
         }
 
     # 0. Prepare hashes
-    query_hash = get_query_hash(query)
+    # Dateless queries get today's date from the LLM, so the cache must rotate
+    # daily for them. Dated queries produce stable parses — cache indefinitely.
+    has_date = bool(_DATE_LIKE_RE.search(remaining_query))
+    cache_salt = "" if has_date else date.today().isoformat()
+    query_hash = get_query_hash(f"{cache_salt}:{query}")
     prompt_content = SYSTEM_PROMPT + str(PARSE_QUERY_TOOL)
     prompt_hash = get_prompt_hash(prompt_content)
 
@@ -148,13 +155,14 @@ def parse_user_query(query: str) -> Dict[str, Any]:
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     try:
+        user_message = f"Today's date: {date.today().isoformat()}\n\n{remaining_query}"
         response = client.messages.create(
             model=settings.CLAUDE_MODEL,
             max_tokens=1000,
             tools=[PARSE_QUERY_TOOL],
             tool_choice={"type": "tool", "name": "parse_building_code_query"},
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": remaining_query}],
+            messages=[{"role": "user", "content": user_message}],
         )
     except anthropic.AuthenticationError:
         raise ValueError(

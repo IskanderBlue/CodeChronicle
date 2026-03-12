@@ -71,6 +71,7 @@ secrets/
 # ai
 .claude/
 .agents/
+.tmp/
 
 # artifact
 nul

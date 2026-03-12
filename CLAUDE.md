@@ -74,6 +74,10 @@ Split settings in `code_chronicle/settings/`: `base.py`, `development.py`, `prod
 
 Anonymous: 1 search/day (per IP). Authenticated free: 3/day. Pro (via Stripe/dj-stripe or `pro_courtesy` flag): unlimited. Enforced by `core.middleware.RateLimitMiddleware`.
 
+## Temporary Files
+
+Write throwaway scripts, debug helpers, and scratch files to `.tmp/` (gitignored). Never create them in the project root.
+
 ## Code Style
 
 - **Linter**: ruff (rules: E, F, I, N, W; line-length: 100; target: py312)

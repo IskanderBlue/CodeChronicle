@@ -1,22 +1,26 @@
 """
 URL patterns for core app (frontend pages).
 """
+
 from django.urls import path
 
 from . import views
 
-app_name = 'core'
+app_name = "core"
 
 urlpatterns = [
-    path('', views.home, name='home'),
-    path('pricing/', views.pricing, name='pricing'),
-    path('terms/', views.terms_of_service, name='terms_of_service'),
-    path('privacy/', views.privacy_policy, name='privacy_policy'),
-    path('history/', views.history, name='history'),
-    path('settings/', views.user_settings, name='user_settings'),
-    path('search-results/', views.search_results, name='search_results'),
-    path('create-checkout-session/', views.create_checkout_session, name='create_checkout_session'),
-    path('stripe/success/', views.stripe_success, name='stripe_success'),
-    path('stripe/cancel/', views.stripe_cancel, name='stripe_cancel'),
-    path('stripe/portal/', views.create_customer_portal_session, name='stripe_portal'),
+    path("", views.home, name="home"),
+    path("pricing/", views.pricing, name="pricing"),
+    path("terms/", views.terms_of_service, name="terms_of_service"),
+    path("privacy/", views.privacy_policy, name="privacy_policy"),
+    path("history/", views.history, name="history"),
+    path("settings/", views.user_settings, name="user_settings"),
+    path("search-results/", views.search_results, name="search_results"),
+    path("viewer/edition-nav/", views.viewer_edition_nav, name="viewer_edition_nav"),
+    path("viewer/edition-dates/", views.viewer_edition_dates, name="viewer_edition_dates"),
+    path("viewer/section-content/", views.viewer_section_content, name="viewer_section_content"),
+    path("create-checkout-session/", views.create_checkout_session, name="create_checkout_session"),
+    path("stripe/success/", views.stripe_success, name="stripe_success"),
+    path("stripe/cancel/", views.stripe_cancel, name="stripe_cancel"),
+    path("stripe/portal/", views.create_customer_portal_session, name="stripe_portal"),
 ]
