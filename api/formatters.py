@@ -249,6 +249,12 @@ def merge_transition_compare_results(
             continue
 
         consumed_keys.add(key)
+        has_renderable_content = bool(
+            old_version.get("html_content")
+            or old_version.get("pdf_filename")
+            or new_version.get("html_content")
+            or new_version.get("pdf_filename")
+        )
         output.append(
             {
                 "id": result.get("id"),
@@ -263,7 +269,8 @@ def merge_transition_compare_results(
                 "score": max(new_version.get("score", 0), old_version.get("score", 0)),
                 "result_type": "transition_compare",
                 "transition_context": transition_context,
-                "versions": [new_version, old_version],
+                "has_renderable_content": has_renderable_content,
+                "versions": [old_version, new_version],
             }
         )
 

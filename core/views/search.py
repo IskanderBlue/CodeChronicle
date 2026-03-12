@@ -45,7 +45,12 @@ def _query_value(request: HttpRequest, key: str) -> str:
 
 
 def _build_viewer_url_params(
-    *, code_name: str, node_id: str, query_date: str, query_code: str
+    *,
+    code_name: str,
+    node_id: str,
+    query_date: str,
+    query_code: str,
+    preferred_map_code: str = "",
 ) -> dict[str, Any] | None:
     if "_" not in code_name:
         return None
@@ -58,11 +63,24 @@ def _build_viewer_url_params(
     if not edition:
         return None
 
-    node = (
-        CodeMapNode.objects.filter(code_map__map_code__in=edition.map_codes, node_id=node_id)
-        .select_related("code_map")
-        .first()
-    )
+    # Prefer the caller's map so navigation stays in the same PDF/volume.
+    node = None
+    if preferred_map_code and preferred_map_code in edition.map_codes:
+        node = (
+            CodeMapNode.objects.filter(
+                code_map__map_code=preferred_map_code, node_id=node_id
+            )
+            .select_related("code_map")
+            .first()
+        )
+    if not node:
+        node = (
+            CodeMapNode.objects.filter(
+                code_map__map_code__in=edition.map_codes, node_id=node_id
+            )
+            .select_related("code_map")
+            .first()
+        )
     if not node:
         return None
 
@@ -87,7 +105,11 @@ def _build_viewer_url_params(
 
 
 def _build_viewer_navigation(
-    current_code: str, node_id: str, query_date: str, query_code: str
+    current_code: str,
+    node_id: str,
+    query_date: str,
+    query_code: str,
+    preferred_map_code: str = "",
 ) -> dict[str, dict[str, Any] | None]:
     if not current_code or "_" not in current_code:
         return {"previous": None, "next": None}
@@ -120,6 +142,7 @@ def _build_viewer_navigation(
             node_id=node_id,
             query_date=query_date,
             query_code=query_code,
+            preferred_map_code=preferred_map_code,
         )
     if current_index < len(editions) - 1:
         next_params = _build_viewer_url_params(
@@ -127,6 +150,7 @@ def _build_viewer_navigation(
             node_id=node_id,
             query_date=query_date,
             query_code=query_code,
+            preferred_map_code=preferred_map_code,
         )
     return {"previous": previous_params, "next": next_params}
 
@@ -143,7 +167,10 @@ def viewer_edition_nav(request: HttpRequest):
     node_id = _query_value(request, "node_id")
     query_date = _query_value(request, "query_date")
     query_code = _query_value(request, "query_code")
-    navigation = _build_viewer_navigation(code, node_id, query_date, query_code)
+    map_code = _query_value(request, "map_code")
+    navigation = _build_viewer_navigation(
+        code, node_id, query_date, query_code, preferred_map_code=map_code
+    )
     return render(
         request,
         "partials/_viewer_edition_nav.html",

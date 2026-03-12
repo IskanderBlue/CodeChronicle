@@ -198,7 +198,7 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
                 "code": result.get("code_edition", "Unknown"),
                 "year": result.get("source_date", "")[:4],
                 "section_id": result.get("id", ""),
-                "title": result.get("title", "Untitled Section"),
+                "title": result.get("title", "Untitled Provision"),
             }
         )
 

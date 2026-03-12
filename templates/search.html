@@ -232,6 +232,7 @@
             if (block) {
                 const container = block.querySelector('[data-pdf-container]');
                 if (container) { container.innerHTML = ''; container.classList.add('hidden'); delete container.dataset.pdfRendering; }
+                delete block.dataset.currentPage;
             }
             const htmlBlock = this.$refs.viewerHtmlContent;
             if (htmlBlock) htmlBlock.innerHTML = '';
@@ -243,6 +244,7 @@
                 node_id: this.viewerResult.id || '',
                 query_date: this.queryDate,
                 query_code: this.queryCode,
+                map_code: this.viewerResult.map_code || '',
             });
             return '{% url "core:viewer_edition_nav" %}?' + p.toString();
         },
@@ -259,8 +261,13 @@
             const target = this.$refs.viewerHtmlContent;
             const url = this.sectionContentUrl();
             if (target && url) {
+                const fragment = this.viewerResult ? this.viewerResult.fragment : null;
                 const scrollOnce = () => {
                     target.removeEventListener('htmx:afterSettle', scrollOnce);
+                    if (fragment) {
+                        const el = document.getElementById(fragment);
+                        if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+                    }
                     const active = target.querySelector('.ring-primary-300, .ring-primary-500');
                     if (active) active.scrollIntoView({ block: 'center', behavior: 'instant' });
                 };
@@ -454,6 +461,7 @@
                                 c.classList.add('hidden');
                                 delete c.dataset.pdfRendering;
                             }
+                            delete block.dataset.currentPage;
                         }
                         const nav = data.$refs.editionNav;
                         const navUrl = data.editionNavUrl();

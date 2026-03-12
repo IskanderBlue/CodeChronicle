@@ -104,7 +104,7 @@
         </button>
         <button x-show="!expanded" @click="expanded = true"
             class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-            Expand section
+            Expand provision
         </button>
     </div>
 </div>
@@ -126,7 +126,7 @@
         </button>
         <button x-show="!expanded" @click="expanded = true"
             class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-            Expand section
+            Expand provision
         </button>
     </div>
 </div>
@@ -153,7 +153,7 @@
     {% if not result.source_url %}data-browse-expected-filename="{{ result.pdf_filename }}"{% endif %}>
     <button type="button"
         data-viewer-open
-        data-viewer-result='{"id":"{{ result.viewer_node_id|default:result.id|escapejs }}","title":"{{ result.viewer_title|default:result.title|escapejs }}","code":"{{ result.code|escapejs }}","code_display_name":"{{ result.code_display_name|escapejs }}","map_code":"{{ result.map_code|escapejs }}","page":{% if result.page %}{{ result.page }}{% else %}null{% endif %},"page_end":{% if result.page_end %}{{ result.page_end }}{% else %}null{% endif %},"initial_page_top":{% if result.initial_page_top or result.initial_page_top == 0 %}{{ result.initial_page_top }}{% else %}null{% endif %},"final_page_bottom":{% if result.final_page_bottom or result.final_page_bottom == 0 %}{{ result.final_page_bottom }}{% else %}null{% endif %},"pdf_filename":"{{ result.pdf_filename|default:""|escapejs }}","pdf_download_url":"{{ result.pdf_download_url|default:""|escapejs }}","source_url":"{{ result.source_url|default:""|escapejs }}","query_date":"{{ browse_query_date|escapejs }}","query_code":"{{ browse_query_code|escapejs }}"}'
+        data-viewer-result='{"id":"{{ result.viewer_node_id|default:result.id|escapejs }}","title":"{{ result.viewer_title|default:result.title|escapejs }}","code":"{{ result.code|escapejs }}","code_display_name":"{{ result.code_display_name|escapejs }}","map_code":"{{ result.map_code|escapejs }}","page":{% if result.page %}{{ result.page }}{% else %}null{% endif %},"page_end":{% if result.page_end %}{{ result.page_end }}{% else %}null{% endif %},"initial_page_top":{% if result.initial_page_top or result.initial_page_top == 0 %}{{ result.initial_page_top }}{% else %}null{% endif %},"final_page_bottom":{% if result.final_page_bottom or result.final_page_bottom == 0 %}{{ result.final_page_bottom }}{% else %}null{% endif %},"pdf_filename":"{{ result.pdf_filename|default:""|escapejs }}","pdf_download_url":"{{ result.pdf_download_url|default:""|escapejs }}","source_url":"{{ result.source_url|default:""|escapejs }}","query_date":"{{ browse_query_date|escapejs }}","query_code":"{{ browse_query_code|escapejs }}","fragment":"section-{{ result.id|slugify }}"}'
         class="inline-flex items-center rounded border border-primary-300 px-3 py-2 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:border-primary-500 dark:text-primary-300 dark:hover:bg-primary-900/20">
         Browse in context
     </button>
