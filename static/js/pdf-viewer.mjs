@@ -598,7 +598,10 @@ export function bindBlockControls(block) {
 
     const container = block.querySelector('[data-pdf-container]');
     if (!container) return;
-    const expectedFilename = container.getAttribute('data-pdf-expected-filename') || '';
+
+    // Resolve filename at call time, not bind time — viewer mode updates
+    // data-pdf-expected-filename when switching editions.
+    const currentFilename = () => container.getAttribute('data-pdf-expected-filename') || '';
 
     block.addEventListener('change', async (event) => {
         const source = event.target instanceof Element ? event.target : null;
@@ -617,7 +620,7 @@ export function bindBlockControls(block) {
         if (!button || !block.contains(button)) return;
 
         if (button.matches('[data-pdf-clear-mapping]')) {
-            await clearPdfMapping(expectedFilename);
+            await clearPdfMapping(currentFilename());
             return;
         }
         if (button.matches('[data-pdf-override-mapping]')) {
@@ -681,7 +684,7 @@ export function bindBlockControls(block) {
         await handleFileCandidate(block, file, false);
     });
 
-    renderBlockControls(block, getMapping(expectedFilename) ? 'mapped' : 'picker');
+    renderBlockControls(block, getMapping(currentFilename()) ? 'mapped' : 'picker');
 }
 
 export function refreshMappedLabels(expectedKey = null) {

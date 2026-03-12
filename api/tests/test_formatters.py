@@ -290,4 +290,5 @@ def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch
 
     assert len(formatted_results) == 1
     assert formatted_results[0]["result_type"] == "transition_compare"
+    assert formatted_results[0]["code"], "merged transition-compare must have a code field"
     assert len(formatted_results[0]["versions"]) == 2

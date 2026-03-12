@@ -255,6 +255,9 @@ def merge_transition_compare_results(
                 "title": new_version.get("title")
                 or old_version.get("title")
                 or result.get("title"),
+                "code": new_version.get("code")
+                or old_version.get("code")
+                or result.get("code"),
                 "code_display_name": new_version.get("code_display_name")
                 or result.get("code_display_name"),
                 "score": max(new_version.get("score", 0), old_version.get("score", 0)),

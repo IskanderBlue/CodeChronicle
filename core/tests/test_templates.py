@@ -232,6 +232,7 @@ def test_transition_compare_card_renders_banner_fields():
                     "id": "B-3.2.9.",
                     "title": "Fire Separations",
                     "score": 1.0,
+                    "code": "BCBC_2024",
                     "code_display_name": "British Columbia Building Code 2024",
                     "result_type": "transition_compare",
                     "transition_context": {
