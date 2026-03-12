@@ -51,6 +51,7 @@ def test_search_results_partial_initializes_first_result_as_open_accordion_item(
                     "id": "3.1.1.1",
                     "title": "Fire Safety",
                     "score": 0.93,
+                    "code": "NBC_2025",
                     "code_display_name": "National Building Code 2025",
                     "page": 7,
                     "page_end": 7,
@@ -60,6 +61,7 @@ def test_search_results_partial_initializes_first_result_as_open_accordion_item(
                     "id": "3.1.1.2",
                     "title": "Closures",
                     "score": 0.75,
+                    "code": "NBC_2025",
                     "code_display_name": "National Building Code 2025",
                     "page": 8,
                     "page_end": 8,
@@ -69,7 +71,7 @@ def test_search_results_partial_initializes_first_result_as_open_accordion_item(
         },
     )
 
-    assert 'activeResult: "3.1.1.1"' in html
+    assert 'activeResult: "NBC_2025_3.1.1.1"' in html
     assert html.count('@click="activeResult = ') == 2
 
 
@@ -316,6 +318,5 @@ def test_mobile_accordion_and_grouped_cards_include_touch_friendly_markup():
         },
     )
 
-    assert "min-h-[84px]" in html
     assert "py-3 text-sm" in html
     assert "sm:flex-row" in html

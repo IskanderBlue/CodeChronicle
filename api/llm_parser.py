@@ -84,7 +84,7 @@ CRITICAL: Keywords must ONLY come from this master list:
 
 Do NOT use keywords outside this list. If query contains no valid keywords, return empty array for keywords.
 If the user mentions a year but not a specific date, assume January 1st of that year (YYYY-01-01).
-If no date or year is mentioned, use today's date: {date.today().isoformat()}."""
+If no date or year is mentioned, use today's date (provided in the user message)."""
 
 
 def get_prompt_hash(content: str) -> str:
@@ -148,13 +148,14 @@ def parse_user_query(query: str) -> Dict[str, Any]:
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     try:
+        user_message = f"Today's date: {date.today().isoformat()}\n\n{remaining_query}"
         response = client.messages.create(
             model=settings.CLAUDE_MODEL,
             max_tokens=1000,
             tools=[PARSE_QUERY_TOOL],
             tool_choice={"type": "tool", "name": "parse_building_code_query"},
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": remaining_query}],
+            messages=[{"role": "user", "content": user_message}],
         )
     except anthropic.AuthenticationError:
         raise ValueError(

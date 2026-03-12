@@ -226,10 +226,9 @@
         closeViewer() {
             this.viewerOpen = false;
             this.viewerResult = null;
-            // Reset PDF block so it re-initializes on next open
+            // Reset PDF container so it re-renders on next open (keep event bindings intact)
             const block = this.$refs.viewerDocBlock?.querySelector('[data-pdf-block]');
             if (block) {
-                block.dataset.pdfBound = '';
                 const container = block.querySelector('[data-pdf-container]');
                 if (container) { container.innerHTML = ''; container.classList.add('hidden'); delete container.dataset.pdfRendering; }
             }
@@ -250,7 +249,7 @@
         viewerResult = { ...$event.detail, query_date: queryDate, query_code: queryCode };
         $nextTick(() => { requestAnimationFrame(() => {
             const block = $refs.viewerDocBlock?.querySelector('[data-pdf-block]');
-            if (block) { block.dataset.pdfBound = ''; const c = block.querySelector('[data-pdf-container]'); if (c) { c.innerHTML = ''; c.classList.add('hidden'); delete c.dataset.pdfRendering; } }
+            if (block) { const c = block.querySelector('[data-pdf-container]'); if (c) { c.innerHTML = ''; c.classList.add('hidden'); delete c.dataset.pdfRendering; } }
             const nav = $refs.editionNav;
             const navUrl = editionNavUrl();
             if (nav && navUrl) { htmx.ajax('GET', navUrl, { target: nav, swap: 'innerHTML' }); }

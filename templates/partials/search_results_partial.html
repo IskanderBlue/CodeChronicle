@@ -10,14 +10,14 @@
     </p>
 </div>
 
-<div x-data='{ activeResult: {% if results %}"{{ results.0.id|escapejs }}"{% else %}null{% endif %} }' class="space-y-4" data-results-accordion>
+<div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}"{% else %}null{% endif %} }' class="space-y-4" data-results-accordion>
 {% for result in results %}
 <div
     class="bg-neutral-100 dark:bg-neutral-800 shadow rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 transition-colors"
-    :class="activeResult === '{{ result.id|escapejs }}' ? 'border-primary-400 dark:border-primary-500' : 'hover:border-primary-300 dark:hover:border-primary-500'">
-    <button type="button" class="w-full text-left" @click="activeResult = activeResult === '{{ result.id|escapejs }}' ? null : '{{ result.id|escapejs }}'">
+    :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? 'border-primary-400 dark:border-primary-500' : 'hover:border-primary-300 dark:hover:border-primary-500'">
+    <button type="button" class="w-full text-left" @click="activeResult = activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? null : '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
         {# ── Collapsed: compact one-liner ── #}
-        <div class="px-4 py-3 sm:px-5" x-show="activeResult !== '{{ result.id|escapejs }}'">
+        <div class="px-4 py-3 sm:px-5" x-show="activeResult !== '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
             <div class="flex items-center gap-2 text-sm">
                 <span class="font-medium text-primary-600 dark:text-primary-400 shrink-0">{{ result.code_display_name }}</span>
                 <span class="text-neutral-400 dark:text-neutral-500">&middot;</span>
@@ -30,7 +30,7 @@
             </div>
         </div>
         {# ── Expanded: full header ── #}
-        <div class="px-4 py-5 sm:p-6" x-show="activeResult === '{{ result.id|escapejs }}'" x-cloak>
+        <div class="px-4 py-5 sm:p-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'" x-cloak>
             <div class="flex justify-between items-start gap-4">
                 <div>
                     <p class="text-sm text-primary-600 dark:text-primary-400 font-medium">
@@ -69,7 +69,7 @@
         </div>
     </button>
 
-    <div class="px-4 pb-5 sm:px-6 sm:pb-6" x-show="activeResult === '{{ result.id|escapejs }}'">
+    <div class="px-4 pb-5 sm:px-6 sm:pb-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
         {% if result.group_type == 'parent_children' %}
         <div class="mt-1 rounded-md border border-neutral-200 bg-white/70 p-3 dark:border-neutral-700 dark:bg-neutral-900/40"
             data-top-scoring-child="{{ result.top_scoring_child_id }}">
