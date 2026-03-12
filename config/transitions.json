@@ -43,5 +43,50 @@
     "transition_type": "phased_coming_into_force",
     "applicability_text": "Chapter VIII as it read on 2025-04-16 may still apply before 2026-10-17, while some provisions come into force later on separate dates.",
     "citation_text": "Order in Council 438-2025, 2025 G.O. 2, 1175"
+  },
+  {
+    "old_edition": "OBC_2012_v05",
+    "new_edition": "OBC_2012_v07",
+    "overlap_start": "2015-01-01",
+    "overlap_end": "2015-07-01",
+    "transition_type": "in_stream_project",
+    "applicability_text": "The code as it read on 2014-12-31 may apply where a permit was applied for before 2015-01-01 and construction commences within 6 months.",
+    "citation_text": "O. Reg. 332/12, s. 4.1.2 (O. Reg. 361/13)"
+  },
+  {
+    "old_edition": "OBC_2012_v10",
+    "new_edition": "OBC_2012_v11",
+    "overlap_start": "2017-07-01",
+    "overlap_end": "2018-01-01",
+    "transition_type": "in_stream_project",
+    "applicability_text": "The code as it read on 2017-06-30 may apply where a permit was applied for before 2017-07-01 and construction commences within 6 months.",
+    "citation_text": "O. Reg. 332/12, s. 4.1.4 (O. Reg. 139/17)"
+  },
+  {
+    "old_edition": "OBC_2012_v13",
+    "new_edition": "OBC_2012_v14",
+    "overlap_start": "2018-01-01",
+    "overlap_end": "2018-07-01",
+    "transition_type": "in_stream_project",
+    "applicability_text": "The code as it read on 2017-12-31 may apply where a permit was applied for before 2018-01-01 and construction commences within 6 months.",
+    "citation_text": "O. Reg. 332/12, s. 4.1.5 (O. Reg. 139/17)"
+  },
+  {
+    "old_edition": "OBC_2012_v19",
+    "new_edition": "OBC_2012_v20",
+    "overlap_start": "2020-01-01",
+    "overlap_end": "2020-07-01",
+    "transition_type": "in_stream_project",
+    "applicability_text": "The code as it read on 2019-12-31 may apply where a permit was applied for before 2020-01-01 and construction commences within 6 months.",
+    "citation_text": "O. Reg. 332/12, s. 4.1.6 (O. Reg. 88/19)"
+  },
+  {
+    "old_edition": "OBC_2012_v24",
+    "new_edition": "OBC_2012_v25",
+    "overlap_start": "2022-01-01",
+    "overlap_end": "2022-07-01",
+    "transition_type": "in_stream_project",
+    "applicability_text": "The code as it read on 2021-12-31 may apply where a permit was applied for before 2022-01-01 and construction commences within 6 months.",
+    "citation_text": "O. Reg. 332/12, s. 4.1.7 (O. Reg. 88/19)"
   }
 ]

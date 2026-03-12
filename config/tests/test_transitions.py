@@ -34,15 +34,18 @@ def test_load_transitions_rejects_missing_required_field(tmp_path: Path):
         load_transitions(temp_path)
 
 
-def test_initial_transition_fixture_contains_five_known_records():
+def test_initial_transition_fixture_contains_known_records():
     records = load_transitions()
 
-    assert len(records) >= 5
+    assert len(records) >= 10
     assert any(record["new_edition"] == "BCBC_2024" for record in records)
     assert any(record["new_edition"] == "QCC_2020" for record in records)
     assert any(record["new_edition"] == "QECB_2020" for record in records)
     assert any(record["new_edition"] == "QPC_2020" for record in records)
     assert any(record["new_edition"] == "QSC_2020" for record in records)
+    assert any(record["new_edition"] == "OBC_2012_v07" for record in records)
+    assert any(record["new_edition"] == "OBC_2012_v20" for record in records)
+    assert any(record["new_edition"] == "OBC_2012_v25" for record in records)
 
 
 def test_get_active_transitions_returns_overlapping_new_edition_records():
@@ -50,3 +53,18 @@ def test_get_active_transitions_returns_overlapping_new_edition_records():
 
     assert len(active) == 1
     assert active[0]["new_edition"] == "BCBC_2024"
+
+
+def test_get_active_transitions_returns_obc_2012_during_overlap():
+    active = get_active_transitions(["OBC_2012_v20"], date(2020, 3, 15))
+
+    assert len(active) == 1
+    assert active[0]["new_edition"] == "OBC_2012_v20"
+    assert active[0]["old_edition"] == "OBC_2012_v19"
+    assert active[0]["transition_type"] == "in_stream_project"
+
+
+def test_get_active_transitions_excludes_obc_2012_outside_overlap():
+    active = get_active_transitions(["OBC_2012_v20"], date(2020, 8, 1))
+
+    assert len(active) == 0

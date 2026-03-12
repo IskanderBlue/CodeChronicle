@@ -146,7 +146,7 @@
 </div>
 {% endif %}
 
-{% if show_browse_link|default:True and result.pdf_filename %}
+{% if show_browse_link|default:True and result.pdf_filename or result.html_content %}
 {% firstof result.transition_context.query_date result.source_date '' as browse_query_date %}
 {% firstof result.transition_context.new_edition result.code '' as browse_query_code %}
 <div class="mt-4 flex justify-start{% if not result.source_url %} hidden{% endif %}"

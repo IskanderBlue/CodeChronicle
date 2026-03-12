@@ -10,7 +10,7 @@ from .billing import (
 )
 from .history import history
 from .pages import pricing, privacy_policy, terms_of_service, user_settings
-from .search import home, search_results, viewer_edition_nav
+from .search import home, search_results, viewer_edition_nav, viewer_section_content
 
 __all__ = [
     "create_checkout_session",
@@ -25,4 +25,5 @@ __all__ = [
     "terms_of_service",
     "user_settings",
     "viewer_edition_nav",
+    "viewer_section_content",
 ]

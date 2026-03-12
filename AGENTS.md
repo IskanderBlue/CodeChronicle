@@ -41,6 +41,7 @@
 
 ### Agent Notes
 - **Workspace root is `c:/Users/victu/Documents/repos/CodeChronicle`.** When using `cwd` in Bash calls, use this path exactly — do NOT concatenate it with itself.
+- **Temporary files**: Write throwaway scripts, debug helpers, and scratch files to `.tmp/` (gitignored). Never create them in the project root.
 
 ### Historical Planning Notes (obsolete but context)
 - MVP: OBC full text + NBC coordinate index (BYOD). Maps stored in S3, loaded into memory at startup.

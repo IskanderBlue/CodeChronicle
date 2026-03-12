@@ -17,6 +17,7 @@ urlpatterns = [
     path("settings/", views.user_settings, name="user_settings"),
     path("search-results/", views.search_results, name="search_results"),
     path("viewer/edition-nav/", views.viewer_edition_nav, name="viewer_edition_nav"),
+    path("viewer/section-content/", views.viewer_section_content, name="viewer_section_content"),
     path("create-checkout-session/", views.create_checkout_session, name="create_checkout_session"),
     path("stripe/success/", views.stripe_success, name="stripe_success"),
     path("stripe/cancel/", views.stripe_cancel, name="stripe_cancel"),

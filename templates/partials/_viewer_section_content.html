@@ -1,0 +1,31 @@
+{% if sections %}
+<div class="divide-y divide-neutral-200 dark:divide-neutral-700">
+    {% for section in sections %}
+    <div id="section-{{ section.node_id|slugify }}"
+        class="px-4 py-4 {% if section.node_id == active_node_id %}bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-300 dark:ring-primary-600 ring-inset rounded{% endif %}">
+        <p class="text-xs font-semibold uppercase tracking-wide {% if section.node_id == active_node_id %}text-primary-600 dark:text-primary-400{% else %}text-neutral-500 dark:text-neutral-400{% endif %} mb-2">
+            {{ section.node_id }} — {{ section.title }}
+        </p>
+        {% if section.html %}
+        <div class="text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
+            {{ section.html|safe }}
+        </div>
+        {% else %}
+        <p class="text-sm text-neutral-400 dark:text-neutral-500 italic">Content not available.</p>
+        {% endif %}
+        {% if section.notes_html %}
+        <div class="mt-3 border-t border-neutral-200 dark:border-neutral-700 pt-2">
+            <p class="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 mb-1">Notes</p>
+            <div class="text-sm text-neutral-700 dark:text-neutral-300 prose dark:prose-invert prose-primary max-w-none markdown-content">
+                {{ section.notes_html|safe }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="p-4 text-sm text-neutral-500 dark:text-neutral-400">
+    Section content not available for this edition.
+</p>
+{% endif %}

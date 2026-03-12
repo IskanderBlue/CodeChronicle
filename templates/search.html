@@ -200,7 +200,7 @@
 </div>
 
 <!-- Viewer Overlay -->
-<div x-data="{
+<div data-viewer-overlay x-data="{
         viewerOpen: false,
         viewerResult: null,
         queryDate: '',
@@ -220,6 +220,7 @@
                         htmx.ajax('GET', navUrl, { target: nav, swap: 'innerHTML' });
                     }
                     window._pdfInitContainers(this.$refs.viewerDocBlock);
+                    this.loadSectionContent();
                 });
             });
         },
@@ -232,6 +233,8 @@
                 const container = block.querySelector('[data-pdf-container]');
                 if (container) { container.innerHTML = ''; container.classList.add('hidden'); delete container.dataset.pdfRendering; }
             }
+            const htmlBlock = this.$refs.viewerHtmlContent;
+            if (htmlBlock) htmlBlock.innerHTML = '';
         },
         editionNavUrl() {
             if (!this.viewerResult) return null;
@@ -242,23 +245,31 @@
                 query_code: this.queryCode,
             });
             return '{% url "core:viewer_edition_nav" %}?' + p.toString();
+        },
+        sectionContentUrl() {
+            if (!this.viewerResult || !this.viewerResult.map_code || !this.viewerResult.id) return null;
+            const p = new URLSearchParams({
+                map_code: this.viewerResult.map_code,
+                node_id: this.viewerResult.id,
+            });
+            return '{% url "core:viewer_section_content" %}?' + p.toString();
+        },
+        loadSectionContent() {
+            if (this.viewerResult && this.viewerResult.pdf_filename) return;
+            const target = this.$refs.viewerHtmlContent;
+            const url = this.sectionContentUrl();
+            if (target && url) {
+                const scrollOnce = () => {
+                    target.removeEventListener('htmx:afterSettle', scrollOnce);
+                    const active = target.querySelector('.ring-primary-300, .ring-primary-500');
+                    if (active) active.scrollIntoView({ block: 'center', behavior: 'instant' });
+                };
+                target.addEventListener('htmx:afterSettle', scrollOnce);
+                htmx.ajax('GET', url, { target: target, swap: 'innerHTML' });
+            }
         }
     }"
-    @viewer-open.window="openViewer($event.detail)"
-    @viewer-edition-update.window="
-        viewerResult = { ...$event.detail, query_date: queryDate, query_code: queryCode };
-        $nextTick(() => { requestAnimationFrame(() => {
-            const block = $refs.viewerDocBlock?.querySelector('[data-pdf-block]');
-            if (block) { const c = block.querySelector('[data-pdf-container]'); if (c) { c.innerHTML = ''; c.classList.add('hidden'); delete c.dataset.pdfRendering; } }
-            const nav = $refs.editionNav;
-            const navUrl = editionNavUrl();
-            if (nav && navUrl) { htmx.ajax('GET', navUrl, { target: nav, swap: 'innerHTML' }); }
-            window._pdfInitContainers($refs.viewerDocBlock);
-        }); });
-    "
-    x-init="
-        window.addEventListener('popstate', () => { if (viewerOpen) closeViewer(); });
-    "
+    x-init="window.addEventListener('popstate', () => { if (viewerOpen) closeViewer(); })"
     x-show="viewerOpen" x-cloak
     class="fixed inset-0 z-50 overflow-y-auto bg-white dark:bg-neutral-900"
     @keydown.escape.window="if (viewerOpen) closeViewer()">
@@ -318,6 +329,12 @@
                         </a>
                     </p>
                 </template>
+
+                <!-- HTML content viewer (e-Laws / non-PDF results) -->
+                <div class="mt-4 rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden max-h-[80vh] overflow-y-auto"
+                    x-show="viewerResult && !viewerResult.pdf_filename"
+                    x-ref="viewerHtmlContent">
+                </div>
 
                 <div class="mt-4" x-show="viewerResult && viewerResult.pdf_filename" x-data="{ expanded: true }" data-pdf-block>
                     <div class="pdf-clip relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
@@ -399,25 +416,55 @@
 </div>
 
 <script>
+    function withViewerOverlay(callback) {
+        const overlay = document.querySelector('[data-viewer-overlay]');
+        if (!overlay) return;
+        const data = overlay.__x?.$data || (window.Alpine && typeof window.Alpine.$data === 'function'
+            ? window.Alpine.$data(overlay)
+            : null);
+        if (!data) return;
+        callback(data);
+    }
+
     document.addEventListener('click', function(e) {
         const btn = e.target.closest('[data-viewer-open]');
         if (!btn) return;
         try {
             const result = JSON.parse(btn.getAttribute('data-viewer-result'));
-            window.dispatchEvent(new CustomEvent('viewer-open', { detail: result }));
+            withViewerOverlay(data => data.openViewer(result));
         } catch (err) {
             console.error('Could not parse viewer result data:', err);
         }
     });
-
-    // viewer-open is handled by Alpine's @viewer-open.window on the overlay div
 
     document.getElementById('viewer-edition-nav')?.addEventListener('click', function(e) {
         const btn = e.target.closest('[data-edition-result]');
         if (!btn) return;
         try {
             const result = JSON.parse(btn.getAttribute('data-edition-result'));
-            window.dispatchEvent(new CustomEvent('viewer-edition-update', { detail: result }));
+            withViewerOverlay(data => {
+                data.viewerResult = { ...result, query_date: data.queryDate, query_code: data.queryCode };
+                data.$nextTick(() => {
+                    requestAnimationFrame(() => {
+                        const block = data.$refs.viewerDocBlock?.querySelector('[data-pdf-block]');
+                        if (block) {
+                            const c = block.querySelector('[data-pdf-container]');
+                            if (c) {
+                                c.innerHTML = '';
+                                c.classList.add('hidden');
+                                delete c.dataset.pdfRendering;
+                            }
+                        }
+                        const nav = data.$refs.editionNav;
+                        const navUrl = data.editionNavUrl();
+                        if (nav && navUrl) {
+                            htmx.ajax('GET', navUrl, { target: nav, swap: 'innerHTML' });
+                        }
+                        window._pdfInitContainers(data.$refs.viewerDocBlock);
+                        data.loadSectionContent();
+                    });
+                });
+            });
         } catch (err) {
             console.error('Could not parse edition result data:', err);
         }

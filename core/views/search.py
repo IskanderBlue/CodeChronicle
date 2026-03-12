@@ -7,6 +7,7 @@ from django.http import HttpRequest
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
 
+from api.formatters import _code_order_key
 from config.code_metadata import (
     get_code_display_name,
     get_download_url,
@@ -153,6 +154,75 @@ def viewer_edition_nav(request: HttpRequest):
             "query_code": query_code,
         },
     )
+
+
+def viewer_section_content(request: HttpRequest):
+    """HTMX partial: section HTML context for the viewer overlay."""
+    map_code = _query_value(request, "map_code")
+    node_id = _query_value(request, "node_id")
+
+    if not map_code or not node_id:
+        return render(request, "partials/_viewer_section_content.html",
+                      {"sections": [], "active_node_id": node_id})
+
+    # Find the matched node's parent_id
+    matched = (
+        CodeMapNode.objects.filter(code_map__map_code=map_code, node_id=node_id)
+        .values("parent_id")
+        .first()
+    )
+    if not matched or not matched["parent_id"]:
+        # No parent — just return the single node
+        node = (
+            CodeMapNode.objects.filter(code_map__map_code=map_code, node_id=node_id)
+            .values("node_id", "title", "html", "notes_html")
+            .first()
+        )
+        sections = [node] if node else []
+        return render(request, "partials/_viewer_section_content.html",
+                      {"sections": sections, "active_node_id": node_id})
+
+    parent_id = matched["parent_id"]
+
+    # Collect full subtree: siblings + all descendants (tables hang off subclauses)
+    siblings = list(
+        CodeMapNode.objects.filter(code_map__map_code=map_code, parent_id=parent_id)
+        .values("node_id", "title", "html", "notes_html", "parent_id")
+    )
+
+    # Recursively expand: fetch children of current frontier until exhausted
+    all_nodes = list(siblings)
+    frontier_ids = [s["node_id"] for s in siblings]
+    while frontier_ids:
+        children = list(
+            CodeMapNode.objects.filter(
+                code_map__map_code=map_code, parent_id__in=frontier_ids
+            ).values("node_id", "title", "html", "notes_html", "parent_id")
+        )
+        if not children:
+            break
+        all_nodes.extend(children)
+        frontier_ids = [c["node_id"] for c in children]
+
+    # Build depth-first ordered tree using parent_id relationships
+    children_by_parent: dict[str, list] = {}
+    for node in all_nodes:
+        pid = node.get("parent_id") or ""
+        children_by_parent.setdefault(pid, []).append(node)
+    for group in children_by_parent.values():
+        group.sort(key=lambda n: _code_order_key(n["node_id"]))
+
+    def _walk(pid: str) -> list:
+        result = []
+        for node in children_by_parent.get(pid, []):
+            result.append(node)
+            result.extend(_walk(node["node_id"]))
+        return result
+
+    sections = _walk(parent_id)
+
+    return render(request, "partials/_viewer_section_content.html",
+                  {"sections": sections, "active_node_id": node_id})
 
 
 @require_POST
