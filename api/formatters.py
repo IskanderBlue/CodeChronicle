@@ -2,7 +2,9 @@
 Format search results for frontend display.
 """
 
+import difflib
 import re
+from html import escape as html_escape
 from typing import Any, Dict, Iterable, List, Tuple
 
 from config.code_metadata import (
@@ -12,6 +14,55 @@ from config.code_metadata import (
     get_source_url,
 )
 from core.models import CodeMapNode
+
+
+def _strip_html_tags(html: str) -> str:
+    """Remove HTML tags, leaving only text content."""
+    return re.sub(r"<[^>]+>", "", html)
+
+
+def _diff_html_content(
+    old_html: str | None,
+    new_html: str | None,
+) -> Tuple[str | None, str | None]:
+    """Diff two HTML strings and return annotated versions with unchanged text dimmed.
+
+    Equal words get class="diff-unchanged" (dimmed in CSS).
+    Changed words get class="diff-changed" (normal opacity).
+    Returns (annotated_old, annotated_new); both None if either input is empty.
+    """
+    if not old_html or not new_html:
+        return (None, None)
+
+    old_text = _strip_html_tags(old_html)
+    new_text = _strip_html_tags(new_html)
+
+    old_words = old_text.split()
+    new_words = new_text.split()
+
+    matcher = difflib.SequenceMatcher(None, old_words, new_words)
+
+    old_parts: list[str] = []
+    new_parts: list[str] = []
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            chunk = html_escape(" ".join(old_words[i1:i2]))
+            old_parts.append(f'<span class="diff-unchanged">{chunk}</span>')
+            new_parts.append(f'<span class="diff-unchanged">{chunk}</span>')
+        elif tag == "replace":
+            old_chunk = html_escape(" ".join(old_words[i1:i2]))
+            new_chunk = html_escape(" ".join(new_words[j1:j2]))
+            old_parts.append(f'<span class="diff-changed">{old_chunk}</span>')
+            new_parts.append(f'<span class="diff-changed">{new_chunk}</span>')
+        elif tag == "delete":
+            old_chunk = html_escape(" ".join(old_words[i1:i2]))
+            old_parts.append(f'<span class="diff-changed">{old_chunk}</span>')
+        elif tag == "insert":
+            new_chunk = html_escape(" ".join(new_words[j1:j2]))
+            new_parts.append(f'<span class="diff-changed">{new_chunk}</span>')
+
+    return (" ".join(old_parts), " ".join(new_parts))
 
 
 def _build_code_display_name(code_edition: str) -> str:
@@ -255,6 +306,14 @@ def merge_transition_compare_results(
             or new_version.get("html_content")
             or new_version.get("pdf_filename")
         )
+        old_diff, new_diff = _diff_html_content(
+            old_version.get("html_content"),
+            new_version.get("html_content"),
+        )
+        if old_diff is not None:
+            old_version["diff_html"] = old_diff
+        if new_diff is not None:
+            new_version["diff_html"] = new_diff
         output.append(
             {
                 "id": result.get("id"),
@@ -277,12 +336,45 @@ def merge_transition_compare_results(
     return output
 
 
+def _nest_child_results(
+    results: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Nest child results under their parents when both appear in the result list."""
+    results_by_id: Dict[str, Dict[str, Any]] = {}
+    for result in results:
+        result_id = result.get("id")
+        if result_id:
+            results_by_id[str(result_id)] = result
+
+    nested_ids: set[str] = set()
+    for result in results:
+        parent_id = result.get("parent_id")
+        result_id = str(result.get("id") or "")
+        if (
+            parent_id
+            and str(parent_id) in results_by_id
+            and str(parent_id) != result_id
+            and result.get("group_type") != "parent_children"
+        ):
+            parent = results_by_id[str(parent_id)]
+            if parent.get("group_type") == "parent_children":
+                continue
+            parent.setdefault("nested_children", []).append(result)
+            parent["has_nested_children"] = True
+            result["is_nested_child"] = True
+            result["nesting_parent_id"] = str(parent_id)
+            nested_ids.add(result_id)
+
+    return [r for r in results if str(r.get("id") or "") not in nested_ids]
+
+
 def format_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Transform raw search results into a format suitable for the frontend."""
     formatted = [_format_single_result(result) for result in results]
     formatted.sort(key=lambda item: item.get("score", 0), reverse=True)
     grouped = group_formatted_results(formatted)
-    return merge_transition_compare_results(grouped)
+    merged = merge_transition_compare_results(grouped)
+    return _nest_child_results(merged)
 
 
 def get_amendments_for_section(section_id: str, code_edition: str) -> List[Dict[str, Any]]:
