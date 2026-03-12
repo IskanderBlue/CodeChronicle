@@ -380,14 +380,19 @@ def merge_transition_compare_results(
 def _nest_child_results(
     results: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Nest child results under their parents when both appear in the result list."""
+    """Group child results under their parent when both appear in the result list.
+
+    Unlike the >80% Phase 2 grouping which fills in context siblings, this only
+    includes children that were actually returned by the search.
+    """
     results_by_id: Dict[str, Dict[str, Any]] = {}
     for result in results:
         result_id = result.get("id")
         if result_id:
             results_by_id[str(result_id)] = result
 
-    nested_ids: set[str] = set()
+    # Collect children per parent (only when the parent itself is also a result)
+    children_by_parent: Dict[str, List[Dict[str, Any]]] = {}
     for result in results:
         parent_id = result.get("parent_id")
         result_id = str(result.get("id") or "")
@@ -400,13 +405,49 @@ def _nest_child_results(
             parent = results_by_id[str(parent_id)]
             if parent.get("group_type") == "parent_children":
                 continue
-            parent.setdefault("nested_children", []).append(result)
-            parent["has_nested_children"] = True
-            result["is_nested_child"] = True
-            result["nesting_parent_id"] = str(parent_id)
-            nested_ids.add(result_id)
+            children_by_parent.setdefault(str(parent_id), []).append(result)
 
-    return [r for r in results if str(r.get("id") or "") not in nested_ids]
+    # Convert each parent + children set into a grouped card
+    grouped_parent_ids: set[str] = set()
+    absorbed_child_ids: set[str] = set()
+    for parent_id_str, children in children_by_parent.items():
+        parent = results_by_id[parent_id_str]
+        top_child = max(children, key=lambda c: (c.get("score", 0),))
+        child_entries = []
+        for child in sorted(children, key=lambda c: _code_order_key(str(c.get("id", "")))):
+            child_id = str(child.get("id", ""))
+            child_entries.append({
+                "id": child_id,
+                "title": child.get("title") or child_id,
+                "page": child.get("page"),
+                "page_end": child.get("page_end"),
+                "score": child.get("score", 0),
+                "is_match": True,
+                "is_top_scoring": child_id == str(top_child.get("id", "")),
+            })
+            absorbed_child_ids.add(child_id)
+
+        parent["group_type"] = "parent_children"
+        parent["children"] = child_entries
+        parent["top_scoring_child_id"] = str(top_child.get("id", ""))
+        parent["active_child"] = {
+            "id": top_child.get("id"),
+            "title": top_child.get("title"),
+        }
+        parent["viewer_node_id"] = top_child.get("id")
+        parent["viewer_title"] = top_child.get("title")
+        parent["child_match_count"] = len(children)
+        parent["child_total_count"] = len(children)
+        parent["matched_child_ids"] = [str(c.get("id", "")) for c in children]
+        # Carry over content fields from the top-scoring child for the document block
+        for field in ("pdf_filename", "pdf_download_url", "source_url", "html_content",
+                      "notes_html", "map_code", "page", "page_end",
+                      "initial_page_top", "final_page_bottom"):
+            if top_child.get(field) is not None:
+                parent[field] = top_child[field]
+        grouped_parent_ids.add(parent_id_str)
+
+    return [r for r in results if str(r.get("id") or "") not in absorbed_child_ids]
 
 
 def format_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

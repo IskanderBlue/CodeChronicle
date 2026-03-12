@@ -412,14 +412,19 @@ def test_has_renderable_content_true_when_one_version_has_content():
 
 def test_nest_child_results_under_parent():
     results = [
-        {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024"},
-        {"id": "3.2.1", "parent_id": "3.2", "score": 0.85, "code": "OBC_2024"},
-        {"id": "3.2.2", "parent_id": "3.2", "score": 0.80, "code": "OBC_2024"},
+        {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024", "title": "Parent"},
+        {"id": "3.2.1", "parent_id": "3.2", "score": 0.85, "code": "OBC_2024", "title": "Child A"},
+        {"id": "3.2.2", "parent_id": "3.2", "score": 0.80, "code": "OBC_2024", "title": "Child B"},
     ]
     nested = formatters._nest_child_results(results)
     assert len(nested) == 1
-    assert nested[0]["id"] == "3.2"
-    assert nested[0]["has_nested_children"] is True
-    assert len(nested[0]["nested_children"]) == 2
-    assert nested[0]["nested_children"][0]["id"] == "3.2.1"
-    assert nested[0]["nested_children"][1]["id"] == "3.2.2"
+    parent = nested[0]
+    assert parent["id"] == "3.2"
+    assert parent["group_type"] == "parent_children"
+    assert len(parent["children"]) == 2
+    assert parent["children"][0]["id"] == "3.2.1"
+    assert parent["children"][1]["id"] == "3.2.2"
+    assert all(c["is_match"] for c in parent["children"])
+    assert parent["top_scoring_child_id"] == "3.2.1"
+    assert parent["child_match_count"] == 2
+    assert parent["child_total_count"] == 2
