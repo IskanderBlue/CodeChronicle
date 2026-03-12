@@ -316,7 +316,6 @@ function renderPageControls(block, mount, wantsPicker) {
 }
 
 function showUnmappedState(container) {
-    console.trace('[pdf-viewer] showUnmappedState called');
     container.innerHTML = '';
     container.classList.add('hidden');
 }
@@ -395,11 +394,8 @@ async function buildPageElement(pdf, pageNum, containerWidth, opts = {}) {
 async function renderPdfPage(container, expectedFilename, pageNum, span) {
     try {
         const viewerMode = container.hasAttribute('data-pdf-viewer-mode');
-        console.log('[pdf-viewer] renderPdfPage', { viewerMode, expectedFilename, pageNum });
-
         // Skip re-render if viewer mode scrollBox is already set up or render in progress
         if (viewerMode && (container.dataset.pdfRendering === 'true' || container.querySelector('[data-pdf-scale]'))) {
-            console.log('[pdf-viewer] skipping re-render (guard hit)');
             return true;
         }
 
@@ -411,7 +407,6 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
 
         const pdf = await loadPdfForExpectedFilename(expectedFilename);
         if (!pdf) {
-            console.log('[pdf-viewer] no PDF mapping found for', expectedFilename);
             if (viewerMode) delete container.dataset.pdfRendering;
             showUnmappedState(container);
             const block = container.closest('[data-pdf-block]');
@@ -430,7 +425,6 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
         pageNum = Math.max(1, Math.min(pageNum, totalPages));
 
         const containerWidth = container.clientWidth || container.parentElement?.clientWidth || 600;
-        console.log('[pdf-viewer] containerWidth =', containerWidth, 'totalPages =', totalPages);
 
         if (viewerMode) {
             // --- Viewer mode: scrollable container with all pages, lazy-rendered ---
@@ -536,7 +530,6 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
         container.dataset.pdfTotalPages = String(totalPages);
         container.classList.remove('hidden');
         if (viewerMode) delete container.dataset.pdfRendering;
-        console.log('[pdf-viewer] renderPdfPage SUCCESS', { viewerMode, expectedFilename });
         const block = container.closest('[data-pdf-block]');
         if (block) {
             setFallbackVisibility(block, false);
@@ -545,7 +538,6 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
         }
         return true;
     } catch (err) {
-        console.error('[pdf-viewer] renderPdfPage CATCH', err);
         if (container.hasAttribute('data-pdf-viewer-mode')) delete container.dataset.pdfRendering;
         const block = container.closest('[data-pdf-block]');
         showUnmappedState(container);
