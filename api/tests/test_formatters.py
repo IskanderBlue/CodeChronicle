@@ -292,3 +292,134 @@ def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch
     assert formatted_results[0]["result_type"] == "transition_compare"
     assert formatted_results[0]["code"], "merged transition-compare must have a code field"
     assert len(formatted_results[0]["versions"]) == 2
+    # R1: old edition first, new edition second
+    assert formatted_results[0]["versions"][0]["code"] == "BCBC_2018"
+    assert formatted_results[0]["versions"][1]["code"] == "BCBC_2024"
+
+
+def test_diff_html_content_marks_unchanged_and_changed():
+    old_html = "<p>The fire safety requirements apply to all buildings.</p>"
+    new_html = "<p>The fire safety standards apply to most buildings.</p>"
+    old_diff, new_diff = formatters._diff_html_content(old_html, new_html)
+    assert old_diff is not None
+    assert new_diff is not None
+    # Both panes: unchanged text is lowlighted
+    assert 'class="diff-old-unchanged"' in old_diff
+    assert 'class="diff-new-unchanged"' in new_diff
+    # Changed text appears unwrapped (no highlight class)
+    assert "requirements" in old_diff
+    assert "standards" in new_diff
+    assert "diff-old-changed" not in old_diff
+    assert "diff-new-changed" not in new_diff
+
+
+def test_diff_html_content_preserves_html_tags():
+    old_html = "<p><strong>Fire</strong> safety requirements apply.</p>"
+    new_html = "<p><strong>Fire</strong> safety standards apply.</p>"
+    old_diff, new_diff = formatters._diff_html_content(old_html, new_html)
+    assert old_diff is not None
+    assert new_diff is not None
+    # Original HTML tags should be preserved in the diff output
+    assert "<p>" in old_diff
+    assert "<strong>" in old_diff
+    assert "</strong>" in old_diff
+    assert "</p>" in old_diff
+    assert "<p>" in new_diff
+    assert "<strong>" in new_diff
+
+
+def test_diff_html_content_preserves_original_whitespace():
+    # "Act, 1997," should NOT get a space before the comma
+    old_html = "<p>the Fire Protection and Prevention Act, 1997,</p>"
+    new_html = "<p>the Fire Protection and Prevention Act, 1997,</p>"
+    old_diff, new_diff = formatters._diff_html_content(old_html, new_html)
+    assert "1997 ," not in old_diff  # no spurious space before comma
+    assert "1997," in old_diff
+    # "onlydwelling" should stay unseparated if that's the original
+    old_html2 = "<p>onlydwelling units</p>"
+    new_html2 = "<p>onlydwelling units</p>"
+    old_diff2, _ = formatters._diff_html_content(old_html2, new_html2)
+    assert "onlydwelling" in old_diff2  # no space inserted
+
+
+def test_diff_html_content_returns_none_when_input_empty():
+    assert formatters._diff_html_content(None, "<p>text</p>") == (None, None)
+    assert formatters._diff_html_content("<p>text</p>", None) == (None, None)
+    assert formatters._diff_html_content("", "<p>text</p>") == (None, None)
+    assert formatters._diff_html_content(None, None) == (None, None)
+
+
+def test_has_renderable_content_false_when_no_content():
+    result = formatters.merge_transition_compare_results(
+        [
+            {
+                "id": "3.1",
+                "code": "OBC_2024",
+                "score": 0.9,
+                "transition_context": {
+                    "old_edition": "OBC_2012",
+                    "new_edition": "OBC_2024",
+                    "is_primary": True,
+                },
+            },
+            {
+                "id": "3.1",
+                "code": "OBC_2012",
+                "score": 0.8,
+                "transition_context": {
+                    "old_edition": "OBC_2012",
+                    "new_edition": "OBC_2024",
+                    "is_primary": False,
+                },
+            },
+        ]
+    )
+    merged = [r for r in result if r.get("result_type") == "transition_compare"]
+    assert len(merged) == 1
+    assert merged[0]["has_renderable_content"] is False
+
+
+def test_has_renderable_content_true_when_one_version_has_content():
+    result = formatters.merge_transition_compare_results(
+        [
+            {
+                "id": "3.1",
+                "code": "OBC_2024",
+                "score": 0.9,
+                "html_content": "<p>Some text</p>",
+                "transition_context": {
+                    "old_edition": "OBC_2012",
+                    "new_edition": "OBC_2024",
+                    "is_primary": True,
+                },
+            },
+            {
+                "id": "3.1",
+                "code": "OBC_2012",
+                "score": 0.8,
+                "transition_context": {
+                    "old_edition": "OBC_2012",
+                    "new_edition": "OBC_2024",
+                    "is_primary": False,
+                },
+            },
+        ]
+    )
+    merged = [r for r in result if r.get("result_type") == "transition_compare"]
+    assert len(merged) == 1
+    assert merged[0]["has_renderable_content"] is True
+
+
+def test_nest_child_results_under_parent():
+    results = [
+        {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024"},
+        {"id": "3.2.1", "parent_id": "3.2", "score": 0.85, "code": "OBC_2024"},
+        {"id": "3.2.2", "parent_id": "3.2", "score": 0.80, "code": "OBC_2024"},
+    ]
+    nested = formatters._nest_child_results(results)
+    assert len(nested) == 1
+    assert nested[0]["id"] == "3.2"
+    assert nested[0]["has_nested_children"] is True
+    assert len(nested[0]["nested_children"]) == 2
+    assert nested[0]["nested_children"][0]["id"] == "3.2.1"
+    assert nested[0]["nested_children"][1]["id"] == "3.2.2"

@@ -46,8 +46,11 @@
                         Transition compare
                     </p>
                     {% endif %}
-                    <h3 class="mt-2 text-lg font-bold text-neutral-900 dark:text-white">
-                        {{ result.id }} &mdash; {{ result.title }}
+                    <h3 class="mt-2 text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                        <span class="select-all">{{ result.id }}</span> &mdash; {{ result.title }}
+                        <span role="button" tabindex="0" @click.stop="navigator.clipboard.writeText('{{ result.id|escapejs }}')" @keydown.enter.stop="navigator.clipboard.writeText('{{ result.id|escapejs }}')" title="Copy provision ID" class="inline-flex items-center p-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 cursor-pointer">
+                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                        </span>
                     </h3>
                     {% if result.source_url %}
                     <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">View on e-Laws</p>
@@ -139,7 +142,7 @@
             <p class="mt-2 text-xs text-emerald-800 dark:text-emerald-200"><span class="font-semibold">Citation:</span> {{ result.transition_context.citation_text }}</p>
         </div>
 
-        <div x-data="{ activeCompareVersion: '{{ result.versions.1.code|default:'primary'|escapejs }}' }" class="mt-4">
+        <div x-data="{ activeCompareVersion: '{{ result.versions.1.code|default:'primary'|escapejs }}', expanded: false, showDiff: true }" class="mt-4">
             <div class="mb-3 grid grid-cols-2 gap-2 md:hidden" data-transition-mobile-tabs>
                 {% for version in result.versions %}
                 <button type="button"
@@ -171,7 +174,7 @@
                         {% if version.transition_context.is_primary %}Matches query{% else %}Comparison edition{% endif %}
                     </span>
                 </div>
-                {% include "partials/_result_document_block.html" with result=version %}
+                {% include "partials/_result_document_block.html" with result=version shared_expand=True %}
             </div>
             {% endfor %}
         </div>

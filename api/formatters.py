@@ -4,7 +4,6 @@ Format search results for frontend display.
 
 import difflib
 import re
-from html import escape as html_escape
 from typing import Any, Dict, Iterable, List, Tuple
 
 from config.code_metadata import (
@@ -15,54 +14,96 @@ from config.code_metadata import (
 )
 from core.models import CodeMapNode
 
+_HTML_TAG_RE = re.compile(r"(<[^>]+>)")
+# Splits text into words and whitespace runs, preserving both.
+_WORD_SPACE_RE = re.compile(r"(\S+)")
 
-def _strip_html_tags(html: str) -> str:
-    """Remove HTML tags, leaving only text content."""
-    return re.sub(r"<[^>]+>", "", html)
+
+def _tokenize_html_for_diff(html: str) -> list[tuple[str, str]]:
+    """Split HTML into (token_text, token_type) pairs.
+
+    token_type is one of: "tag", "word", "space".
+    Tags and whitespace are pass-through; only words participate in the diff.
+    """
+    tag_parts = _HTML_TAG_RE.split(html)
+    tokens: list[tuple[str, str]] = []
+    for part in tag_parts:
+        if _HTML_TAG_RE.fullmatch(part):
+            tokens.append((part, "tag"))
+        else:
+            # Split into alternating whitespace and word runs
+            segments = _WORD_SPACE_RE.split(part)
+            for seg in segments:
+                if not seg:
+                    continue
+                if _WORD_SPACE_RE.fullmatch(seg):
+                    tokens.append((seg, "word"))
+                else:
+                    tokens.append((seg, "space"))
+    return tokens
 
 
 def _diff_html_content(
     old_html: str | None,
     new_html: str | None,
 ) -> Tuple[str | None, str | None]:
-    """Diff two HTML strings and return annotated versions with unchanged text dimmed.
+    """Diff two HTML strings with asymmetric styling per pane.
 
-    Equal words get class="diff-unchanged" (dimmed in CSS).
-    Changed words get class="diff-changed" (normal opacity).
+    Old (comparison) pane: unchanged text is lowlighted, changed text is normal.
+    New (current) pane: unchanged text is normal, changed text is highlighted.
+    All HTML tags and original whitespace are preserved.
     Returns (annotated_old, annotated_new); both None if either input is empty.
     """
     if not old_html or not new_html:
         return (None, None)
 
-    old_text = _strip_html_tags(old_html)
-    new_text = _strip_html_tags(new_html)
+    old_tokens = _tokenize_html_for_diff(old_html)
+    new_tokens = _tokenize_html_for_diff(new_html)
 
-    old_words = old_text.split()
-    new_words = new_text.split()
+    # Extract just the words for diffing
+    old_words = [t[0] for t in old_tokens if t[1] == "word"]
+    new_words = [t[0] for t in new_tokens if t[1] == "word"]
 
     matcher = difflib.SequenceMatcher(None, old_words, new_words)
+    opcodes = list(matcher.get_opcodes())
 
-    old_parts: list[str] = []
-    new_parts: list[str] = []
+    def _render_side(
+        tokens: list[tuple[str, str]],
+        words: list[str],
+        opcodes: list[tuple[str, int, int, int, int]],
+        *,
+        is_old: bool,
+    ) -> str:
+        word_status: list[str] = ["equal"] * len(words)
+        for op, i1, i2, j1, j2 in opcodes:
+            if is_old:
+                for idx in range(i1, i2):
+                    word_status[idx] = op
+            else:
+                for idx in range(j1, j2):
+                    word_status[idx] = op
 
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == "equal":
-            chunk = html_escape(" ".join(old_words[i1:i2]))
-            old_parts.append(f'<span class="diff-unchanged">{chunk}</span>')
-            new_parts.append(f'<span class="diff-unchanged">{chunk}</span>')
-        elif tag == "replace":
-            old_chunk = html_escape(" ".join(old_words[i1:i2]))
-            new_chunk = html_escape(" ".join(new_words[j1:j2]))
-            old_parts.append(f'<span class="diff-changed">{old_chunk}</span>')
-            new_parts.append(f'<span class="diff-changed">{new_chunk}</span>')
-        elif tag == "delete":
-            old_chunk = html_escape(" ".join(old_words[i1:i2]))
-            old_parts.append(f'<span class="diff-changed">{old_chunk}</span>')
-        elif tag == "insert":
-            new_chunk = html_escape(" ".join(new_words[j1:j2]))
-            new_parts.append(f'<span class="diff-changed">{new_chunk}</span>')
+        parts: list[str] = []
+        word_idx = 0
+        for token_text, token_type in tokens:
+            if token_type != "word":
+                # Tags and whitespace pass through unchanged
+                parts.append(token_text)
+            else:
+                status = word_status[word_idx] if word_idx < len(word_status) else "equal"
+                word_idx += 1
+                if status == "equal":
+                    side = "old" if is_old else "new"
+                    parts.append(
+                        f'<span class="diff-{side}-unchanged">{token_text}</span>'
+                    )
+                else:
+                    parts.append(token_text)
+        return "".join(parts)
 
-    return (" ".join(old_parts), " ".join(new_parts))
+    old_result = _render_side(old_tokens, old_words, opcodes, is_old=True)
+    new_result = _render_side(new_tokens, new_words, opcodes, is_old=False)
+    return (old_result, new_result)
 
 
 def _build_code_display_name(code_edition: str) -> str:

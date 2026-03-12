@@ -14,6 +14,7 @@ from config.code_metadata import (
     get_pdf_filename,
     get_source_url,
 )
+from config.transitions import load_transitions
 from core.ip_utils import extract_client_ip
 from core.models import CodeEdition, CodeMapNode
 
@@ -180,6 +181,49 @@ def viewer_edition_nav(request: HttpRequest):
             "query_date": query_date,
             "query_code": query_code,
         },
+    )
+
+
+def viewer_edition_dates(request: HttpRequest):
+    """HTMX partial: edition date range and lingering validity for browse context."""
+    code = _query_value(request, "code")
+    query_date = _query_value(request, "query_date")
+
+    edition_info: dict[str, Any] = {}
+    if code and "_" in code:
+        system_code, edition_id = code.split("_", 1)
+        edition = (
+            CodeEdition.objects.select_related("system")
+            .filter(system__code=system_code, edition_id=edition_id)
+            .first()
+        )
+        if edition:
+            edition_info["effective_date"] = edition.effective_date.isoformat()
+            edition_info["superseded_date"] = (
+                edition.superseded_date.isoformat() if edition.superseded_date else None
+            )
+            edition_info["code_name"] = code
+            edition_info["code_display_name"] = (
+                f"{get_code_display_name(edition.system.code)} {edition.edition_id}".strip()
+            )
+
+            # Find any transition that gives this edition lingering validity
+            transitions = []
+            for record in load_transitions():
+                if record["old_edition"] == code or record["new_edition"] == code:
+                    transitions.append({
+                        "old_edition": record["old_edition"],
+                        "new_edition": record["new_edition"],
+                        "overlap_start": record["overlap_start"],
+                        "overlap_end": record["overlap_end"],
+                        "transition_type": str(record["transition_type"]).replace("_", " "),
+                    })
+            edition_info["transitions"] = transitions
+
+    return render(
+        request,
+        "partials/_viewer_edition_dates.html",
+        {"edition": edition_info, "query_date": query_date},
     )
 
 

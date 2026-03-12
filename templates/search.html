@@ -217,10 +217,11 @@
                     const nav = this.$refs.editionNav;
                     const navUrl = this.editionNavUrl();
                     if (nav && navUrl) {
-                        htmx.ajax('GET', navUrl, { target: nav, swap: 'innerHTML' });
+                        htmx.ajax('GET', navUrl, { source: nav, target: nav, swap: 'innerHTML' });
                     }
                     window._pdfInitContainers(this.$refs.viewerDocBlock);
                     this.loadSectionContent();
+                    this.loadEditionDates();
                 });
             });
         },
@@ -236,6 +237,8 @@
             }
             const htmlBlock = this.$refs.viewerHtmlContent;
             if (htmlBlock) htmlBlock.innerHTML = '';
+            const datesBlock = this.$refs.editionDates;
+            if (datesBlock) datesBlock.innerHTML = '';
         },
         editionNavUrl() {
             if (!this.viewerResult) return null;
@@ -247,6 +250,21 @@
                 map_code: this.viewerResult.map_code || '',
             });
             return '{% url "core:viewer_edition_nav" %}?' + p.toString();
+        },
+        editionDatesUrl() {
+            if (!this.viewerResult) return null;
+            const p = new URLSearchParams({
+                code: this.viewerResult.code || '',
+                query_date: this.queryDate,
+            });
+            return '{% url "core:viewer_edition_dates" %}?' + p.toString();
+        },
+        loadEditionDates() {
+            const target = this.$refs.editionDates;
+            const url = this.editionDatesUrl();
+            if (target && url) {
+                htmx.ajax('GET', url, { source: target, target: target, swap: 'innerHTML' });
+            }
         },
         sectionContentUrl() {
             if (!this.viewerResult || !this.viewerResult.map_code || !this.viewerResult.id) return null;
@@ -272,7 +290,7 @@
                     if (active) active.scrollIntoView({ block: 'center', behavior: 'instant' });
                 };
                 target.addEventListener('htmx:afterSettle', scrollOnce);
-                htmx.ajax('GET', url, { target: target, swap: 'innerHTML' });
+                htmx.ajax('GET', url, { source: target, target: target, swap: 'innerHTML' });
             }
         }
     }"
@@ -282,8 +300,8 @@
     @keydown.escape.window="if (viewerOpen) closeViewer()">
 
     <div class="mx-auto max-w-6xl px-4 py-8" x-show="viewerResult">
-        <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div>
+        <div class="mb-6 flex items-start justify-between gap-4">
+            <div class="min-w-0">
                 <p class="text-sm font-semibold uppercase tracking-wide text-primary-600 dark:text-primary-400">Viewer mode</p>
                 <h1 class="mt-2 text-3xl font-bold text-neutral-900 dark:text-white"
                     x-text="viewerResult ? (viewerResult.id + ' \u2014 ' + viewerResult.title) : ''"></h1>
@@ -291,7 +309,7 @@
                     x-text="viewerResult ? viewerResult.code_display_name : ''"></p>
             </div>
             <button type="button" @click="closeViewer()"
-                class="inline-flex items-center rounded border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-800">
+                class="shrink-0 inline-flex items-center rounded border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-800">
                 Close viewer
             </button>
         </div>
@@ -311,6 +329,7 @@
                     </template>
                     <p class="text-sm text-neutral-700 dark:text-neutral-300"><span class="font-semibold">Query-matching edition:</span> <span x-text="queryCode"></span></p>
                 </div>
+                <div class="mt-3 border-t border-neutral-200 dark:border-neutral-700 pt-3" x-ref="editionDates"></div>
             </div>
 
             <div class="rounded-xl border border-neutral-200 bg-neutral-100 p-4 dark:border-neutral-700 dark:bg-neutral-800">
@@ -466,10 +485,11 @@
                         const nav = data.$refs.editionNav;
                         const navUrl = data.editionNavUrl();
                         if (nav && navUrl) {
-                            htmx.ajax('GET', navUrl, { target: nav, swap: 'innerHTML' });
+                            htmx.ajax('GET', navUrl, { source: nav, target: nav, swap: 'innerHTML' });
                         }
                         window._pdfInitContainers(data.$refs.viewerDocBlock);
                         data.loadSectionContent();
+                        data.loadEditionDates();
                     });
                 });
             });

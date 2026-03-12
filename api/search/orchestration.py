@@ -113,6 +113,94 @@ def _build_transition_context(record: Dict[str, Any], search_date: date) -> Dict
     }
 
 
+def _supplement_transition_results(
+    results: List[Dict[str, Any]],
+    active_transitions: List[Dict[str, Any]],
+    search_date: date,
+) -> List[Dict[str, Any]]:
+    """Add missing counterpart results so transition pairs can be formed.
+
+    When a provision ID appears in one edition but not the other during a
+    transition, look it up directly by node_id in the missing edition's maps.
+    This prevents provisions from losing their comparison pair just because
+    they fell outside the keyword search's top-N results.
+    """
+    if not active_transitions:
+        return results
+
+    by_code_and_id = {
+        (item.get("code_edition"), item.get("id")): item for item in results
+    }
+    supplemented: List[Dict[str, Any]] = []
+
+    for record in active_transitions:
+        old_edition = record["old_edition"]
+        new_edition = record["new_edition"]
+        old_maps = get_map_codes(old_edition)
+        new_maps = get_map_codes(new_edition)
+
+        ids_in_new = {
+            item.get("id")
+            for item in results
+            if item.get("code_edition") == new_edition and item.get("id")
+        }
+        ids_in_old = {
+            item.get("id")
+            for item in results
+            if item.get("code_edition") == old_edition and item.get("id")
+        }
+
+        missing_in_old = ids_in_new - ids_in_old
+        missing_in_new = ids_in_old - ids_in_new
+
+        for missing_id, target_edition, target_maps in [
+            (missing_in_old, old_edition, old_maps),
+            (missing_in_new, new_edition, new_maps),
+        ]:
+            if not missing_id or not target_maps:
+                continue
+            for map_code in target_maps:
+                nodes = CodeMapNode.objects.filter(
+                    code_map__map_code=map_code,
+                    node_id__in=list(missing_id),
+                ).values(
+                    "node_id", "title", "page", "page_end",
+                    "initial_page_top", "final_page_bottom",
+                    "html", "notes_html", "parent_id",
+                )
+                for node in nodes:
+                    node_id = node["node_id"]
+                    key = (target_edition, node_id)
+                    if key in by_code_and_id:
+                        continue
+                    item = {
+                        "id": node_id,
+                        "title": node.get("title") or node_id,
+                        "page": node.get("page"),
+                        "page_end": node.get("page_end"),
+                        "score": 0.0,
+                        "code_edition": target_edition,
+                        "map_code": map_code,
+                        "source_date": search_date.isoformat(),
+                        "initial_page_top": node.get("initial_page_top"),
+                        "final_page_bottom": node.get("final_page_bottom"),
+                        "html_content": node.get("html"),
+                        "notes_html": node.get("notes_html"),
+                        "parent_id": node.get("parent_id"),
+                    }
+                    by_code_and_id[key] = item
+                    supplemented.append(item)
+
+    if supplemented:
+        logger.info(
+            "Supplemented %d transition counterpart(s): %s",
+            len(supplemented),
+            [f"{s['code_edition']}:{s['id']}" for s in supplemented],
+        )
+        return results + supplemented
+    return results
+
+
 def _apply_transition_pairs(
     results: List[Dict[str, Any]],
     active_transitions: List[Dict[str, Any]],
@@ -189,6 +277,9 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     unique_results = deduplicate_results(all_results)
+    unique_results = _supplement_transition_results(
+        unique_results, active_transitions, search_date
+    )
     unique_results = _apply_transition_pairs(unique_results, active_transitions, search_date)
 
     top_results_metadata = []
