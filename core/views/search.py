@@ -42,29 +42,6 @@ def _query_value(request: HttpRequest, key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _build_viewer_result_from_query(request: HttpRequest) -> dict[str, Any]:
-    return {
-        "id": _query_value(request, "id"),
-        "title": _query_value(request, "title") or "No title",
-        "code": _query_value(request, "code"),
-        "code_display_name": _query_value(request, "code_display_name"),
-        "map_code": _query_value(request, "map_code"),
-        "page": _parse_optional_int(_query_value(request, "page")),
-        "page_end": _parse_optional_int(_query_value(request, "page_end")),
-        "initial_page_top": _parse_optional_float(_query_value(request, "initial_page_top")),
-        "final_page_bottom": _parse_optional_float(_query_value(request, "final_page_bottom")),
-        "pdf_filename": _query_value(request, "pdf_filename"),
-        "pdf_download_url": _query_value(request, "pdf_download_url"),
-        "source_url": _query_value(request, "source_url"),
-        "query_date": _query_value(request, "query_date"),
-        "query_code": _query_value(request, "query_code"),
-        "result_type": None,
-        "group_type": None,
-        "amendments": [],
-        "html_content": None,
-        "notes_html": None,
-    }
-
 
 def _build_viewer_url_params(
     *, code_name: str, node_id: str, query_date: str, query_code: str
@@ -159,25 +136,21 @@ def home(request):
     return render(request, "search.html", {"initial_query": initial_query})
 
 
-def viewer_mode(request: HttpRequest):
-    """Full-page viewer mode for browsing beyond a returned result."""
-    result = _build_viewer_result_from_query(request)
-    navigation = _build_viewer_navigation(
-        current_code=result["code"],
-        node_id=result["id"],
-        query_date=result["query_date"],
-        query_code=result["query_code"] or result["code"],
-    )
+def viewer_edition_nav(request: HttpRequest):
+    """HTMX partial: edition navigation for the client-side viewer overlay."""
+    code = _query_value(request, "code")
+    node_id = _query_value(request, "node_id")
+    query_date = _query_value(request, "query_date")
+    query_code = _query_value(request, "query_code")
+    navigation = _build_viewer_navigation(code, node_id, query_date, query_code)
     return render(
         request,
-        "viewer_mode.html",
+        "partials/_viewer_edition_nav.html",
         {
-            "result": result,
-            "query_date": result["query_date"],
-            "query_code": result["query_code"] or result["code"],
-            "current_code": result["code"],
             "previous_version": navigation["previous"],
             "next_version": navigation["next"],
+            "query_date": query_date,
+            "query_code": query_code,
         },
     )
 

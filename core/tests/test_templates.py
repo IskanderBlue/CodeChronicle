@@ -37,7 +37,7 @@ def test_search_results_partial_renders_local_pdf_mapping_ui():
     assert "data-pdf-fallback" in html
     assert "data-pdf-bbox" not in html
     assert "data-result-justification" in html
-    assert 'action="/viewer/"' in html
+    assert "data-viewer-open" in html
 
 
 def test_search_results_partial_initializes_first_result_as_open_accordion_item():
@@ -273,51 +273,6 @@ def test_transition_compare_card_renders_banner_fields():
     assert "data-transition-mobile-tabs" in html
     assert "Matching version" in html
     assert "Comparison version" in html
-
-
-def test_viewer_mode_template_renders_query_context_and_navigation():
-    html = render_to_string(
-        "viewer_mode.html",
-        {
-            "result": {
-                "id": "B-3.2.9.",
-                "title": "Fire Separations",
-                "code": "BCBC_2018",
-                "code_display_name": "British Columbia Building Code 2018",
-                "page": 98,
-                "page_end": 101,
-                "initial_page_top": 640.0,
-                "final_page_bottom": 88.0,
-                "pdf_filename": "BCBC2018.pdf",
-                "pdf_download_url": "",
-                "source_url": "",
-                "amendments": [],
-                "html_content": None,
-                "notes_html": None,
-            },
-            "query_date": "2024-06-01",
-            "query_code": "BCBC_2024",
-            "current_code": "BCBC_2018",
-            "previous_version": {
-                "id": "B-3.2.9.",
-                "code": "BCBC_2012",
-                "code_display_name": "British Columbia Building Code 2012",
-            },
-            "next_version": {
-                "id": "B-3.2.9.",
-                "code": "BCBC_2024",
-                "code_display_name": "British Columbia Building Code 2024",
-            },
-        },
-    )
-
-    assert "Viewer mode" in html
-    assert "Queried date:" in html
-    assert "Query-matching edition:" in html
-    assert "Browse context edition" in html
-    assert "Previous edition" in html
-    assert "Next edition" in html
-    assert 'data-pdf-page="98"' in html
 
 
 def test_mobile_accordion_and_grouped_cards_include_touch_friendly_markup():

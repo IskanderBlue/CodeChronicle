@@ -39,7 +39,7 @@ def test_initial_transition_fixture_contains_five_known_records():
 
     assert len(records) >= 5
     assert any(record["new_edition"] == "BCBC_2024" for record in records)
-    assert any(record["new_edition"] == "QCC_Building_2020" for record in records)
+    assert any(record["new_edition"] == "QCC_2020" for record in records)
     assert any(record["new_edition"] == "QECB_2020" for record in records)
     assert any(record["new_edition"] == "QPC_2020" for record in records)
     assert any(record["new_edition"] == "QSC_2020" for record in records)

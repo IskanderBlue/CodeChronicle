@@ -9,8 +9,8 @@
     "citation_text": "BCBC 2024 transition provisions for earthquake design and adaptable dwelling units"
   },
   {
-    "old_edition": "QCC_Building_2015",
-    "new_edition": "QCC_Building_2020",
+    "old_edition": "QCC_2015",
+    "new_edition": "QCC_2020",
     "overlap_start": "2025-04-17",
     "overlap_end": "2026-10-17",
     "transition_type": "grace_period",
