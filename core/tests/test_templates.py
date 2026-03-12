@@ -264,6 +264,7 @@ def test_transition_compare_card_renders_banner_fields():
                             "amendments": [],
                         },
                     ],
+                    "has_renderable_content": True,
                     "amendments": [],
                 }
             ],
@@ -272,7 +273,7 @@ def test_transition_compare_card_renders_banner_fields():
 
     assert "grace period" in html.lower()
     assert "Queried date" in html
-    assert "Citation" in html
+    assert "Transition regulation" in html
     assert "data-transition-mobile-tabs" in html
     assert "Matching version" in html
     assert "Comparison version" in html
