@@ -316,6 +316,7 @@ function renderPageControls(block, mount, wantsPicker) {
 }
 
 function showUnmappedState(container) {
+    console.trace('[pdf-viewer] showUnmappedState called');
     container.innerHTML = '';
     container.classList.add('hidden');
 }
@@ -393,8 +394,25 @@ async function buildPageElement(pdf, pageNum, containerWidth, opts = {}) {
 
 async function renderPdfPage(container, expectedFilename, pageNum, span) {
     try {
+        const viewerMode = container.hasAttribute('data-pdf-viewer-mode');
+        console.log('[pdf-viewer] renderPdfPage', { viewerMode, expectedFilename, pageNum });
+
+        // Skip re-render if viewer mode scrollBox is already set up or render in progress
+        if (viewerMode && (container.dataset.pdfRendering === 'true' || container.querySelector('[data-pdf-scale]'))) {
+            console.log('[pdf-viewer] skipping re-render (guard hit)');
+            return true;
+        }
+
+        if (viewerMode) {
+            container.dataset.pdfRendering = 'true';
+            // Unhide container early so clientWidth is accurate
+            container.classList.remove('hidden');
+        }
+
         const pdf = await loadPdfForExpectedFilename(expectedFilename);
         if (!pdf) {
+            console.log('[pdf-viewer] no PDF mapping found for', expectedFilename);
+            if (viewerMode) delete container.dataset.pdfRendering;
             showUnmappedState(container);
             const block = container.closest('[data-pdf-block]');
             if (block) {
@@ -412,7 +430,7 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
         pageNum = Math.max(1, Math.min(pageNum, totalPages));
 
         const containerWidth = container.clientWidth || container.parentElement?.clientWidth || 600;
-        const viewerMode = container.hasAttribute('data-pdf-viewer-mode');
+        console.log('[pdf-viewer] containerWidth =', containerWidth, 'totalPages =', totalPages);
 
         if (viewerMode) {
             // --- Viewer mode: scrollable container with all pages, lazy-rendered ---
@@ -433,7 +451,7 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
             for (let p = 1; p <= totalPages; p++) {
                 const slot = document.createElement('div');
                 slot.dataset.pdfSlotPage = String(p);
-                slot.style.cssText = `width:${containerWidth}px;height:${scaledPageHeight}px;margin:0 auto ${PAGE_GAP}px;position:relative;background:#e5e7eb;`;
+                slot.style.cssText = `width:100%;height:${scaledPageHeight}px;margin:0 auto ${PAGE_GAP}px;position:relative;background:#e5e7eb;`;
 
                 // Page number label (shown while loading)
                 const label = document.createElement('div');
@@ -459,20 +477,22 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
                     rendered.add(p);
                     observer.unobserve(slot);
 
-                    const isStart = span && p === span.startPage;
-                    const isEnd = span && p === span.endPage;
-                    const topB = isStart ? span.initialPageTop : null;
-                    const bottomB = isEnd ? span.finalPageBottom : null;
-
-                    let highlight = null;
-                    if (topB !== null || bottomB !== null) {
-                        const hTop = topB !== null ? topB * scale : 0;
-                        const hBot = bottomB !== null ? bottomB * scale : scaledPageHeight;
-                        highlight = { top: hTop, height: hBot - hTop };
-                    }
-
                     try {
-                        const wrapper = await buildPageElement(pdf, p, containerWidth, { highlight });
+                        const slotWidth = slot.clientWidth || containerWidth;
+                        const liveScale = slotWidth / firstVp.width;
+
+                        const isStart = span && p === span.startPage;
+                        const isEnd = span && p === span.endPage;
+                        const topB = isStart ? span.initialPageTop : null;
+                        const bottomB = isEnd ? span.finalPageBottom : null;
+
+                        let highlight = null;
+                        if (topB !== null || bottomB !== null) {
+                            const hTop = topB !== null ? topB * liveScale : 0;
+                            const hBot = bottomB !== null ? bottomB * liveScale : Math.round(firstVp.height * liveScale);
+                            highlight = { top: hTop, height: hBot - hTop };
+                        }
+                        const wrapper = await buildPageElement(pdf, p, slotWidth, { highlight });
                         slot.innerHTML = '';
                         slot.appendChild(wrapper);
                     } catch (err) {
@@ -483,12 +503,13 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
 
             for (const slot of slots) observer.observe(slot);
 
-            // Scroll to section page
+            // Scroll to section page (use live width for accurate offset)
             const targetSlot = slots[pageNum - 1];
             if (targetSlot) {
-                const topOffset = span && span.initialPageTop != null
-                    ? span.initialPageTop * scale : 0;
                 requestAnimationFrame(() => {
+                    const liveScale = (targetSlot.clientWidth || containerWidth) / firstVp.width;
+                    const topOffset = span && span.initialPageTop != null
+                        ? span.initialPageTop * liveScale : 0;
                     scrollBox.scrollTop = targetSlot.offsetTop + topOffset - 40;
                 });
             }
@@ -514,6 +535,8 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
 
         container.dataset.pdfTotalPages = String(totalPages);
         container.classList.remove('hidden');
+        if (viewerMode) delete container.dataset.pdfRendering;
+        console.log('[pdf-viewer] renderPdfPage SUCCESS', { viewerMode, expectedFilename });
         const block = container.closest('[data-pdf-block]');
         if (block) {
             setFallbackVisibility(block, false);
@@ -522,6 +545,8 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
         }
         return true;
     } catch (err) {
+        console.error('[pdf-viewer] renderPdfPage CATCH', err);
+        if (container.hasAttribute('data-pdf-viewer-mode')) delete container.dataset.pdfRendering;
         const block = container.closest('[data-pdf-block]');
         showUnmappedState(container);
         if (block) {
@@ -676,16 +701,49 @@ export function refreshMappedLabels(expectedKey = null) {
             setMappedLabel(block);
         }
     });
+    refreshBrowseButtons(expectedKey);
 }
 
-export async function refreshMatchingVisibleContainers(expectedKey = null) {
-    const containers = document.querySelectorAll('[data-pdf-container]');
+function refreshBrowseButtons(expectedKey = null) {
+    const buttons = document.querySelectorAll('[data-browse-expected-filename]');
+    buttons.forEach(wrapper => {
+        const filename = wrapper.getAttribute('data-browse-expected-filename');
+        const key = expectedKeyFor(filename);
+        if (expectedKey && key !== expectedKey) return;
+        wrapper.classList.toggle('hidden', !getMapping(filename));
+    });
+}
+
+// --- Lazy card rendering via IntersectionObserver ---
+let _cardObserver = null;
+const _pendingCards = new WeakSet();
+
+function getCardObserver() {
+    if (_cardObserver) return _cardObserver;
+    _cardObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const block = entry.target;
+            _cardObserver.unobserve(block);
+            _pendingCards.delete(block);
+            const container = block.querySelector('[data-pdf-container]');
+            if (container) renderContainer(container);
+        }
+    }, { rootMargin: '300px 0px' });
+    return _cardObserver;
+}
+
+export async function refreshMatchingVisibleContainers(expectedKey = null, root = null) {
+    const scope = root || document;
+    const containers = scope.querySelectorAll('[data-pdf-container]');
     for (const container of containers) {
         const key = expectedKeyFor(container.getAttribute('data-pdf-expected-filename'));
         if (expectedKey && key !== expectedKey) continue;
         const block = container.closest('[data-pdf-block]');
         if (!isVisibleElement(block || container)) continue;
         await renderContainer(container);
+        // Yield to browser between renders to avoid "slowing down" warnings
+        await new Promise(r => setTimeout(r, 0));
     }
 }
 
@@ -720,11 +778,34 @@ export async function updateStorageUi() {
 }
 
 export async function initPdfContainers(root) {
-    const blocks = (root || document).querySelectorAll('[data-pdf-block]');
+    const scope = root || document;
+    const blocks = scope.querySelectorAll('[data-pdf-block]');
     for (const block of blocks) {
+        // Skip binding viewer-mode blocks with no filename yet (overlay hidden at page load)
+        const container = block.querySelector('[data-pdf-container]');
+        if (container?.hasAttribute('data-pdf-viewer-mode') &&
+            !container.getAttribute('data-pdf-expected-filename')) continue;
         bindBlockControls(block);
     }
-    await refreshMatchingVisibleContainers();
+
+    // Viewer-mode containers: render if they have a filename (skip empty overlay at page load)
+    // Card-mode containers: lazy-render via IntersectionObserver
+    const observer = getCardObserver();
+    for (const block of blocks) {
+        const container = block.querySelector('[data-pdf-container]');
+        if (!container) continue;
+        if (container.hasAttribute('data-pdf-viewer-mode')) {
+            if (container.getAttribute('data-pdf-expected-filename')) {
+                await renderContainer(container);
+            }
+        } else if (!_pendingCards.has(block)) {
+            _pendingCards.add(block);
+            observer.observe(block);
+        }
+    }
+
+    // Show browse buttons for any mapped PDFs (covers HTMX-loaded content)
+    refreshBrowseButtons();
     await updateStorageUi();
 }
 

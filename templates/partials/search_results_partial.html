@@ -15,43 +15,56 @@
 <div
     class="bg-neutral-100 dark:bg-neutral-800 shadow rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 transition-colors"
     :class="activeResult === '{{ result.id|escapejs }}' ? 'border-primary-400 dark:border-primary-500' : 'hover:border-primary-300 dark:hover:border-primary-500'">
-    <button type="button" class="w-full px-4 py-5 text-left sm:p-6 min-h-[84px]" @click="activeResult = '{{ result.id|escapejs }}'">
-        <div class="flex justify-between items-start gap-4">
-            <div>
-                <p class="text-sm text-primary-600 dark:text-primary-400 font-medium">
-                    {{ result.code_display_name }}
-                </p>
-                {% if result.group_type == 'parent_children' %}
-                <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                    Grouped result · {{ result.child_match_count }}/{{ result.child_total_count }} child matches
-                </p>
+    <button type="button" class="w-full text-left" @click="activeResult = activeResult === '{{ result.id|escapejs }}' ? null : '{{ result.id|escapejs }}'">
+        {# ── Collapsed: compact one-liner ── #}
+        <div class="px-4 py-3 sm:px-5" x-show="activeResult !== '{{ result.id|escapejs }}'">
+            <div class="flex items-center gap-2 text-sm">
+                <span class="font-medium text-primary-600 dark:text-primary-400 shrink-0">{{ result.code_display_name }}</span>
+                <span class="text-neutral-400 dark:text-neutral-500">&middot;</span>
+                <span class="font-semibold text-neutral-900 dark:text-white truncate">{{ result.id }} &mdash; {{ result.title }}</span>
+                {% if result.page %}
+                <span class="text-neutral-400 dark:text-neutral-500 shrink-0">&middot;</span>
+                <span class="text-neutral-500 dark:text-neutral-400 shrink-0 text-xs">{% if result.page_end and result.page_end != result.page %}p.{{ result.page }}&ndash;{{ result.page_end }}{% else %}p.{{ result.page }}{% endif %}</span>
                 {% endif %}
-                {% if result.result_type == 'transition_compare' %}
-                <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                    Transition compare
-                </p>
-                {% endif %}
-                <h3 class="mt-2 text-lg font-bold text-neutral-900 dark:text-white">
-                    {{ result.id }} &mdash; {{ result.title }}
-                </h3>
-                {% if result.source_url %}
-                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">View on e-Laws</p>
-                {% elif result.page %}
-                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    {% if result.page_end and result.page_end != result.page %}
-                    Pages {{ result.page }}&ndash;{{ result.page_end }}
-                    {% else %}
-                    Page {{ result.page }}
-                    {% endif %}
-                </p>
-                {% endif %}
+                <span class="ml-auto shrink-0 bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-medium px-2 py-0.5 rounded">{{ result.score|floatformat:1 }}</span>
             </div>
-            <div class="flex flex-col items-end gap-2">
+        </div>
+        {# ── Expanded: full header ── #}
+        <div class="px-4 py-5 sm:p-6" x-show="activeResult === '{{ result.id|escapejs }}'" x-cloak>
+            <div class="flex justify-between items-start gap-4">
+                <div>
+                    <p class="text-sm text-primary-600 dark:text-primary-400 font-medium">
+                        {{ result.code_display_name }}
+                    </p>
+                    {% if result.group_type == 'parent_children' %}
+                    <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                        Grouped result · {{ result.child_match_count }}/{{ result.child_total_count }} child matches
+                    </p>
+                    {% endif %}
+                    {% if result.result_type == 'transition_compare' %}
+                    <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                        Transition compare
+                    </p>
+                    {% endif %}
+                    <h3 class="mt-2 text-lg font-bold text-neutral-900 dark:text-white">
+                        {{ result.id }} &mdash; {{ result.title }}
+                    </h3>
+                    {% if result.source_url %}
+                    <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">View on e-Laws</p>
+                    {% elif result.page %}
+                    <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                        {% if result.page_end and result.page_end != result.page %}
+                        Pages {{ result.page }}&ndash;{{ result.page_end }}
+                        {% else %}
+                        Page {{ result.page }}
+                        {% endif %}
+                    </p>
+                    {% endif %}
+                </div>
                 <span
                     class="bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-medium px-2.5 py-0.5 rounded border border-neutral-300 dark:border-neutral-600">
                     Score: {{ result.score|floatformat:2 }}
                 </span>
-                <span class="text-xs text-primary-600 dark:text-primary-400 font-medium" x-text="activeResult === '{{ result.id|escapejs }}' ? 'Open' : 'Expand'"></span>
             </div>
         </div>
     </button>

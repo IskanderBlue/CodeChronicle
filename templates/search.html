@@ -6,6 +6,9 @@
 <script type="module">
     import { restorePdfMappings, initPdfContainers, clearAllPdfMappings, refreshMappedLabels, refreshMatchingVisibleContainers, updateStorageUi } from '{% static "js/pdf-viewer.mjs" %}';
 
+    // Expose to Alpine inline expressions
+    window._pdfInitContainers = initPdfContainers;
+
     document.addEventListener('pdf-mapped', async (event) => {
         const expectedKey = event.detail?.expectedKey || null;
         refreshMappedLabels(expectedKey);
@@ -19,6 +22,7 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
         await restorePdfMappings();
+        refreshMappedLabels();
         const clearButton = document.querySelector('[data-pdf-clear-cache]');
         if (clearButton) {
             clearButton.addEventListener('click', async () => {
@@ -202,23 +206,36 @@
         queryDate: '',
         queryCode: '',
         openViewer(result) {
+            if (this.viewerOpen) return;
             this.viewerResult = result;
             this.queryDate = result.query_date || '';
             this.queryCode = result.query_code || result.code || '';
-            this.viewerOpen = true;
-            history.pushState({ viewer: true }, '', window.location.pathname + window.location.search);
+            try { history.pushState({ viewer: true }, '', window.location.pathname + window.location.search); } catch(e) { /* rate-limited */ }
             this.$nextTick(() => {
-                const nav = this.$refs.editionNav;
-                if (nav) htmx.process(nav);
-                initPdfContainers(this.$refs.viewerDocBlock);
+                this.viewerOpen = true;
+                requestAnimationFrame(() => {
+                    const nav = this.$refs.editionNav;
+                    const navUrl = this.editionNavUrl();
+                    if (nav && navUrl) {
+                        htmx.ajax('GET', navUrl, { target: nav, swap: 'innerHTML' });
+                    }
+                    window._pdfInitContainers(this.$refs.viewerDocBlock);
+                });
             });
         },
         closeViewer() {
             this.viewerOpen = false;
             this.viewerResult = null;
+            // Reset PDF block so it re-initializes on next open
+            const block = this.$refs.viewerDocBlock?.querySelector('[data-pdf-block]');
+            if (block) {
+                block.dataset.pdfBound = '';
+                const container = block.querySelector('[data-pdf-container]');
+                if (container) { container.innerHTML = ''; container.classList.add('hidden'); delete container.dataset.pdfRendering; }
+            }
         },
         editionNavUrl() {
-            if (!this.viewerResult) return '';
+            if (!this.viewerResult) return null;
             const p = new URLSearchParams({
                 code: this.viewerResult.code || '',
                 node_id: this.viewerResult.id || '',
@@ -231,7 +248,14 @@
     @viewer-open.window="openViewer($event.detail)"
     @viewer-edition-update.window="
         viewerResult = { ...$event.detail, query_date: queryDate, query_code: queryCode };
-        $nextTick(() => initPdfContainers($refs.viewerDocBlock));
+        $nextTick(() => { requestAnimationFrame(() => {
+            const block = $refs.viewerDocBlock?.querySelector('[data-pdf-block]');
+            if (block) { block.dataset.pdfBound = ''; const c = block.querySelector('[data-pdf-container]'); if (c) { c.innerHTML = ''; c.classList.add('hidden'); delete c.dataset.pdfRendering; } }
+            const nav = $refs.editionNav;
+            const navUrl = editionNavUrl();
+            if (nav && navUrl) { htmx.ajax('GET', navUrl, { target: nav, swap: 'innerHTML' }); }
+            window._pdfInitContainers($refs.viewerDocBlock);
+        }); });
     "
     x-init="
         window.addEventListener('popstate', () => { if (viewerOpen) closeViewer(); });
@@ -275,8 +299,6 @@
             <div class="rounded-xl border border-neutral-200 bg-neutral-100 p-4 dark:border-neutral-700 dark:bg-neutral-800">
                 <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Edition navigation</p>
                 <div class="mt-3" id="viewer-edition-nav" x-ref="editionNav"
-                    :hx-get="editionNavUrl()"
-                    hx-trigger="load"
                     hx-swap="innerHTML">
                 </div>
             </div>
@@ -298,96 +320,80 @@
                     </p>
                 </template>
 
-                <template x-if="viewerResult && viewerResult.pdf_filename">
-                    <div class="mt-4" x-data="{ expanded: true }" data-pdf-block>
-                        <div class="pdf-clip relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-                            :style="{ maxHeight: expanded ? 'none' : '200px' }">
-                            <div data-pdf-container data-pdf-viewer-mode
-                                :data-pdf-expected-filename="viewerResult.pdf_filename"
-                                :data-pdf-page="String(viewerResult.page || 1)"
-                                :data-pdf-page-end="String(viewerResult.page_end || viewerResult.page || 1)"
-                                :data-pdf-initial-page-top="viewerResult.initial_page_top != null ? String(viewerResult.initial_page_top) : ''"
-                                :data-pdf-final-page-bottom="viewerResult.final_page_bottom != null ? String(viewerResult.final_page_bottom) : ''"
-                                class="hidden w-full bg-neutral-200 dark:bg-neutral-900 min-h-[100px]"></div>
-                            <div class="border-t border-neutral-200 dark:border-neutral-700 p-3 bg-neutral-100 dark:bg-neutral-800"
-                                data-pdf-controls-mount></div>
-                            <template data-pdf-picker-template>
-                                <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                                    Expected PDF:
-                                    <template x-if="viewerResult.pdf_download_url">
-                                        <a class="font-mono text-xs text-primary-600 dark:text-primary-400 underline font-medium"
-                                            :href="viewerResult.pdf_download_url" target="_blank" rel="noopener noreferrer"
-                                            x-text="viewerResult.pdf_filename"></a>
-                                    </template>
-                                    <template x-if="!viewerResult.pdf_download_url">
-                                        <code class="font-mono text-xs" x-text="viewerResult.pdf_filename"></code>
-                                    </template>
-                                </p>
-                                <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400" data-pdf-mapped-label>
-                                    Not mapped yet.
-                                </p>
-                                <p class="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
-                                    Local only. File stays in your browser and is not uploaded.
-                                </p>
-                                <div class="flex flex-wrap gap-2">
-                                    <label
-                                        class="mt-2 inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-primary-300 text-primary-700 dark:border-primary-500 dark:text-primary-300 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20">
-                                        Choose PDF
-                                        <input type="file" accept="application/pdf" class="hidden" data-pdf-file-input>
-                                    </label>
-                                    <button type="button" data-pdf-clear-mapping
-                                        class="mt-2 inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-                                        Clear mapping
-                                    </button>
-                                </div>
-                                <div data-pdf-dropzone
-                                    class="mt-2 min-h-[70px] rounded border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">
-                                    Drop a PDF here
-                                </div>
-                                <div class="mt-2 hidden rounded border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
-                                    data-pdf-mismatch>
-                                    <p data-pdf-mismatch-text></p>
-                                    <div class="mt-2 flex gap-2">
-                                        <button type="button" data-pdf-override-mapping
-                                            class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40">
-                                            Use selected file
-                                        </button>
-                                        <button type="button" data-pdf-cancel-mapping
-                                            class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </div>
-                            </template>
-                            <template data-pdf-mapped-template>
-                                <div class="flex flex-wrap gap-2">
-                                    <button type="button" data-pdf-show-picker
-                                        class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-                                        Change mapping
-                                    </button>
-                                    <button type="button" data-pdf-clear-mapping
-                                        class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
-                                        Clear mapping
-                                    </button>
-                                </div>
-                            </template>
-                            <div x-show="!expanded"
-                                class="absolute bottom-0 left-0 right-0 h-16 pdf-collapse-gradient pointer-events-none">
+                <div class="mt-4" x-show="viewerResult && viewerResult.pdf_filename" x-data="{ expanded: true }" data-pdf-block>
+                    <div class="pdf-clip relative rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden"
+                        :style="{ maxHeight: expanded ? 'none' : '200px' }">
+                        <div data-pdf-container data-pdf-viewer-mode
+                            :data-pdf-expected-filename="viewerResult ? viewerResult.pdf_filename || '' : ''"
+                            :data-pdf-page="viewerResult ? String(viewerResult.page || 1) : '1'"
+                            :data-pdf-page-end="viewerResult ? String(viewerResult.page_end || viewerResult.page || 1) : '1'"
+                            :data-pdf-initial-page-top="viewerResult && viewerResult.initial_page_top != null ? String(viewerResult.initial_page_top) : ''"
+                            :data-pdf-final-page-bottom="viewerResult && viewerResult.final_page_bottom != null ? String(viewerResult.final_page_bottom) : ''"
+                            class="hidden w-full bg-neutral-200 dark:bg-neutral-900 min-h-[100px]"></div>
+                        <div class="border-t border-neutral-200 dark:border-neutral-700 p-3 bg-neutral-100 dark:bg-neutral-800"
+                            data-pdf-controls-mount></div>
+                        <template data-pdf-picker-template>
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                                Expected PDF:
+                                <span x-show="viewerResult && viewerResult.pdf_download_url">
+                                    <a class="font-mono text-xs text-primary-600 dark:text-primary-400 underline font-medium"
+                                        :href="viewerResult ? viewerResult.pdf_download_url : ''" target="_blank" rel="noopener noreferrer"
+                                        x-text="viewerResult ? viewerResult.pdf_filename : ''"></a>
+                                </span>
+                                <code x-show="viewerResult && !viewerResult.pdf_download_url"
+                                    class="font-mono text-xs" x-text="viewerResult ? viewerResult.pdf_filename : ''"></code>
+                            </p>
+                            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400" data-pdf-mapped-label>
+                                Not mapped yet.
+                            </p>
+                            <p class="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+                                Local only. File stays in your browser and is not uploaded.
+                            </p>
+                            <div class="flex flex-wrap gap-2">
+                                <label
+                                    class="mt-2 inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-primary-300 text-primary-700 dark:border-primary-500 dark:text-primary-300 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                                    Choose PDF
+                                    <input type="file" accept="application/pdf" class="hidden" data-pdf-file-input>
+                                </label>
+                                <button type="button" data-pdf-clear-mapping
+                                    class="mt-2 inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
+                                    Clear mapping
+                                </button>
                             </div>
-                        </div>
-                        <div class="mt-2 hidden text-xs text-neutral-500 dark:text-neutral-400" data-pdf-warning></div>
-                        <div class="flex justify-end mt-1">
-                            <button x-show="expanded" @click="expanded = false"
-                                class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-                                Collapse
-                            </button>
-                            <button x-show="!expanded" @click="expanded = true"
-                                class="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
-                                Expand section
-                            </button>
-                        </div>
+                            <div data-pdf-dropzone
+                                class="mt-2 min-h-[70px] rounded border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">
+                                Drop a PDF here
+                            </div>
+                            <div class="mt-2 hidden rounded border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+                                data-pdf-mismatch>
+                                <p data-pdf-mismatch-text></p>
+                                <div class="mt-2 flex gap-2">
+                                    <button type="button" data-pdf-override-mapping
+                                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40">
+                                        Use selected file
+                                    </button>
+                                    <button type="button" data-pdf-cancel-mapping
+                                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                        <template data-pdf-mapped-template>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" data-pdf-show-picker
+                                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
+                                    Change mapping
+                                </button>
+                                <button type="button" data-pdf-clear-mapping
+                                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700">
+                                    Clear mapping
+                                </button>
+                            </div>
+                        </template>
                     </div>
-                </template>
+                    <div class="mt-2 hidden text-xs text-neutral-500 dark:text-neutral-400" data-pdf-warning></div>
+                </div>
             </div>
         </div>
     </div>
