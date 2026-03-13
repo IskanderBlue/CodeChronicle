@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+[x-cloak] { display: none !important; }
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline; }
+.diff-old-unchanged, .diff-new-unchanged { opacity: 0.7; }

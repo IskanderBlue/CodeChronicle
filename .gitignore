@@ -73,5 +73,8 @@ secrets/
 .agents/
 .tmp/
 
+# Compiled Tailwind (built in CI)
+static/css/tailwind.css
+
 # artifact
 nul

@@ -76,6 +76,20 @@ jobs:
       - name: Run tests
         run: pytest
 
+      - name: Cache Tailwind CLI
+        uses: actions/cache@v4
+        with:
+          path: tailwindcss-linux-x64
+          key: tailwindcss-v4-${{ hashFiles('tailwind.config.js') }}
+
+      - name: Build Tailwind CSS
+        run: |
+          if [ ! -f tailwindcss-linux-x64 ]; then
+            curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+            chmod +x tailwindcss-linux-x64
+          fi
+          ./tailwindcss-linux-x64 -i static/css/input.css -o static/css/tailwind.css --minify
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
