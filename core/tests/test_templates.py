@@ -83,18 +83,20 @@ def test_grouped_result_renders_parent_header_and_children():
             "meta": {"applicable_codes": ["NBC_2025"]},
             "results": [
                 {
-                    "id": "B-3.2.9",
+                    "id": "3.2.9",
+                    "division": "B",
                     "title": "Parent Section",
                     "score": 0.96,
                     "code_display_name": "National Building Code 2025",
                     "group_type": "parent_children",
                     "child_match_count": 5,
                     "child_total_count": 5,
-                    "top_scoring_child_id": "B-3.2.9.2",
-                    "active_child": {"id": "B-3.2.9.2", "title": "Closures"},
+                    "top_scoring_child_id": "3.2.9.2",
+                    "active_child": {"id": "3.2.9.2", "title": "Closures"},
                     "children": [
                         {
-                            "id": "B-3.2.9.1",
+                            "id": "3.2.9.1",
+                            "division": "B",
                             "title": "General",
                             "page": 120,
                             "page_end": 120,
@@ -102,7 +104,8 @@ def test_grouped_result_renders_parent_header_and_children():
                             "is_top_scoring": False,
                         },
                         {
-                            "id": "B-3.2.9.2",
+                            "id": "3.2.9.2",
+                            "division": "B",
                             "title": "Closures",
                             "page": 121,
                             "page_end": 121,
@@ -116,9 +119,9 @@ def test_grouped_result_renders_parent_header_and_children():
         },
     )
 
-    assert "B-3.2.9" in html
-    assert "B-3.2.9.1" in html
-    assert "B-3.2.9.2" in html
+    assert "3.2.9" in html
+    assert "3.2.9.1" in html
+    assert "3.2.9.2" in html
     assert "Matching children" in html
 
 
@@ -130,18 +133,20 @@ def test_grouped_result_marks_top_scoring_child():
             "meta": {"applicable_codes": ["NBC_2025"]},
             "results": [
                 {
-                    "id": "B-3.2.9",
+                    "id": "3.2.9",
+                    "division": "B",
                     "title": "Parent Section",
                     "score": 0.96,
                     "code_display_name": "National Building Code 2025",
                     "group_type": "parent_children",
                     "child_match_count": 2,
                     "child_total_count": 2,
-                    "top_scoring_child_id": "B-3.2.9.2",
-                    "active_child": {"id": "B-3.2.9.2", "title": "Closures"},
+                    "top_scoring_child_id": "3.2.9.2",
+                    "active_child": {"id": "3.2.9.2", "title": "Closures"},
                     "children": [
                         {
-                            "id": "B-3.2.9.1",
+                            "id": "3.2.9.1",
+                            "division": "B",
                             "title": "General",
                             "page": 120,
                             "page_end": 120,
@@ -149,7 +154,8 @@ def test_grouped_result_marks_top_scoring_child():
                             "is_top_scoring": False,
                         },
                         {
-                            "id": "B-3.2.9.2",
+                            "id": "3.2.9.2",
+                            "division": "B",
                             "title": "Closures",
                             "page": 121,
                             "page_end": 121,
@@ -163,7 +169,7 @@ def test_grouped_result_marks_top_scoring_child():
         },
     )
 
-    assert 'data-top-scoring-child="B-3.2.9.2"' in html
+    assert 'data-top-scoring-child="3.2.9.2"' in html
     assert "Top match" in html
 
 
@@ -175,18 +181,20 @@ def test_mixed_grouped_and_standalone_results_render_together():
             "meta": {"applicable_codes": ["NBC_2025"]},
             "results": [
                 {
-                    "id": "B-3.2.9",
+                    "id": "3.2.9",
+                    "division": "B",
                     "title": "Parent Section",
                     "score": 0.96,
                     "code_display_name": "National Building Code 2025",
                     "group_type": "parent_children",
                     "child_match_count": 2,
                     "child_total_count": 2,
-                    "top_scoring_child_id": "B-3.2.9.2",
-                    "active_child": {"id": "B-3.2.9.2", "title": "Closures"},
+                    "top_scoring_child_id": "3.2.9.2",
+                    "active_child": {"id": "3.2.9.2", "title": "Closures"},
                     "children": [
                         {
-                            "id": "B-3.2.9.1",
+                            "id": "3.2.9.1",
+                            "division": "B",
                             "title": "General",
                             "page": 120,
                             "page_end": 120,
@@ -194,7 +202,8 @@ def test_mixed_grouped_and_standalone_results_render_together():
                             "is_top_scoring": False,
                         },
                         {
-                            "id": "B-3.2.9.2",
+                            "id": "3.2.9.2",
+                            "division": "B",
                             "title": "Closures",
                             "page": 121,
                             "page_end": 121,
@@ -217,7 +226,7 @@ def test_mixed_grouped_and_standalone_results_render_together():
         },
     )
 
-    assert "B-3.2.9" in html
+    assert "3.2.9" in html
     assert "Table-9.10.3.1.-A" in html
 
 
@@ -229,7 +238,8 @@ def test_transition_compare_card_renders_banner_fields():
             "meta": {"applicable_codes": ["BCBC_2024"]},
             "results": [
                 {
-                    "id": "B-3.2.9.",
+                    "id": "3.2.9.",
+                    "division": "B",
                     "title": "Fire Separations",
                     "score": 1.0,
                     "code": "BCBC_2024",
@@ -246,7 +256,8 @@ def test_transition_compare_card_renders_banner_fields():
                     },
                     "versions": [
                         {
-                            "id": "B-3.2.9.",
+                            "id": "3.2.9.",
+                            "division": "B",
                             "title": "Fire Separations",
                             "code_display_name": "British Columbia Building Code 2024",
                             "page": 120,
@@ -255,7 +266,8 @@ def test_transition_compare_card_renders_banner_fields():
                             "amendments": [],
                         },
                         {
-                            "id": "B-3.2.9.",
+                            "id": "3.2.9.",
+                            "division": "B",
                             "title": "Fire Separations",
                             "code_display_name": "British Columbia Building Code 2018",
                             "page": 98,
@@ -287,18 +299,20 @@ def test_mobile_accordion_and_grouped_cards_include_touch_friendly_markup():
             "meta": {"applicable_codes": ["NBC_2025"]},
             "results": [
                 {
-                    "id": "B-3.2.9",
+                    "id": "3.2.9",
+                    "division": "B",
                     "title": "Parent Section",
                     "score": 0.96,
                     "code_display_name": "National Building Code 2025",
                     "group_type": "parent_children",
                     "child_match_count": 2,
                     "child_total_count": 2,
-                    "top_scoring_child_id": "B-3.2.9.2",
-                    "active_child": {"id": "B-3.2.9.2", "title": "Closures"},
+                    "top_scoring_child_id": "3.2.9.2",
+                    "active_child": {"id": "3.2.9.2", "title": "Closures"},
                     "children": [
                         {
-                            "id": "B-3.2.9.1",
+                            "id": "3.2.9.1",
+                            "division": "B",
                             "title": "General",
                             "page": 120,
                             "page_end": 120,
@@ -306,7 +320,8 @@ def test_mobile_accordion_and_grouped_cards_include_touch_friendly_markup():
                             "is_top_scoring": False,
                         },
                         {
-                            "id": "B-3.2.9.2",
+                            "id": "3.2.9.2",
+                            "division": "B",
                             "title": "Closures",
                             "page": 121,
                             "page_end": 121,

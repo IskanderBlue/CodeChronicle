@@ -44,19 +44,21 @@ def _create_obc_fixtures():
     code_map = CodeMap.objects.create(code_name="OBC_2024", map_code="OBC_2024")
     CodeMapNode.objects.create(
         code_map=code_map,
-        node_id="B-3.2.7.1.",
+        node_id="3.2.7.1.",
         title="Fire Separations in Buildings Used for Major Occupancies",
         html="<p>Every <em>building</em> shall have <strong>fire separations</strong>…</p>",
         keywords=["fire", "separations", "major", "occupancy"],
-        parent_id="B-3.2.7.",
+        parent_id="3.2.7.",
+        division="B",
     )
     CodeMapNode.objects.create(
         code_map=code_map,
-        node_id="B-3.2.7.2.",
+        node_id="3.2.7.2.",
         title="Minimum Fire-Resistance Rating",
         html="<p>The minimum fire-resistance rating required…</p>",
         keywords=["fire", "resistance", "rating"],
-        parent_id="B-3.2.7.",
+        parent_id="3.2.7.",
+        division="B",
     )
     return system, edition, code_map
 
@@ -78,14 +80,15 @@ def _create_nbc_fixtures():
     code_map = CodeMap.objects.create(code_name="NBC_2025", map_code="NBC")
     CodeMapNode.objects.create(
         code_map=code_map,
-        node_id="B-9.10.14.1.",
+        node_id="9.10.14.1.",
         title="Application",
         page=710,
         page_end=710,
         initial_page_top=112.5,
         final_page_bottom=305.2,
         keywords=["application", "housing", "small", "buildings"],
-        parent_id="B-9.10.14.",
+        parent_id="9.10.14.",
+        division="B",
     )
     return system, edition, code_map
 
@@ -101,7 +104,7 @@ class TestOBCSearchWithHTML:
         )
 
         assert result["result_count"] > 0
-        matched = [r for r in result["results"] if r["id"] == "B-3.2.7.1."]
+        matched = [r for r in result["results"] if r["id"] == "3.2.7.1."]
         assert len(matched) == 1
         assert matched[0]["html_content"] is not None
         assert "fire separations" in matched[0]["html_content"].lower()
@@ -203,10 +206,11 @@ class TestTransitionContextInOverlapWindow:
         for code_map in (old_map, new_map):
             CodeMapNode.objects.create(
                 code_map=code_map,
-                node_id="B-3.2.9.",
+                node_id="3.2.9.",
                 title="Fire Separations",
                 keywords=["fire", "separations"],
-                parent_id="B-3.2.",
+                parent_id="3.2.",
+                division="B",
             )
 
         # Search during overlap window (2024-03-08 to 2025-03-09)
@@ -214,7 +218,7 @@ class TestTransitionContextInOverlapWindow:
             {"date": "2024-06-01", "keywords": ["fire", "separations"], "province": "BC"}
         )
 
-        matched = [r for r in result["results"] if r["id"] == "B-3.2.9."]
+        matched = [r for r in result["results"] if r["id"] == "3.2.9."]
         assert len(matched) == 2
 
         editions = {r["code_edition"] for r in matched}
@@ -242,6 +246,6 @@ class TestSectionReferenceSearch:
             }
         )
 
-        matched = [r for r in result["results"] if r["id"] == "B-3.2.7.1."]
+        matched = [r for r in result["results"] if r["id"] == "3.2.7.1."]
         assert len(matched) == 1
         assert matched[0]["score"] >= 2.0

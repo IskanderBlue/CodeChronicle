@@ -65,22 +65,32 @@ def _build_viewer_url_params(
         return None
 
     # Prefer the caller's map so navigation stays in the same PDF/volume.
+    # When bare IDs match multiple divisions, prefer body sections (B > A).
+    def _pick_best_node(qs):
+        nodes = list(qs.select_related("code_map")[:5])
+        if not nodes:
+            return None
+        if len(nodes) == 1:
+            return nodes[0]
+        # Prefer body divisions (B, C, D) over appendix (A) or empty
+        for preferred in ("B", "C", "D", "A", ""):
+            for n in nodes:
+                if n.division == preferred:
+                    return n
+        return nodes[0]
+
     node = None
     if preferred_map_code and preferred_map_code in edition.map_codes:
-        node = (
+        node = _pick_best_node(
             CodeMapNode.objects.filter(
                 code_map__map_code=preferred_map_code, node_id=node_id
             )
-            .select_related("code_map")
-            .first()
         )
     if not node:
-        node = (
+        node = _pick_best_node(
             CodeMapNode.objects.filter(
                 code_map__map_code__in=edition.map_codes, node_id=node_id
             )
-            .select_related("code_map")
-            .first()
         )
     if not node:
         return None
@@ -236,10 +246,10 @@ def viewer_section_content(request: HttpRequest):
         return render(request, "partials/_viewer_section_content.html",
                       {"sections": [], "active_node_id": node_id})
 
-    # Find the matched node's parent_id
+    # Find the matched node's parent_id and division
     matched = (
         CodeMapNode.objects.filter(code_map__map_code=map_code, node_id=node_id)
-        .values("parent_id")
+        .values("parent_id", "division")
         .first()
     )
     if not matched or not matched["parent_id"]:
@@ -254,10 +264,14 @@ def viewer_section_content(request: HttpRequest):
                       {"sections": sections, "active_node_id": node_id})
 
     parent_id = matched["parent_id"]
+    division = matched.get("division", "")
+    div_filter: dict[str, str] = {"code_map__map_code": map_code}
+    if division:
+        div_filter["division"] = division
 
     # Collect full subtree: siblings + all descendants (tables hang off subclauses)
     siblings = list(
-        CodeMapNode.objects.filter(code_map__map_code=map_code, parent_id=parent_id)
+        CodeMapNode.objects.filter(parent_id=parent_id, **div_filter)
         .values("node_id", "title", "html", "notes_html", "parent_id")
     )
 
@@ -267,7 +281,7 @@ def viewer_section_content(request: HttpRequest):
     while frontier_ids:
         children = list(
             CodeMapNode.objects.filter(
-                code_map__map_code=map_code, parent_id__in=frontier_ids
+                parent_id__in=frontier_ids, **div_filter
             ).values("node_id", "title", "html", "notes_html", "parent_id")
         )
         if not children:

@@ -26,6 +26,7 @@ def _enrich_search_results(
     html_lookup: Dict[str, str] = {}
     notes_html_lookup: Dict[str, str] = {}
     parent_lookup: Dict[str, str] = {}
+    division_lookup: Dict[str, str] = {}
     provision_transitions_lookup: Dict[str, list] = {}
     result_ids = [r.get("id") for r in results if r.get("id")]
     if result_ids:
@@ -39,6 +40,7 @@ def _enrich_search_results(
             "html",
             "notes_html",
             "parent_id",
+            "division",
             "provision_transitions",
         )
         for node in nodes:
@@ -53,6 +55,7 @@ def _enrich_search_results(
                 notes_html_lookup[node_id] = node["notes_html"]
             if node.get("parent_id"):
                 parent_lookup[node_id] = node["parent_id"]
+            division_lookup[node_id] = node.get("division", "")
             if node.get("provision_transitions"):
                 provision_transitions_lookup[node_id] = node["provision_transitions"]
 
@@ -67,6 +70,7 @@ def _enrich_search_results(
         item["html_content"] = html_lookup.get(result.get("id"))
         item["notes_html"] = notes_html_lookup.get(result.get("id"))
         item["parent_id"] = parent_lookup.get(result.get("id"))
+        item["division"] = division_lookup.get(result.get("id"), result.get("division", ""))
         item["provision_transitions"] = provision_transitions_lookup.get(result.get("id"), [])
         enriched.append(item)
     return enriched
@@ -172,7 +176,7 @@ def _supplement_transition_results(
                     "node_id", "title", "page", "page_end",
                     "initial_page_top", "final_page_bottom",
                     "html", "notes_html", "parent_id",
-                    "provision_transitions",
+                    "division", "provision_transitions",
                 )
                 for node in nodes:
                     node_id = node["node_id"]
@@ -193,6 +197,7 @@ def _supplement_transition_results(
                         "html_content": node.get("html"),
                         "notes_html": node.get("notes_html"),
                         "parent_id": node.get("parent_id"),
+                        "division": node.get("division", ""),
                         "provision_transitions": node.get("provision_transitions") or [],
                     }
                     by_code_and_id[key] = item
@@ -318,7 +323,7 @@ def deduplicate_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     unique = []
 
     for result in results:
-        key = f"{result.get('code_edition')}:{result.get('id')}"
+        key = f"{result.get('code_edition')}:{result.get('division', '')}:{result.get('id')}"
         if key not in seen:
             seen.add(key)
             unique.append(result)

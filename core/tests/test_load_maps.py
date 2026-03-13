@@ -99,6 +99,7 @@ def test_load_maps_command(tmp_path):
     assert node.page_end == 9
     assert node.initial_page_top == 640.0
     assert node.final_page_bottom == 88.0
+    assert node.division == ""
 
 
 def test_load_maps_allows_missing_span_bounds(tmp_path):
@@ -106,7 +107,8 @@ def test_load_maps_allows_missing_span_bounds(tmp_path):
         "code_name": "NBC_2025",
         "sections": [
             {
-                "id": "B-3.2.9.1.",
+                "id": "3.2.9.1.",
+                "division": "B",
                 "title": "No Bounds",
                 "page": 120,
                 "page_end": 120,
@@ -118,7 +120,9 @@ def test_load_maps_allows_missing_span_bounds(tmp_path):
 
     assert len(nodes) == 1
     node = nodes[0]
-    assert node.node_id == "B-3.2.9.1."
+    assert node.node_id == "3.2.9.1."
+    assert node.division == "B"
+    assert "B-" not in node.node_id, "Division prefix should not appear in node_id"
     assert node.page == 120
     assert node.page_end == 120
     assert node.initial_page_top is None
@@ -190,7 +194,8 @@ def test_load_maps_populates_provision_transitions_on_matching_node(tmp_path):
                 "scope": "provisions",
                 "provisions": [
                     {
-                        "new_section_id": "B-8.6.2.2.",
+                        "new_section_id": "8.6.2.2.",
+                        "new_division": "B",
                         "old_provision_ref": "Sentence 8.6.2.2.(5)",
                         "as_read_on": "2016-12-31",
                     }

@@ -198,6 +198,7 @@ class CodeMapNode(models.Model):
     notes_html = models.TextField(null=True, blank=True)
     keywords = ArrayField(models.CharField(max_length=100), null=True, blank=True)
     parent_id = models.CharField(max_length=200, null=True, blank=True)
+    division = models.CharField(max_length=10, default="", blank=True)
     provision_transitions = models.JSONField(null=True, blank=True)
 
     class Meta:
@@ -209,11 +210,14 @@ class CodeMapNode(models.Model):
             GinIndex(fields=["keywords"], name="code_mapnode_keywords_gin"),
         ]
         constraints = [
-            models.UniqueConstraint(fields=["code_map", "node_id"], name="code_map_node_unique"),
+            models.UniqueConstraint(
+                fields=["code_map", "node_id", "division"], name="code_map_node_unique"
+            ),
         ]
 
     def __str__(self):
-        return f"{self.code_map.map_code}:{self.node_id}"
+        prefix = f"{self.division}-" if self.division else ""
+        return f"{self.code_map.map_code}:{prefix}{self.node_id}"
 
 
 class CodeSystem(models.Model):

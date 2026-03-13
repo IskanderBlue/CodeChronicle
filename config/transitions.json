@@ -100,7 +100,8 @@
     "scope": "provisions",
     "provisions": [
       {
-        "new_section_id": "B-8.6.2.2.",
+        "new_section_id": "8.6.2.2.",
+        "new_division": "B",
         "old_provision_ref": "Sentence 8.6.2.2.(5)",
         "as_read_on": "2016-12-31"
       },

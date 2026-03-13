@@ -158,42 +158,47 @@ def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
         "transition_context": result.get("transition_context"),
         "provision_transitions": result.get("provision_transitions", []),
     }
+    section_data["division"] = result.get("division", "")
     section_data["amendments"] = get_amendments_for_section(
         str(result.get("id") or ""), code_edition
     )
     return section_data
 
 
-def _build_group_lookup_key(result: Dict[str, Any]) -> tuple[str, str, str] | None:
+def _build_group_lookup_key(result: Dict[str, Any]) -> tuple[str, str, str, str] | None:
     parent_id = result.get("parent_id")
     code = result.get("code")
     map_code = result.get("map_code")
     if not parent_id or not code or not map_code:
         return None
-    return str(code), str(map_code), str(parent_id)
+    division = result.get("division", "")
+    return str(code), str(map_code), str(parent_id), str(division)
 
 
 def _load_group_hierarchy(
     formatted_results: Iterable[Dict[str, Any]],
-) -> Dict[tuple[str, str, str], Dict[str, Any]]:
+) -> Dict[tuple[str, str, str, str], Dict[str, Any]]:
     group_keys = {
         key for result in formatted_results if (key := _build_group_lookup_key(result)) is not None
     }
-    hierarchy: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    hierarchy: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
 
-    for code_edition, map_code, parent_id in group_keys:
+    for code_edition, map_code, parent_id, division in group_keys:
+        div_filter: Dict[str, str] = {"code_map__map_code": map_code}
+        if division:
+            div_filter["division"] = division
         parent_node = (
-            CodeMapNode.objects.filter(code_map__map_code=map_code, node_id=parent_id)
+            CodeMapNode.objects.filter(node_id=parent_id, **div_filter)
             .values("node_id", "title")
             .first()
         )
         child_nodes = list(
-            CodeMapNode.objects.filter(code_map__map_code=map_code, parent_id=parent_id).values(
+            CodeMapNode.objects.filter(parent_id=parent_id, **div_filter).values(
                 "node_id", "title", "page", "page_end"
             )
         )
         child_nodes.sort(key=lambda item: _code_order_key(str(item.get("node_id") or "")))
-        hierarchy[(code_edition, map_code, parent_id)] = {
+        hierarchy[(code_edition, map_code, parent_id, division)] = {
             "parent_title": (parent_node or {}).get("title") or parent_id,
             "children": child_nodes,
         }
@@ -204,7 +209,7 @@ def _load_group_hierarchy(
 def _build_grouped_result(
     matched_results: List[Dict[str, Any]],
     hierarchy: Dict[str, Any],
-    group_key: tuple[str, str, str],
+    group_key: tuple[str, str, str, str],
 ) -> Dict[str, Any] | None:
     if len(matched_results) <= 1:
         return None
@@ -269,25 +274,25 @@ def _build_grouped_result(
 
 def group_formatted_results(
     formatted_results: List[Dict[str, Any]],
-    hierarchy_by_group: Dict[tuple[str, str, str], Dict[str, Any]] | None = None,
+    hierarchy_by_group: Dict[tuple[str, str, str, str], Dict[str, Any]] | None = None,
 ) -> List[Dict[str, Any]]:
     if hierarchy_by_group is None:
         hierarchy_by_group = _load_group_hierarchy(formatted_results)
 
-    matched_results_by_group: Dict[tuple[str, str, str], List[Dict[str, Any]]] = {}
+    matched_results_by_group: Dict[tuple[str, str, str, str], List[Dict[str, Any]]] = {}
     for result in formatted_results:
         key = _build_group_lookup_key(result)
         if key is None:
             continue
         matched_results_by_group.setdefault(key, []).append(result)
 
-    grouped_results_by_key: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    grouped_results_by_key: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
     for key, matched_results in matched_results_by_group.items():
         grouped = _build_grouped_result(matched_results, hierarchy_by_group.get(key, {}), key)
         if grouped is not None:
             grouped_results_by_key[key] = grouped
 
-    collapsed_keys: set[tuple[str, str, str]] = set()
+    collapsed_keys: set[tuple[str, str, str, str]] = set()
     output: List[Dict[str, Any]] = []
     for result in formatted_results:
         key = _build_group_lookup_key(result)
@@ -386,33 +391,36 @@ def _nest_child_results(
     Unlike the >80% Phase 2 grouping which fills in context siblings, this only
     includes children that were actually returned by the search.
     """
-    results_by_id: Dict[str, Dict[str, Any]] = {}
+    results_by_id: Dict[tuple[str, str], Dict[str, Any]] = {}
     for result in results:
         result_id = result.get("id")
         if result_id:
-            results_by_id[str(result_id)] = result
+            div = result.get("division", "")
+            results_by_id[(str(result_id), str(div))] = result
 
     # Collect children per parent (only when the parent itself is also a result)
-    children_by_parent: Dict[str, List[Dict[str, Any]]] = {}
+    children_by_parent: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
     for result in results:
         parent_id = result.get("parent_id")
         result_id = str(result.get("id") or "")
+        div = str(result.get("division", ""))
+        parent_key = (str(parent_id), div) if parent_id else None
         if (
-            parent_id
-            and str(parent_id) in results_by_id
+            parent_key
+            and parent_key in results_by_id
             and str(parent_id) != result_id
             and result.get("group_type") != "parent_children"
         ):
-            parent = results_by_id[str(parent_id)]
+            parent = results_by_id[parent_key]
             if parent.get("group_type") == "parent_children":
                 continue
-            children_by_parent.setdefault(str(parent_id), []).append(result)
+            children_by_parent.setdefault(parent_key, []).append(result)
 
     # Convert each parent + children set into a grouped card
-    grouped_parent_ids: set[str] = set()
+    grouped_parent_keys: set[tuple[str, str]] = set()
     absorbed_child_ids: set[str] = set()
-    for parent_id_str, children in children_by_parent.items():
-        parent = results_by_id[parent_id_str]
+    for parent_key, children in children_by_parent.items():
+        parent = results_by_id[parent_key]
         top_child = max(children, key=lambda c: (c.get("score", 0),))
         child_entries = []
         for child in sorted(children, key=lambda c: _code_order_key(str(c.get("id", "")))):
@@ -446,7 +454,7 @@ def _nest_child_results(
                       "initial_page_top", "final_page_bottom"):
             if top_child.get(field) is not None:
                 parent[field] = top_child[field]
-        grouped_parent_ids.add(parent_id_str)
+        grouped_parent_keys.add(parent_key)
 
     return [r for r in results if str(r.get("id") or "") not in absorbed_child_ids]
 

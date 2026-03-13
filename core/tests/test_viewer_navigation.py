@@ -16,7 +16,7 @@ def _fake_edition(pk, system_code, edition_id, system_display=""):
     )
 
 
-def _fake_node(node_id, map_code, title=None):
+def _fake_node(node_id, map_code, title=None, division=""):
     """Build a lightweight stand-in for a CodeMapNode instance."""
     code_map = SimpleNamespace(map_code=map_code)
     return SimpleNamespace(
@@ -27,7 +27,18 @@ def _fake_node(node_id, map_code, title=None):
         page_end=12,
         initial_page_top=640.0,
         final_page_bottom=88.0,
+        division=division,
     )
+
+
+def _sliceable_qs(items):
+    """Return a MagicMock queryset that supports .select_related()[:N] and .first()."""
+    qs = MagicMock()
+    qs.filter.return_value = qs
+    qs.select_related.return_value = qs
+    qs.first.return_value = items[0] if items else None
+    qs.__getitem__ = lambda self, key: items[key] if isinstance(key, slice) else items[key]
+    return qs
 
 
 # ---------------------------------------------------------------------------
@@ -78,11 +89,7 @@ class TestBuildViewerNavigation:
         mock_ce.objects.select_related.side_effect = [first_qs, all_qs, MagicMock(), MagicMock()]
 
         node = _fake_node("3.1.1", "OBC_2006_map")
-        node_qs = MagicMock()
-        node_qs.filter.return_value = node_qs
-        node_qs.select_related.return_value = node_qs
-        node_qs.first.return_value = node
-        mock_cmn.objects = node_qs
+        mock_cmn.objects = _sliceable_qs([node])
 
         # _build_viewer_url_params is called for prev (e1) and next (e3);
         # each call does its own CodeEdition + CodeMapNode lookups.
@@ -133,11 +140,7 @@ class TestBuildViewerNavigation:
         mock_ce.objects.select_related.side_effect = [first_qs, all_qs, next_qs]
 
         node = _fake_node("3.1.1", "OBC_2012_map")
-        node_qs = MagicMock()
-        node_qs.filter.return_value = node_qs
-        node_qs.select_related.return_value = node_qs
-        node_qs.first.return_value = node
-        mock_cmn.objects = node_qs
+        mock_cmn.objects = _sliceable_qs([node])
 
         result = _build_viewer_navigation("OBC_2006", "3.1.1", "2024-01-01", "OBC_2012")
 
@@ -172,11 +175,7 @@ class TestBuildViewerNavigation:
         mock_ce.objects.select_related.side_effect = [first_qs, all_qs, prev_qs]
 
         node = _fake_node("3.1.1", "OBC_2012_map")
-        node_qs = MagicMock()
-        node_qs.filter.return_value = node_qs
-        node_qs.select_related.return_value = node_qs
-        node_qs.first.return_value = node
-        mock_cmn.objects = node_qs
+        mock_cmn.objects = _sliceable_qs([node])
 
         result = _build_viewer_navigation("OBC_2017", "3.1.1", "2024-01-01", "OBC_2012")
 
@@ -207,11 +206,7 @@ class TestBuildViewerNavigation:
 
         mock_ce.objects.select_related.side_effect = [first_qs, all_qs, next_edition_qs]
 
-        node_qs = MagicMock()
-        node_qs.filter.return_value = node_qs
-        node_qs.select_related.return_value = node_qs
-        node_qs.first.return_value = None  # node not found
-        mock_cmn.objects = node_qs
+        mock_cmn.objects = _sliceable_qs([])  # node not found
 
         result = _build_viewer_navigation("OBC_2006", "3.1.1", "2024-01-01", "OBC_2012")
 
@@ -252,11 +247,7 @@ class TestBuildViewerUrlParams:
         qs.first.return_value = edition
         mock_ce.objects.select_related.return_value = qs
 
-        node_qs = MagicMock()
-        node_qs.filter.return_value = node_qs
-        node_qs.select_related.return_value = node_qs
-        node_qs.first.return_value = None
-        mock_cmn.objects = node_qs
+        mock_cmn.objects = _sliceable_qs([])  # node not found
 
         result = _build_viewer_url_params(
             code_name="OBC_2012", node_id="99.99.99",
@@ -280,11 +271,7 @@ class TestBuildViewerUrlParams:
         mock_ce.objects.select_related.return_value = qs
 
         node = _fake_node("3.1.1", "OBC_2012_map")
-        node_qs = MagicMock()
-        node_qs.filter.return_value = node_qs
-        node_qs.select_related.return_value = node_qs
-        node_qs.first.return_value = node
-        mock_cmn.objects = node_qs
+        mock_cmn.objects = _sliceable_qs([node])
 
         result = _build_viewer_url_params(
             code_name="OBC_2012", node_id="3.1.1",

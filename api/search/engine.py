@@ -108,6 +108,7 @@ def _search_code_db(
             "initial_page_top",
             "final_page_bottom",
             "keywords",
+            "division",
         )
     )
 
@@ -164,6 +165,7 @@ def _search_code_db(
                 "initial_page_top": node.initial_page_top,
                 "final_page_bottom": node.final_page_bottom,
                 "score": round(score, 3),
+                "division": node.division,
             }
             if match_type:
                 result_item["match_type"] = match_type

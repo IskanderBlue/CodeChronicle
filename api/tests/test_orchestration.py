@@ -13,7 +13,7 @@ def test_execute_search_returns_primary_results_only_outside_overlap_window(monk
         orchestration,
         "_search_code_maps",
         lambda **kwargs: [
-            {"id": "B-3.2.9.", "title": "Fire Separations", "code_edition": kwargs["code_name"]}
+            {"id": "3.2.9.", "title": "Fire Separations", "code_edition": kwargs["code_name"]}
         ],
     )
 
@@ -48,7 +48,7 @@ def test_execute_search_adds_overlap_results_inside_transition_window(monkeypatc
     def fake_search_code_maps(**kwargs):
         return [
             {
-                "id": "B-3.2.9.",
+                "id": "3.2.9.",
                 "title": "Fire Separations",
                 "code_edition": kwargs["code_name"],
                 "source_date": "2024-06-01",
@@ -61,7 +61,7 @@ def test_execute_search_adds_overlap_results_inside_transition_window(monkeypatc
         {"date": "2024-06-01", "keywords": ["fire"], "province": "BC"}
     )
 
-    matched = [result for result in response["results"] if result["id"] == "B-3.2.9."]
+    matched = [result for result in response["results"] if result["id"] == "3.2.9."]
     assert len(matched) == 2
     assert {result["code_edition"] for result in matched} == {"BCBC_2024", "BCBC_2018"}
 
@@ -91,7 +91,7 @@ def test_overlap_results_include_transition_context_fields(monkeypatch):
         "_search_code_maps",
         lambda **kwargs: [
             {
-                "id": "B-3.2.9.",
+                "id": "3.2.9.",
                 "title": "Fire Separations",
                 "code_edition": kwargs["code_name"],
                 "source_date": "2024-06-01",
@@ -103,7 +103,7 @@ def test_overlap_results_include_transition_context_fields(monkeypatch):
         {"date": "2024-06-01", "keywords": ["fire"], "province": "BC"}
     )
 
-    matched = [result for result in response["results"] if result["id"] == "B-3.2.9."]
+    matched = [result for result in response["results"] if result["id"] == "3.2.9."]
     ctx = matched[0]["transition_context"]
     assert ctx["transition_type"] == "grace_period"
     assert "citation_text" in ctx
@@ -132,7 +132,7 @@ def test_provision_scoped_transition_does_not_search_old_edition(monkeypatch):
                 "scope": "provisions",
                 "provisions": [
                     {
-                        "new_section_id": "B-8.6.2.2.",
+                        "new_section_id": "8.6.2.2.",
                         "old_provision_ref": "Sentence 8.6.2.2.(5)",
                         "as_read_on": "2016-12-31",
                     }
@@ -193,7 +193,7 @@ def test_whole_code_transition_still_creates_compare_pairs(monkeypatch):
         search_calls.append(kwargs["code_name"])
         return [
             {
-                "id": "B-3.2.9.",
+                "id": "3.2.9.",
                 "title": "Fire Separations",
                 "code_edition": kwargs["code_name"],
                 "source_date": "2024-06-01",

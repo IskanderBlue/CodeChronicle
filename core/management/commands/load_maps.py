@@ -124,22 +124,30 @@ def _populate_provision_transitions() -> int:
 
         for provision in record.get("provisions", []):
             section_id = provision["new_section_id"]
+            division = provision.get("new_division", "")
             normalized = _normalize_node_id(section_id)
+
+            div_filter: dict[str, str] = {}
+            if division:
+                div_filter["division"] = division
 
             # Try exact match and trailing-dot-normalized match
             node = CodeMapNode.objects.filter(
                 code_map__map_code__in=map_codes,
                 node_id=section_id,
+                **div_filter,
             ).first()
             if not node:
                 node = CodeMapNode.objects.filter(
                     code_map__map_code__in=map_codes,
                     node_id=normalized,
+                    **div_filter,
                 ).first()
             if not node and not section_id.endswith("."):
                 node = CodeMapNode.objects.filter(
                     code_map__map_code__in=map_codes,
                     node_id=section_id + ".",
+                    **div_filter,
                 ).first()
 
             if not node:
@@ -185,15 +193,24 @@ class Command(BaseCommand):
             default=1000,
             help="Bulk insert batch size for nodes.",
         )
+        parser.add_argument(
+            "--elaws",
+            action="store_true",
+            help="Only load e-Laws OBC maps (OBC_*_v*.json).",
+        )
 
     def handle(self, *args, **options) -> None:
         source_dir = Path(options["source"]).expanduser().resolve()
         batch_size = options["batch_size"]
+        elaws_only = options["elaws"]
 
         if not source_dir.exists() or not source_dir.is_dir():
             raise CommandError(f"Source directory not found: {source_dir}")
 
-        json_files = sorted(source_dir.glob("*.json"))
+        if elaws_only:
+            json_files = sorted(source_dir.glob("OBC_*_v*.json"))
+        else:
+            json_files = sorted(source_dir.glob("*.json"))
         if not json_files:
             raise CommandError(f"No JSON files found in {source_dir}")
 
@@ -223,12 +240,14 @@ class Command(BaseCommand):
 
                 CodeMapNode.objects.filter(code_map=code_map).delete()
 
-                node_cache: dict[str, CodeMapNode] = {}
+                node_cache: dict[tuple[str, str], CodeMapNode] = {}
                 combined_entries = list(data.get("sections", [])) + list(data.get("tables", []))
                 for section in combined_entries:
                     node_id = section.get("id")
                     if not node_id:
                         continue
+                    division = section.get("division", "")
+
                     initial_page_top, final_page_bottom = _extract_span_bounds(section)
                     keywords = section.get("keywords")
                     if not isinstance(keywords, list):
@@ -238,8 +257,9 @@ class Command(BaseCommand):
                     if section.get("html"):
                         html_count += 1
                     rendered_html = section.get("html") or _render_markdown(section.get("markdown"))
-                    if node_id not in node_cache:
-                        node_cache[node_id] = CodeMapNode(
+                    cache_key = (node_id, division)
+                    if cache_key not in node_cache:
+                        node_cache[cache_key] = CodeMapNode(
                             code_map=code_map,
                             node_id=node_id,
                             title=section.get("title", ""),
@@ -251,10 +271,11 @@ class Command(BaseCommand):
                             notes_html=section.get("notes_html"),
                             keywords=keywords,
                             parent_id=section.get("parent_id"),
+                            division=division,
                         )
                         continue
 
-                    existing = node_cache[node_id]
+                    existing = node_cache[cache_key]
                     if not existing.title and section.get("title"):
                         existing.title = section.get("title")
                     if existing.page is None and section.get("page") is not None:
