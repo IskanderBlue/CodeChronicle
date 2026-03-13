@@ -88,5 +88,27 @@
     "transition_type": "in_stream_project",
     "applicability_text": "The code as it read on 2021-12-31 may apply where a permit was applied for before 2022-01-01 and construction commences within 6 months.",
     "citation_text": "O. Reg. 332/12, s. 4.1.7 (O. Reg. 88/19)"
+  },
+  {
+    "old_edition": "OBC_2012_v08",
+    "new_edition": "OBC_2012_v09",
+    "overlap_start": "2017-01-01",
+    "overlap_end": "2017-07-01",
+    "transition_type": "in_stream_project",
+    "applicability_text": "Certain provisions of the code as they read on 2016-12-31 may continue to apply until 2017-07-01 for in-stream projects.",
+    "citation_text": "O. Reg. 332/12, s. 4.1.3 (O. Reg. 361/13)",
+    "scope": "provisions",
+    "provisions": [
+      {
+        "new_section_id": "B-8.6.2.2.",
+        "old_provision_ref": "Sentence 8.6.2.2.(5)",
+        "as_read_on": "2016-12-31"
+      },
+      {
+        "new_section_id": "Table-1.3.1.2.",
+        "old_provision_ref": "Item 329 of Table 1.3.1.2.",
+        "as_read_on": "2016-12-31"
+      }
+    ]
   }
 ]

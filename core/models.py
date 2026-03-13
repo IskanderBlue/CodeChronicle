@@ -198,6 +198,7 @@ class CodeMapNode(models.Model):
     notes_html = models.TextField(null=True, blank=True)
     keywords = ArrayField(models.CharField(max_length=100), null=True, blank=True)
     parent_id = models.CharField(max_length=200, null=True, blank=True)
+    provision_transitions = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = "code_map_nodes"

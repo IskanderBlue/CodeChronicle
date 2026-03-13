@@ -32,6 +32,26 @@ def load_transitions(path: Path | None = None) -> List[Dict[str, Any]]:
             raise ValueError(
                 f"Transition record at index {index} is missing required fields: {', '.join(missing)}"
             )
+        scope = record.get("scope")
+        if scope is not None and scope not in ("whole_code", "provisions"):
+            raise ValueError(
+                f"Transition record at index {index} has invalid scope: {scope!r}"
+            )
+        if scope == "provisions":
+            provisions = record.get("provisions")
+            if not isinstance(provisions, list) or not provisions:
+                raise ValueError(
+                    f"Transition record at index {index} with scope='provisions' "
+                    "must have a non-empty 'provisions' list."
+                )
+            required_provision_fields = {"new_section_id", "old_provision_ref", "as_read_on"}
+            for pi, prov in enumerate(provisions):
+                prov_missing = sorted(required_provision_fields - set(prov))
+                if prov_missing:
+                    raise ValueError(
+                        f"Transition record at index {index}, provision {pi} is missing: "
+                        f"{', '.join(prov_missing)}"
+                    )
         validated.append(record)
     return validated
 

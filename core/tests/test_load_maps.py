@@ -167,6 +167,107 @@ def test_load_maps_legacy_bbox_fallback(tmp_path):
     assert node.final_page_bottom == 50.0
 
 
+def test_load_maps_populates_provision_transitions_on_matching_node(tmp_path):
+    """_populate_provision_transitions stamps annotations on matching nodes."""
+    from core.management.commands.load_maps import _populate_provision_transitions
+
+    fake_node = SimpleNamespace(provision_transitions=None, save=MagicMock())
+
+    with (
+        patch("core.management.commands.load_maps.load_transitions") as mock_load,
+        patch("core.management.commands.load_maps.CodeEdition") as mock_edition_cls,
+        patch("core.management.commands.load_maps.CodeMapNode") as mock_node_cls,
+    ):
+        mock_load.return_value = [
+            {
+                "old_edition": "OBC_2012_v08",
+                "new_edition": "OBC_2012_v09",
+                "overlap_start": "2017-01-01",
+                "overlap_end": "2017-07-01",
+                "transition_type": "in_stream_project",
+                "applicability_text": "Certain provisions apply.",
+                "citation_text": "O. Reg. 332/12, s. 4.1.3",
+                "scope": "provisions",
+                "provisions": [
+                    {
+                        "new_section_id": "B-8.6.2.2.",
+                        "old_provision_ref": "Sentence 8.6.2.2.(5)",
+                        "as_read_on": "2016-12-31",
+                    }
+                ],
+            }
+        ]
+
+        fake_edition = SimpleNamespace(
+            code_name="OBC_2012_v09",
+            map_codes=["OBC_Vol1", "OBC_Vol2"],
+        )
+        mock_edition_cls.objects.filter.return_value.select_related.return_value.first.return_value = (
+            fake_edition
+        )
+
+        # First filter call (exact match) returns the node
+        mock_node_cls.objects.filter.return_value.first.return_value = fake_node
+
+        count = _populate_provision_transitions()
+
+    assert count == 1
+    assert fake_node.provision_transitions == [
+        {
+            "old_provision_ref": "Sentence 8.6.2.2.(5)",
+            "as_read_on": "2016-12-31",
+            "old_edition": "OBC_2012_v08",
+            "citation_text": "O. Reg. 332/12, s. 4.1.3",
+            "applicability_text": "Certain provisions apply.",
+            "overlap_end": "2017-07-01",
+            "transition_type": "in_stream_project",
+        }
+    ]
+    fake_node.save.assert_called_once_with(update_fields=["provision_transitions"])
+
+
+def test_load_maps_does_not_set_provision_transitions_on_unmatched_node(tmp_path):
+    """Nodes not matching a provision-scoped section_id are left untouched."""
+    from core.management.commands.load_maps import _populate_provision_transitions
+
+    with (
+        patch("core.management.commands.load_maps.load_transitions") as mock_load,
+        patch("core.management.commands.load_maps.CodeEdition") as mock_edition_cls,
+        patch("core.management.commands.load_maps.CodeMapNode") as mock_node_cls,
+    ):
+        mock_load.return_value = [
+            {
+                "old_edition": "OBC_2012_v08",
+                "new_edition": "OBC_2012_v09",
+                "overlap_start": "2017-01-01",
+                "overlap_end": "2017-07-01",
+                "transition_type": "in_stream_project",
+                "applicability_text": "Applies.",
+                "citation_text": "Reg.",
+                "scope": "provisions",
+                "provisions": [
+                    {
+                        "new_section_id": "99.99.99",
+                        "old_provision_ref": "Sentence 99.99.99.(1)",
+                        "as_read_on": "2016-12-31",
+                    }
+                ],
+            }
+        ]
+
+        fake_edition = SimpleNamespace(code_name="OBC_2012_v09", map_codes=["OBC_Vol1"])
+        mock_edition_cls.objects.filter.return_value.select_related.return_value.first.return_value = (
+            fake_edition
+        )
+
+        # No node found for any lookup attempt
+        mock_node_cls.objects.filter.return_value.first.return_value = None
+
+        count = _populate_provision_transitions()
+
+    assert count == 0
+
+
 def test_load_maps_span_fields_take_precedence_over_bbox(tmp_path):
     payload = {
         "code_name": "OBC_2012",

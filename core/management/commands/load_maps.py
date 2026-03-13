@@ -6,6 +6,7 @@ from coloured_logger import Logger
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from config.transitions import load_transitions
 from core.models import CodeEdition, CodeMap, CodeMapNode
 
 logger = Logger(__name__)
@@ -76,6 +77,97 @@ def _infer_code_name(map_code: str, data: dict) -> str:
     if code_field:
         return code_field
     return map_code
+
+
+def _normalize_node_id(node_id: str) -> str:
+    """Normalize a node ID by stripping a trailing dot for comparison."""
+    return node_id.rstrip(".")
+
+
+def _populate_provision_transitions() -> int:
+    """Stamp provision_transitions onto matching CodeMapNodes.
+
+    Returns the number of nodes updated.
+    """
+    try:
+        records = load_transitions()
+    except Exception as exc:
+        logger.warning("Could not load transitions for provision stamping: %s", exc)
+        return 0
+
+    provision_records = [r for r in records if r.get("scope") == "provisions"]
+    if not provision_records:
+        return 0
+
+    updated_count = 0
+    for record in provision_records:
+        new_edition = record["new_edition"]
+        edition = (
+            CodeEdition.objects.filter(edition_id=new_edition.split("_", 1)[-1])
+            .select_related("system")
+            .first()
+        )
+        if not edition:
+            # Try matching by code_name property
+            edition = None
+            for candidate in CodeEdition.objects.select_related("system").all():
+                if candidate.code_name == new_edition:
+                    edition = candidate
+                    break
+        if not edition:
+            logger.warning("No CodeEdition found for %s, skipping provision transitions", new_edition)
+            continue
+
+        map_codes = edition.map_codes or []
+        if not map_codes:
+            continue
+
+        for provision in record.get("provisions", []):
+            section_id = provision["new_section_id"]
+            normalized = _normalize_node_id(section_id)
+
+            # Try exact match and trailing-dot-normalized match
+            node = CodeMapNode.objects.filter(
+                code_map__map_code__in=map_codes,
+                node_id=section_id,
+            ).first()
+            if not node:
+                node = CodeMapNode.objects.filter(
+                    code_map__map_code__in=map_codes,
+                    node_id=normalized,
+                ).first()
+            if not node and not section_id.endswith("."):
+                node = CodeMapNode.objects.filter(
+                    code_map__map_code__in=map_codes,
+                    node_id=section_id + ".",
+                ).first()
+
+            if not node:
+                logger.info(
+                    "No CodeMapNode found for %s in map_codes=%s, skipping",
+                    section_id, map_codes,
+                )
+                continue
+
+            annotation = {
+                "old_provision_ref": provision["old_provision_ref"],
+                "as_read_on": provision["as_read_on"],
+                "old_edition": record["old_edition"],
+                "citation_text": record["citation_text"],
+                "applicability_text": record["applicability_text"],
+                "overlap_end": record["overlap_end"],
+                "transition_type": record["transition_type"],
+            }
+
+            existing = node.provision_transitions or []
+            # Avoid duplicate annotations
+            if annotation not in existing:
+                existing.append(annotation)
+                node.provision_transitions = existing
+                node.save(update_fields=["provision_transitions"])
+                updated_count += 1
+
+    return updated_count
 
 
 class Command(BaseCommand):
@@ -196,3 +288,8 @@ class Command(BaseCommand):
                 html_count,
                 markdown_count,
             )
+
+        # Post-load: stamp provision-scoped transitions onto matching nodes
+        provision_count = _populate_provision_transitions()
+        if provision_count:
+            logger.info("Stamped provision_transitions on %d node(s)", provision_count)

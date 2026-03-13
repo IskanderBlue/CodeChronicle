@@ -37,7 +37,7 @@ def test_load_transitions_rejects_missing_required_field(tmp_path: Path):
 def test_initial_transition_fixture_contains_known_records():
     records = load_transitions()
 
-    assert len(records) >= 10
+    assert len(records) >= 11
     assert any(record["new_edition"] == "BCBC_2024" for record in records)
     assert any(record["new_edition"] == "QCC_2020" for record in records)
     assert any(record["new_edition"] == "QECB_2020" for record in records)
@@ -68,3 +68,45 @@ def test_get_active_transitions_excludes_obc_2012_outside_overlap():
     active = get_active_transitions(["OBC_2012_v20"], date(2020, 8, 1))
 
     assert len(active) == 0
+
+
+def test_provision_scoped_transition_loads_with_optional_fields():
+    records = load_transitions()
+
+    provision_records = [r for r in records if r.get("scope") == "provisions"]
+    assert len(provision_records) >= 1
+    record = provision_records[0]
+    assert record["scope"] == "provisions"
+    assert isinstance(record["provisions"], list)
+    assert len(record["provisions"]) >= 2
+    for prov in record["provisions"]:
+        assert "new_section_id" in prov
+        assert "old_provision_ref" in prov
+        assert "as_read_on" in prov
+
+
+def test_load_transitions_rejects_provisions_scope_without_provisions_array(tmp_path: Path):
+    temp_path = tmp_path / "transitions.json"
+    temp_path.write_text(
+        '[{"old_edition":"A","new_edition":"B","overlap_start":"2025-01-01",'
+        '"overlap_end":"2025-02-01","transition_type":"grace_period",'
+        '"applicability_text":"x","citation_text":"y","scope":"provisions"}]',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="non-empty 'provisions' list"):
+        load_transitions(temp_path)
+
+
+def test_load_transitions_accepts_whole_code_scope_without_provisions(tmp_path: Path):
+    temp_path = tmp_path / "transitions.json"
+    temp_path.write_text(
+        '[{"old_edition":"A","new_edition":"B","overlap_start":"2025-01-01",'
+        '"overlap_end":"2025-02-01","transition_type":"grace_period",'
+        '"applicability_text":"x","citation_text":"y","scope":"whole_code"}]',
+        encoding="utf-8",
+    )
+
+    records = load_transitions(temp_path)
+    assert len(records) == 1
+    assert records[0]["scope"] == "whole_code"

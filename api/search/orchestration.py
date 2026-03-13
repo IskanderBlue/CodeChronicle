@@ -26,6 +26,7 @@ def _enrich_search_results(
     html_lookup: Dict[str, str] = {}
     notes_html_lookup: Dict[str, str] = {}
     parent_lookup: Dict[str, str] = {}
+    provision_transitions_lookup: Dict[str, list] = {}
     result_ids = [r.get("id") for r in results if r.get("id")]
     if result_ids:
         nodes = CodeMapNode.objects.filter(
@@ -38,6 +39,7 @@ def _enrich_search_results(
             "html",
             "notes_html",
             "parent_id",
+            "provision_transitions",
         )
         for node in nodes:
             node_id = node["node_id"]
@@ -51,6 +53,8 @@ def _enrich_search_results(
                 notes_html_lookup[node_id] = node["notes_html"]
             if node.get("parent_id"):
                 parent_lookup[node_id] = node["parent_id"]
+            if node.get("provision_transitions"):
+                provision_transitions_lookup[node_id] = node["provision_transitions"]
 
     enriched: List[Dict[str, Any]] = []
     for result in results:
@@ -63,6 +67,7 @@ def _enrich_search_results(
         item["html_content"] = html_lookup.get(result.get("id"))
         item["notes_html"] = notes_html_lookup.get(result.get("id"))
         item["parent_id"] = parent_lookup.get(result.get("id"))
+        item["provision_transitions"] = provision_transitions_lookup.get(result.get("id"), [])
         enriched.append(item)
     return enriched
 
@@ -167,6 +172,7 @@ def _supplement_transition_results(
                     "node_id", "title", "page", "page_end",
                     "initial_page_top", "final_page_bottom",
                     "html", "notes_html", "parent_id",
+                    "provision_transitions",
                 )
                 for node in nodes:
                     node_id = node["node_id"]
@@ -187,6 +193,7 @@ def _supplement_transition_results(
                         "html_content": node.get("html"),
                         "notes_html": node.get("notes_html"),
                         "parent_id": node.get("parent_id"),
+                        "provision_transitions": node.get("provision_transitions") or [],
                     }
                     by_code_and_id[key] = item
                     supplemented.append(item)
@@ -258,7 +265,10 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     active_transitions = get_active_transitions(applicable_codes, search_date)
-    for transition in active_transitions:
+    whole_code_transitions = [
+        t for t in active_transitions if t.get("scope", "whole_code") == "whole_code"
+    ]
+    for transition in whole_code_transitions:
         old_code_name = transition["old_edition"]
         map_codes = get_map_codes(old_code_name)
         if not map_codes:
@@ -278,9 +288,9 @@ def execute_search(params: Dict[str, Any]) -> Dict[str, Any]:
 
     unique_results = deduplicate_results(all_results)
     unique_results = _supplement_transition_results(
-        unique_results, active_transitions, search_date
+        unique_results, whole_code_transitions, search_date
     )
-    unique_results = _apply_transition_pairs(unique_results, active_transitions, search_date)
+    unique_results = _apply_transition_pairs(unique_results, whole_code_transitions, search_date)
 
     top_results_metadata = []
     for result in unique_results[:SEARCH_RESULT_LIMIT]:

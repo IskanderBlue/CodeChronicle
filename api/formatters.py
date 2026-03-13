@@ -156,6 +156,7 @@ def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
         "group_type": None,
         "result_type": None,
         "transition_context": result.get("transition_context"),
+        "provision_transitions": result.get("provision_transitions", []),
     }
     section_data["amendments"] = get_amendments_for_section(
         str(result.get("id") or ""), code_edition

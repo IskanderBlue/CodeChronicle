@@ -410,6 +410,51 @@ def test_has_renderable_content_true_when_one_version_has_content():
     assert merged[0]["has_renderable_content"] is True
 
 
+def test_provision_transitions_pass_through_formatting(monkeypatch):
+    monkeypatch.setattr(
+        formatters, "get_pdf_filename", lambda code_edition, map_code: "OBC_Vol1.pdf"
+    )
+    monkeypatch.setattr(formatters, "get_download_url", lambda code_edition: "")
+    monkeypatch.setattr(formatters, "get_source_url", lambda code_edition: "")
+    monkeypatch.setattr(
+        formatters, "_build_code_display_name", lambda code_edition: "Ontario Building Code 2012 v09"
+    )
+    monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results: {})
+
+    provision_transitions = [
+        {
+            "old_provision_ref": "Sentence 8.6.2.2.(5)",
+            "as_read_on": "2016-12-31",
+            "old_edition": "OBC_2012_v08",
+            "citation_text": "O. Reg. 332/12, s. 4.1.3",
+            "applicability_text": "Certain provisions apply.",
+            "overlap_end": "2017-07-01",
+            "transition_type": "in_stream_project",
+        }
+    ]
+
+    formatted = formatters.format_search_results(
+        [
+            {
+                "id": "8.6.2.2",
+                "title": "Fire Safety",
+                "code_edition": "OBC_2012_v09",
+                "map_code": "OBC_Vol1",
+                "page": 300,
+                "page_end": 302,
+                "score": 0.95,
+                "provision_transitions": provision_transitions,
+            }
+        ]
+    )
+
+    assert len(formatted) == 1
+    item = formatted[0]
+    assert item["provision_transitions"] == provision_transitions
+    assert item["provision_transitions"][0]["old_provision_ref"] == "Sentence 8.6.2.2.(5)"
+    assert item["provision_transitions"][0]["overlap_end"] == "2017-07-01"
+
+
 def test_nest_child_results_under_parent():
     results = [
         {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024", "title": "Parent"},

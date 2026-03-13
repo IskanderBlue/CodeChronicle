@@ -72,6 +72,17 @@
     </button>
 
     <div class="px-4 pb-5 sm:px-6 sm:pb-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
+        {% if result.provision_transitions %}
+        <div class="mb-3 rounded-md border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+            <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Transition note</p>
+            {% for ann in result.provision_transitions %}
+            <div class="mt-2 text-sm text-amber-900 dark:text-amber-100">
+                <p>{{ ann.old_provision_ref }} as it read on {{ ann.as_read_on }} may still apply until {{ ann.overlap_end }}.</p>
+                <p class="mt-1 text-xs text-amber-800 dark:text-amber-200">{{ ann.citation_text }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% if result.group_type == 'parent_children' %}
         <div class="mt-1 rounded-md border border-neutral-200 bg-white/70 p-3 dark:border-neutral-700 dark:bg-neutral-900/40"
             data-top-scoring-child="{{ result.top_scoring_child_id }}">
