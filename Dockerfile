@@ -17,6 +17,7 @@ COPY core /app/core
 COPY config /app/config
 COPY services /app/services
 COPY templates /app/templates
+COPY static /app/static
 COPY scripts/entrypoint.sh /app/scripts/entrypoint.sh
 
 RUN pip install --no-cache-dir .
