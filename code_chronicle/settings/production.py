@@ -7,6 +7,7 @@ import os
 import dj_database_url
 
 from .base import *  # noqa: F401, F403
+from .base import ANTHROPIC_API_KEY, SECRET_KEY  # noqa: F811
 
 DEBUG = False
 
@@ -130,3 +131,10 @@ DEFAULT_FROM_EMAIL = _resolve_runtime_setting(
 SERVER_EMAIL = os.environ.get("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 ACCOUNT_EMAIL_VERIFICATION = os.environ.get("ACCOUNT_EMAIL_VERIFICATION", "mandatory")
+
+# Hashed static filenames for cache busting (e.g. tailwind.a1b2c3d4.css)
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
+    },
+}

@@ -3,23 +3,8 @@
 ## General
 - `scripts/extract_keywords.py` only iterates `sections` — also include `tables` keywords when rebuilding the keyword list.
 - Add a "Parsed via OCR; may contain errors." note to PDF-derived table markdown displayed in search results. e-Laws tables (OBC) have exact text and don't need this disclaimer.
-- Implement: https://x.com/ryancarson/status/2016520542723924279
-- Harden static asset versioning/caching: use Django hashed static filenames (Manifest storage), ensure deploy-time `collectstatic`, and keep Cloudflare caching safe for `/static/*`.
-- NBC first.
-
-
-## code dating — transition provisions to handle
-Several codes have conditional effective dates with grace periods for in-stream projects.
-The `get_applicable_codes()` logic currently treats dates as hard cutoffs; these need nuance.
-
-- **BCBC 2024** (effective 2024-03-08): The 2018 BC Building Code's requirements for earthquake design and adaptable dwelling units continued to be in effect for permits applied for until March 9, 2025. In-stream projects, where certain criteria are met, are exempt from the 2024 BC Building Code's adaptable dwelling unit and earthquake requirements.
-- **QCC Building 2020** (effective 2025-04-17): The amendments to Chapter I, Building, of the Construction Code came into force on 17 April 2025 (Order in Council 437-2025, 2025 G.O. 2, 994). Nevertheless, Chapter I of the Construction Code as it read on 16 April 2025 may apply to the construction or transformation of a building, as defined in that Chapter, provided that the work begins before 17 October 2026.
-- **QECB 2020** (effective 2024-07-13): The amendments to Chapter I.1, Energy Efficiency of Buildings, of the Construction Code came into force on 13 July 2024 (Order in Council 850-2024, 2024 G.O. 2, 1868). Nevertheless, Chapter I.1 of the Construction Code as it read on 12 July 2024 may apply to construction work referred to in sections 1.1.2 and 1.1.3, provided that the work begins before 13 January 2025.
-- **QPC 2020** (effective 2024-07-11): The amendments to Chapter III, Plumbing, of the Construction Code came into force on 11 July 2024 (Order in Council 983-2024, 2024 G.O. 2, 2635, amended by Order in Council 1071-2024, 2024 G.O. 2, 3129). Nevertheless, Chapter III of the Construction Code as it read on 10 July 2024 may apply to construction work on a plumbing system, provided that the work begins before 11 January 2025.
-- **QSC 2020** (effective 2025-04-17): The amendments to Chapter VIII, Buildings, of the Safety Code came into force on 17 April 2025 (Order in Council 438-2025, 2025 G.O. 2, 1175), except that sub-subsection VIII of subdivision 1 of Division IV will come into force on 2 December 2027 (Order in Council 1035-2015, 2015 G.O. 2, 3189, and am.); Article 2.1.3.7. of Division B of the NFC will come into force on 17 April 2028. Nevertheless, Chapter VIII of the Safety Code as it read on 16 April 2025 may apply the day before 17 October 2026.
 
 ## eventually
-- add optional `transition_end` field to `CodeEdition`; when set, `get_applicable_codes()` returns both old and new editions during the overlap window.
 - settings: should have a clicker ui to select the folder in addition to the text input.
   - Troublesome; 
     - codex says no way to do this without triggering user-unfriendly warning; won't work for Firefox anyway.
@@ -28,8 +13,6 @@ The `get_applicable_codes()` logic currently treats dates as hard cutoffs; these
 
 ## Maybe
 - top bar: no longer fits at md even; must swap out at lg? Marginal.
-- search: don't double up if id and title are identical
-  - Leave this be; fix via better data.
 
 ### complete
 - ~~we want more detail returned from search_results; maybe title too.~~ 
