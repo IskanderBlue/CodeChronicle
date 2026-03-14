@@ -2,12 +2,14 @@
 Search execution logic combining applicability resolution and DB-backed maps.
 """
 
+from math import log
 from typing import Any
 
 from building_code_mcp.mcp_server import SYNONYMS
+from django.db import transaction
 from django.db.models import Q
 
-from core.models import CodeMapNode
+from core.models import CodeMapNode, KeywordIDF
 
 SEARCH_RESULT_LIMIT = 10  # Unified limit for search results
 
@@ -52,18 +54,23 @@ def _suggest_similar_keywords(query: str, map_code: str | None = None, limit: in
         keyword_qs = keyword_qs.filter(code_map__map_code=map_code)
 
     keywords: set[str] = set()
-    for row in keyword_qs.values_list("keywords", flat=True):
+    for row in keyword_qs.values_list("keyword_counts", flat=True):
         if not row:
             continue
-        for kw in row:
-            if isinstance(kw, str):
-                keywords.add(kw.lower())
+        if isinstance(row, dict):
+            keywords.update(k.lower() for k in row.keys())
 
     if not keywords:
         return []
 
     matches = process.extract(query.lower(), list(keywords), limit=limit, score_cutoff=60)
     return [match[0] for match in matches]
+
+
+def _tf(term: str, counts: dict[str, int]) -> float:
+    """Log-normalized term frequency."""
+    raw = counts.get(term, 0)
+    return (1 + log(raw)) if raw > 0 else 0.0
 
 
 def _search_code_db(
@@ -84,6 +91,23 @@ def _search_code_db(
     query_terms = set(query_lower.split()) if query_lower else set()
     expanded_terms = _expand_query_with_synonyms(query_terms) if query_terms else set()
 
+    # Load IDF weights for query terms from the materialized view.
+    # Wrapped in a savepoint so a matview error doesn't abort the
+    # outer transaction (PostgreSQL marks the whole tx as failed).
+    idf_map: dict[str, float] = {}
+    if expanded_terms:
+        try:
+            with transaction.atomic():
+                idf_rows = KeywordIDF.objects.filter(
+                    map_code=map_code, keyword__in=list(expanded_terms)
+                )
+                idf_map = {row.keyword: row.idf for row in idf_rows}
+        except Exception:
+            pass  # matview may not exist yet; fall back to equal weights
+
+    def get_idf(term: str) -> float:
+        return idf_map.get(term, 1.0)  # unknown term gets neutral weight
+
     criteria = Q()
 
     if query_lower:
@@ -91,7 +115,8 @@ def _search_code_db(
         for term in query_terms:
             criteria |= Q(title__icontains=term)
         if expanded_terms:
-            criteria |= Q(keywords__overlap=list(expanded_terms))
+            for term in expanded_terms:
+                criteria |= Q(keyword_counts__has_key=term)
 
     if has_sections:
         for ref in section_references:
@@ -107,7 +132,7 @@ def _search_code_db(
             "page_end",
             "initial_page_top",
             "final_page_bottom",
-            "keywords",
+            "keyword_counts",
             "division",
         )
     )
@@ -116,7 +141,8 @@ def _search_code_db(
     for node in candidates:
         section_id = node.node_id or ""
         title = node.title or ""
-        keywords = set(kw.lower() for kw in (node.keywords or []))
+        kw_counts: dict[str, int] = node.keyword_counts or {}
+        keywords = set(kw_counts.keys())
         title_words = set(title.lower().split())
         all_terms = keywords | title_words
 
@@ -140,10 +166,17 @@ def _search_code_db(
             if matches:
                 original_matches = query_terms & all_terms
                 if original_matches:
-                    score = len(original_matches) / len(query_terms)
+                    # TF-IDF scoring for exact query term matches
+                    score = sum(_tf(t, kw_counts) * get_idf(t) for t in original_matches) / sum(
+                        get_idf(t) for t in query_terms
+                    )
                     match_type = "exact"
                 else:
-                    score = (len(matches) / len(expanded_terms)) * 0.9
+                    # TF-IDF scoring for synonym matches (10% penalty)
+                    score = (
+                        sum(_tf(t, kw_counts) * get_idf(t) for t in matches)
+                        / sum(get_idf(t) for t in expanded_terms)
+                    ) * 0.9
                     match_type = "synonym"
 
         if score == 0 and FUZZY_AVAILABLE:

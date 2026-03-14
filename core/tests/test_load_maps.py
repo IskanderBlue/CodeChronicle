@@ -72,7 +72,7 @@ def test_load_maps_command(tmp_path):
                 "final_page_bottom": 88.0,
                 "html": "<p>General</p>",
                 "markdown": "**General**",
-                "keywords": ["general", "scope"],
+                "keyword_counts": {"general": 2, "scope": 1},
                 "notes_html": "<div>Notes</div>",
             },
             {
@@ -80,7 +80,7 @@ def test_load_maps_command(tmp_path):
                 "title": "Definitions",
                 "page": 12,
                 "page_end": 12,
-                "keywords": ["definitions"],
+                "keyword_counts": {"definitions": 3},
             },
         ],
     }
@@ -94,7 +94,7 @@ def test_load_maps_command(tmp_path):
     node = next(n for n in nodes if n.node_id == "1.1.1.1")
     assert node.html == "<p>General</p>"
     assert node.notes_html == "<div>Notes</div>"
-    assert node.keywords == ["general", "scope"]
+    assert node.keyword_counts == {"general": 2, "scope": 1}
     assert node.page == 7
     assert node.page_end == 9
     assert node.initial_page_top == 640.0

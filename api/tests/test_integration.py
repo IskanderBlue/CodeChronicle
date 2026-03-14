@@ -47,7 +47,7 @@ def _create_obc_fixtures():
         node_id="3.2.7.1.",
         title="Fire Separations in Buildings Used for Major Occupancies",
         html="<p>Every <em>building</em> shall have <strong>fire separations</strong>…</p>",
-        keywords=["fire", "separations", "major", "occupancy"],
+        keyword_counts={"fire": 1, "separations": 1, "major": 1, "occupancy": 1},
         parent_id="3.2.7.",
         division="B",
     )
@@ -56,7 +56,7 @@ def _create_obc_fixtures():
         node_id="3.2.7.2.",
         title="Minimum Fire-Resistance Rating",
         html="<p>The minimum fire-resistance rating required…</p>",
-        keywords=["fire", "resistance", "rating"],
+        keyword_counts={"fire": 1, "resistance": 1, "rating": 1},
         parent_id="3.2.7.",
         division="B",
     )
@@ -86,7 +86,7 @@ def _create_nbc_fixtures():
         page_end=710,
         initial_page_top=112.5,
         final_page_bottom=305.2,
-        keywords=["application", "housing", "small", "buildings"],
+        keyword_counts={"application": 1, "housing": 1, "small": 1, "buildings": 1},
         parent_id="9.10.14.",
         division="B",
     )
@@ -208,7 +208,7 @@ class TestTransitionContextInOverlapWindow:
                 code_map=code_map,
                 node_id="3.2.9.",
                 title="Fire Separations",
-                keywords=["fire", "separations"],
+                keyword_counts={"fire": 1, "separations": 1},
                 parent_id="3.2.",
                 division="B",
             )

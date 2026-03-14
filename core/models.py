@@ -5,7 +5,7 @@ Core models for CodeChronicle.
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
-from django.db import models
+from django.db import connection, models
 from django.utils import timezone
 
 
@@ -196,7 +196,11 @@ class CodeMapNode(models.Model):
     final_page_bottom = models.FloatField(null=True, blank=True)
     html = models.TextField(null=True, blank=True)
     notes_html = models.TextField(null=True, blank=True)
-    keywords = ArrayField(models.CharField(max_length=100), null=True, blank=True)
+    keyword_counts = models.JSONField(
+        null=True,
+        blank=True,
+        help_text='{"keyword": count} — term frequency per node',
+    )
     parent_id = models.CharField(max_length=200, null=True, blank=True)
     division = models.CharField(max_length=10, default="", blank=True)
     provision_transitions = models.JSONField(null=True, blank=True)
@@ -207,7 +211,7 @@ class CodeMapNode(models.Model):
         verbose_name_plural = "Code Map Nodes"
         indexes = [
             models.Index(fields=["node_id"], name="code_mapnode_node_id_idx"),
-            GinIndex(fields=["keywords"], name="code_mapnode_keywords_gin"),
+            GinIndex(fields=["keyword_counts"], name="code_mapnode_kwcounts_gin"),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -300,3 +304,22 @@ class ProvinceCodeMap(models.Model):
 
     def __str__(self):
         return f"{self.province} -> {self.code_system.code}"
+
+
+class KeywordIDF(models.Model):
+    """Unmanaged model backed by the keyword_idf materialized view."""
+
+    map_code = models.CharField(max_length=100)
+    keyword = models.CharField(max_length=100)
+    doc_count = models.IntegerField()
+    total_docs = models.IntegerField()
+    idf = models.FloatField()
+
+    class Meta:
+        managed = False
+        db_table = "keyword_idf"
+
+    @classmethod
+    def refresh(cls) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY keyword_idf;")

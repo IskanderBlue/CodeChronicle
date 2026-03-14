@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from config.transitions import load_transitions
-from core.models import CodeEdition, CodeMap, CodeMapNode
+from core.models import CodeEdition, CodeMap, CodeMapNode, KeywordIDF
 
 logger = Logger(__name__)
 
@@ -249,9 +249,9 @@ class Command(BaseCommand):
                     division = section.get("division", "")
 
                     initial_page_top, final_page_bottom = _extract_span_bounds(section)
-                    keywords = section.get("keywords")
-                    if not isinstance(keywords, list):
-                        keywords = None
+                    keyword_counts = section.get("keyword_counts")
+                    if not isinstance(keyword_counts, dict):
+                        keyword_counts = None
                     if section.get("markdown"):
                         markdown_count += 1
                     if section.get("html"):
@@ -269,7 +269,7 @@ class Command(BaseCommand):
                             final_page_bottom=final_page_bottom,
                             html=rendered_html,
                             notes_html=section.get("notes_html"),
-                            keywords=keywords,
+                            keyword_counts=keyword_counts,
                             parent_id=section.get("parent_id"),
                             division=division,
                         )
@@ -292,9 +292,11 @@ class Command(BaseCommand):
                         existing.notes_html = section.get("notes_html")
                     if not existing.parent_id and section.get("parent_id"):
                         existing.parent_id = section.get("parent_id")
-                    if keywords:
-                        existing_keywords = set(existing.keywords or [])
-                        existing.keywords = sorted(existing_keywords | set(keywords))
+                    if keyword_counts:
+                        existing_kc = existing.keyword_counts or {}
+                        for kw, ct in keyword_counts.items():
+                            existing_kc[kw] = existing_kc.get(kw, 0) + ct
+                        existing.keyword_counts = existing_kc
 
                 nodes = list(node_cache.values())
                 if nodes:
@@ -314,3 +316,10 @@ class Command(BaseCommand):
         provision_count = _populate_provision_transitions()
         if provision_count:
             logger.info("Stamped provision_transitions on %d node(s)", provision_count)
+
+        # Refresh keyword IDF materialized view
+        try:
+            KeywordIDF.refresh()
+            logger.info("Refreshed keyword_idf materialized view")
+        except Exception as exc:
+            logger.warning("Could not refresh keyword_idf materialized view: %s", exc)

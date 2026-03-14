@@ -8,15 +8,11 @@ logger = Logger(__name__)
 
 
 def extract_keywords():
-    # Path to the neighboring building-code-mcp repo
-    mcp_repo_path = os.path.abspath(os.path.join("..", "Canada_building_code_mcp"))
-    maps_pattern = os.path.join(mcp_repo_path, "maps", "*.json")
-    map_files = glob.glob(maps_pattern)
+    # Path to the neighboring CodeChronicleMapping repo
+    maps_dir = os.path.abspath(os.path.join("..", "CodeChronicleMapping", "maps"))
+    map_files = glob.glob(os.path.join(maps_dir, "*.json"))
 
     # Derive synonyms dynamically from the mcp_server.py
-    import sys
-
-    sys.path.append(os.path.join(mcp_repo_path))
     try:
         from building_code_mcp.mcp_server import SYNONYMS
 
@@ -37,8 +33,16 @@ def extract_keywords():
         try:
             with open(map_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                for section in data.get("sections", []):
-                    section_keywords = section.get("keywords", [])
+                for entry in list(data.get("sections", [])) + list(data.get("tables", [])):
+                    # Prefer keyword_counts dict (new format)
+                    kw_counts = entry.get("keyword_counts")
+                    if isinstance(kw_counts, dict):
+                        for kw in kw_counts:
+                            if isinstance(kw, str) and len(kw) > 2:
+                                keywords.add(kw.lower())
+                        continue
+                    # Fall back to keywords list (legacy format)
+                    section_keywords = entry.get("keywords", [])
                     if isinstance(section_keywords, list):
                         for kw in section_keywords:
                             if isinstance(kw, str) and len(kw) > 2:

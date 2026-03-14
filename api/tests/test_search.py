@@ -36,7 +36,7 @@ def test_execute_search_basic(mock_search_deps):
         page_end=52,
         initial_page_top=640.0,
         final_page_bottom=88.0,
-        keywords=["fire"],
+        keyword_counts={"fire": 1},
     )
     obc_map = CodeMap.objects.create(code_name="OBC_2024", map_code="OBC_Vol1")
     CodeMapNode.objects.create(
@@ -45,7 +45,7 @@ def test_execute_search_basic(mock_search_deps):
         title="Fire Safety",
         page=10,
         page_end=12,
-        keywords=["fire"],
+        keyword_counts={"fire": 1},
         html="<p>OBC content</p>",
     )
 
@@ -73,7 +73,7 @@ def test_execute_search_doors_fire_safety(mock_search_deps):
         title="Fire Separations",
         page=120,
         page_end=125,
-        keywords=["fire", "separations"],
+        keyword_counts={"fire": 1, "separations": 1},
     )
     CodeMapNode.objects.create(
         code_map=obc_map,
@@ -81,7 +81,7 @@ def test_execute_search_doors_fire_safety(mock_search_deps):
         title="Fire-Rated Doors",
         page=125,
         page_end=128,
-        keywords=["fire", "doors"],
+        keyword_counts={"fire": 1, "doors": 1},
     )
     nbc_map = CodeMap.objects.create(code_name="NBC_2025", map_code="NBC")
     CodeMapNode.objects.create(
@@ -90,7 +90,7 @@ def test_execute_search_doors_fire_safety(mock_search_deps):
         title="Fire Separations",
         page=220,
         page_end=225,
-        keywords=["fire", "separations"],
+        keyword_counts={"fire": 1, "separations": 1},
     )
 
     params = {
