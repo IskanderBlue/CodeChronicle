@@ -383,6 +383,18 @@ def merge_transition_compare_results(
     return output
 
 
+def _nest_result_key(
+    result: Dict[str, Any],
+) -> tuple[str, str, str, str]:
+    """Build a (code, map_code, id, division) key that scopes nesting per edition."""
+    return (
+        str(result.get("code") or ""),
+        str(result.get("map_code") or ""),
+        str(result.get("id") or ""),
+        str(result.get("division") or ""),
+    )
+
+
 def _nest_child_results(
     results: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -390,37 +402,46 @@ def _nest_child_results(
 
     Unlike the >80% Phase 2 grouping which fills in context siblings, this only
     includes children that were actually returned by the search.
+
+    Keys are scoped by (code, map_code, id, division) so that identically-numbered
+    sections across different editions (OBC vs NBC, or transition pairs) never
+    collide.
     """
-    results_by_id: Dict[tuple[str, str], Dict[str, Any]] = {}
+    # Full composite key → result
+    results_by_key: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
     for result in results:
-        result_id = result.get("id")
-        if result_id:
-            div = result.get("division", "")
-            results_by_id[(str(result_id), str(div))] = result
+        key = _nest_result_key(result)
+        if key[2]:  # has an id
+            results_by_key[key] = result
 
     # Collect children per parent (only when the parent itself is also a result)
-    children_by_parent: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
+    children_by_parent: Dict[tuple[str, str, str, str], List[Dict[str, Any]]] = {}
     for result in results:
         parent_id = result.get("parent_id")
+        if not parent_id:
+            continue
         result_id = str(result.get("id") or "")
-        div = str(result.get("division", ""))
-        parent_key = (str(parent_id), div) if parent_id else None
-        if (
-            parent_key
-            and parent_key in results_by_id
-            and str(parent_id) != result_id
-            and result.get("group_type") != "parent_children"
-        ):
-            parent = results_by_id[parent_key]
-            if parent.get("group_type") == "parent_children":
-                continue
-            children_by_parent.setdefault(parent_key, []).append(result)
+        if str(parent_id) == result_id:
+            continue
+        if result.get("group_type") == "parent_children":
+            continue
+        parent_key = (
+            str(result.get("code") or ""),
+            str(result.get("map_code") or ""),
+            str(parent_id),
+            str(result.get("division") or ""),
+        )
+        if parent_key not in results_by_key:
+            continue
+        parent = results_by_key[parent_key]
+        if parent.get("group_type") == "parent_children":
+            continue
+        children_by_parent.setdefault(parent_key, []).append(result)
 
     # Convert each parent + children set into a grouped card
-    grouped_parent_keys: set[tuple[str, str]] = set()
-    absorbed_child_ids: set[str] = set()
+    absorbed_child_keys: set[tuple[str, str, str, str]] = set()
     for parent_key, children in children_by_parent.items():
-        parent = results_by_id[parent_key]
+        parent = results_by_key[parent_key]
         top_child = max(children, key=lambda c: (c.get("score", 0),))
         child_entries = []
         for child in sorted(children, key=lambda c: _code_order_key(str(c.get("id", "")))):
@@ -434,7 +455,7 @@ def _nest_child_results(
                 "is_match": True,
                 "is_top_scoring": child_id == str(top_child.get("id", "")),
             })
-            absorbed_child_ids.add(child_id)
+            absorbed_child_keys.add(_nest_result_key(child))
 
         parent["group_type"] = "parent_children"
         parent["children"] = child_entries
@@ -454,9 +475,8 @@ def _nest_child_results(
                       "initial_page_top", "final_page_bottom"):
             if top_child.get(field) is not None:
                 parent[field] = top_child[field]
-        grouped_parent_keys.add(parent_key)
 
-    return [r for r in results if str(r.get("id") or "") not in absorbed_child_ids]
+    return [r for r in results if _nest_result_key(r) not in absorbed_child_keys]
 
 
 def format_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

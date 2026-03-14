@@ -487,3 +487,35 @@ def test_nest_child_results_under_parent():
     assert parent["top_scoring_child_id"] == "3.2.1"
     assert parent["child_match_count"] == 2
     assert parent["child_total_count"] == 2
+
+
+def test_nest_child_results_cross_edition_no_collision():
+    """Same section IDs across editions must not collide or drop results."""
+    results = [
+        # OBC parent + children
+        {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024",
+         "map_code": "OBC_Vol1", "title": "OBC Parent"},
+        {"id": "3.2.1", "parent_id": "3.2", "score": 0.85, "code": "OBC_2024",
+         "map_code": "OBC_Vol1", "title": "OBC Child A"},
+        {"id": "3.2.2", "parent_id": "3.2", "score": 0.80, "code": "OBC_2024",
+         "map_code": "OBC_Vol1", "title": "OBC Child B"},
+        # NBC parent + children with identical node IDs
+        {"id": "3.2", "parent_id": None, "score": 0.7, "code": "NBC_2020",
+         "map_code": "NBC", "title": "NBC Parent"},
+        {"id": "3.2.1", "parent_id": "3.2", "score": 0.65, "code": "NBC_2020",
+         "map_code": "NBC", "title": "NBC Child A"},
+        {"id": "3.2.2", "parent_id": "3.2", "score": 0.60, "code": "NBC_2020",
+         "map_code": "NBC", "title": "NBC Child B"},
+    ]
+    nested = formatters._nest_child_results(results)
+    # Both editions should produce their own grouped parent card
+    assert len(nested) == 2
+    obc = [r for r in nested if r.get("code") == "OBC_2024"][0]
+    nbc = [r for r in nested if r.get("code") == "NBC_2020"][0]
+    assert obc["group_type"] == "parent_children"
+    assert nbc["group_type"] == "parent_children"
+    assert len(obc["children"]) == 2
+    assert len(nbc["children"]) == 2
+    # Children titles should be edition-specific (not overwritten)
+    assert obc["children"][0]["title"].startswith("OBC")
+    assert nbc["children"][0]["title"].startswith("NBC")
