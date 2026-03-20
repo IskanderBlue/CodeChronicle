@@ -18,6 +18,10 @@
 
     document.addEventListener('htmx:afterSettle', async (e) => {
         await initPdfContainers(e.detail.elt);
+        // Render any <math> LaTeX tags in newly loaded content (Surya OCR output)
+        if (typeof renderMathInElement === 'function') {
+            renderMathInElement(e.detail.elt, {delimiters:[{left:'<math>',right:'</math>',display:false}]});
+        }
     });
 
     document.addEventListener('DOMContentLoaded', async () => {

@@ -51,6 +51,12 @@
     <link href="{% static 'css/tailwind.css' %}" rel="stylesheet">
     {% endif %}
 
+    <!-- KaTeX (math rendering for Surya OCR output) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
+            onload="renderMathInElement(document.body, {delimiters:[{left:'<math>',right:'</math>',display:false}]});"></script>
+
     {% block extra_head %}{% endblock %}
 </head>
 
