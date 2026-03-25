@@ -33,6 +33,37 @@ applies to.
 8. **No jurisdiction-aware in-force model** — NBC is published once but
    adopted on different dates by different provinces.
 
+## Design Issue: Commencement vs Amendment (2026-03-25)
+
+The Transition model covers **commencement** — when a provision comes into
+force. But **amendment** (when the text of an already-in-force provision
+is changed by a later regulation) is a different event that is not modeled.
+
+These are distinct questions:
+- **Commencement**: "When did this provision come into force?" → answered
+  by the Transition model (effective_date, provision_quote from the
+  commencement section of the enacting regulation).
+- **Amendment history**: "Which regulation's text am I reading?" → not
+  currently modeled. Would require tracking which regulation last
+  amended each provision, separate from the commencement Transition.
+
+The CodeChronicleMapping pipeline currently has:
+- **Commencement data**: Y-prefix timeline + source filing commencement
+  sections. Correctly captures when provisions commenced.
+- **Attribution map**: Legislative History + amending body targets.
+  Correctly identifies which regulation last amended each provision.
+  But this is amendment history, not commencement provenance.
+
+### What this means for the Transition model
+
+The Transition model as designed is correct for commencement. For
+amendment history, we need either:
+- A separate field on CodeMapNode (e.g., `last_amended_by`)
+- A separate model (e.g., `Amendment`)
+- An additional Transition record type with a different semantic
+
+Decision needed before implementation.
+
 ## Task Sequence
 
 1. [Transition model + CodeMap FK + backfill](1-schema-and-backfill.md)
