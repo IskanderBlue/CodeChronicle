@@ -133,7 +133,7 @@ def test_load_maps_keyword_counts_from_json(tmp_path):
 
     payload = {
         "code_name": "TEST_2024",
-        "sections": [
+        "provisions": [
             {
                 "id": "1.1.1.1",
                 "title": "Test Section",

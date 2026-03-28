@@ -62,7 +62,7 @@ def _run_load_maps(tmp_path, filename, payload):
 def test_load_maps_command(tmp_path):
     payload = {
         "code_name": "OBC_2024",
-        "sections": [
+        "provisions": [
             {
                 "id": "1.1.1.1",
                 "title": "General",
@@ -105,7 +105,7 @@ def test_load_maps_command(tmp_path):
 def test_load_maps_allows_missing_span_bounds(tmp_path):
     payload = {
         "code_name": "NBC_2025",
-        "sections": [
+        "provisions": [
             {
                 "id": "3.2.9.1.",
                 "division": "B",
@@ -132,7 +132,7 @@ def test_load_maps_allows_missing_span_bounds(tmp_path):
 def test_load_maps_imports_notes_html(tmp_path):
     payload = {
         "code_name": "NBC_2025",
-        "sections": [
+        "provisions": [
             {
                 "id": "3.1.1",
                 "title": "Notes Section",
@@ -152,7 +152,7 @@ def test_load_maps_imports_notes_html(tmp_path):
 def test_load_maps_legacy_bbox_fallback(tmp_path):
     payload = {
         "code_name": "OBC_2012",
-        "sections": [
+        "provisions": [
             {
                 "id": "9.10.1",
                 "title": "Legacy Bbox",
@@ -276,7 +276,7 @@ def test_load_maps_does_not_set_provision_transitions_on_unmatched_node(tmp_path
 def test_load_maps_span_fields_take_precedence_over_bbox(tmp_path):
     payload = {
         "code_name": "OBC_2012",
-        "sections": [
+        "provisions": [
             {
                 "id": "9.10.2",
                 "title": "Span wins",

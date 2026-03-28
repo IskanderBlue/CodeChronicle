@@ -241,7 +241,7 @@ class Command(BaseCommand):
                 CodeMapNode.objects.filter(code_map=code_map).delete()
 
                 node_cache: dict[tuple[str, str], CodeMapNode] = {}
-                combined_entries = list(data.get("sections", [])) + list(data.get("tables", []))
+                combined_entries = list(data.get("provisions", [])) + list(data.get("tables", []))
                 for section in combined_entries:
                     node_id = section.get("id")
                     if not node_id:

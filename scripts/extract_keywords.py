@@ -33,7 +33,7 @@ def extract_keywords():
         try:
             with open(map_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                for entry in list(data.get("sections", [])) + list(data.get("tables", [])):
+                for entry in list(data.get("provisions", [])) + list(data.get("tables", [])):
                     # Prefer keyword_counts dict (new format)
                     kw_counts = entry.get("keyword_counts")
                     if isinstance(kw_counts, dict):
