@@ -1,7 +1,7 @@
 """
 Integration tests that exercise the search pipeline against real DB records.
 
-These tests create their own CodeSystem/CodeEdition/CodeMap/CodeMapNode
+These tests create their own Code/CodeEdition/CodeMap/CodeMapNode
 records and call the actual search functions — only the LLM parser is mocked.
 
 Run:  pytest api/tests/test_integration.py -v
@@ -16,11 +16,11 @@ import pytest
 from api.formatters import format_search_results
 from api.search.orchestration import execute_search
 from core.models import (
+    Code,
     CodeEdition,
     CodeMap,
     CodeMapNode,
-    CodeSystem,
-    ProvinceCodeMap,
+    ProvinceCode,
     SearchHistory,
 )
 from services.search_service import run_search
@@ -28,10 +28,10 @@ from services.search_service import run_search
 
 def _create_obc_fixtures():
     """Create a minimal OBC code system with e-Laws nodes (html, no page)."""
-    system = CodeSystem.objects.create(
+    system = Code.objects.create(
         code="OBC", display_name="Ontario Building Code", is_national=False
     )
-    ProvinceCodeMap.objects.create(province="ON", code_system=system)
+    ProvinceCode.objects.create(province="ON", code=system)
     edition = CodeEdition.objects.create(
         system=system,
         edition_id="2024",
@@ -65,7 +65,7 @@ def _create_obc_fixtures():
 
 def _create_nbc_fixtures():
     """Create a minimal NBC code system with PDF-sourced nodes (page, bbox, no html)."""
-    system = CodeSystem.objects.create(
+    system = Code.objects.create(
         code="NBC", display_name="National Building Code", is_national=True
     )
     edition = CodeEdition.objects.create(
@@ -179,10 +179,10 @@ class TestRunSearchEndToEnd:
 class TestTransitionContextInOverlapWindow:
     def test_transition_context_present(self):
         # Create BCBC 2018 (old) and 2024 (new) editions
-        system = CodeSystem.objects.create(
+        system = Code.objects.create(
             code="BCBC", display_name="BC Building Code", is_national=False
         )
-        ProvinceCodeMap.objects.create(province="BC", code_system=system)
+        ProvinceCode.objects.create(province="BC", code=system)
 
         CodeEdition.objects.create(
             system=system,

@@ -5,7 +5,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 
-from core.models import CodeEdition, CodeSystem
+from core.models import Code, CodeEdition
 
 User = get_user_model()
 
@@ -22,7 +22,7 @@ class TestApiEndpoints:
             password="testpassword",
             pro_courtesy=True,
         )
-        nbc = CodeSystem.objects.create(
+        nbc = Code.objects.create(
             code="NBC",
             display_name="National Building Code",
             is_national=True,

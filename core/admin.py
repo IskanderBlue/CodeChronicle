@@ -1,11 +1,17 @@
 from django.contrib import admin
 
 from .models import (
+    Code,
     CodeEdition,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
     CodeMap,
     CodeMapNode,
-    CodeSystem,
-    ProvinceCodeMap,
+    ProvinceCode,
+    ProvisionEditionMapping,
+    ProvisionVersionTable,
+    Regulation,
+    RegulationClause,
     SearchHistory,
     User,
 )
@@ -26,8 +32,14 @@ class SearchHistoryAdmin(admin.ModelAdmin):
     readonly_fields = ['parsed_params']
 
 
+admin.site.register(Code)
+admin.site.register(CodeEdition)
 admin.site.register(CodeMap)
 admin.site.register(CodeMapNode)
-admin.site.register(CodeSystem)
-admin.site.register(CodeEdition)
-admin.site.register(ProvinceCodeMap)
+admin.site.register(ProvinceCode)
+admin.site.register(Regulation)
+admin.site.register(RegulationClause)
+admin.site.register(CodeEditionProvision)
+admin.site.register(CodeEditionProvisionVersion)
+admin.site.register(ProvisionVersionTable)
+admin.site.register(ProvisionEditionMapping)

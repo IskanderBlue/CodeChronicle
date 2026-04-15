@@ -224,9 +224,9 @@ class CodeMapNode(models.Model):
         return f"{self.code_map.map_code}:{prefix}{self.node_id}"
 
 
-class CodeSystem(models.Model):
+class Code(models.Model):
     """
-    High-level code system (e.g., OBC, NBC, IUGP9).
+    A building code system (e.g., OBC, NBC).
     """
 
     code = models.CharField(max_length=20, unique=True)
@@ -239,9 +239,9 @@ class CodeSystem(models.Model):
     )
 
     class Meta:
-        db_table = "code_systems"
-        verbose_name = "Code System"
-        verbose_name_plural = "Code Systems"
+        db_table = "codes"
+        verbose_name = "Code"
+        verbose_name_plural = "Codes"
 
     def __str__(self):
         return self.code
@@ -252,12 +252,14 @@ class CodeEdition(models.Model):
     A specific edition/version of a code system.
     """
 
-    system = models.ForeignKey(CodeSystem, on_delete=models.CASCADE, related_name="editions")
+    system = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="editions")
     edition_id = models.CharField(max_length=50)
     year = models.IntegerField()
     map_codes = ArrayField(models.CharField(max_length=100))
     effective_date = models.DateField()
     superseded_date = models.DateField(null=True, blank=True)
+    ineffective_date = models.DateField(null=True, blank=True)
+    amendment_chain_complete = models.BooleanField(default=False)
     pdf_files = models.JSONField(null=True, blank=True)
     download_url = models.CharField(max_length=500, blank=True, default="")
     amendments = models.JSONField(null=True, blank=True)
@@ -289,21 +291,255 @@ class CodeEdition(models.Model):
         return f"{self.system.code}_{self.edition_id}"
 
 
-class ProvinceCodeMap(models.Model):
+class ProvinceCode(models.Model):
     """
     Map a province abbreviation to its primary code system.
     """
 
     province = models.CharField(max_length=2, unique=True)
-    code_system = models.ForeignKey(CodeSystem, on_delete=models.CASCADE, related_name="provinces")
+    code = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="provinces")
 
     class Meta:
-        db_table = "province_code_maps"
-        verbose_name = "Province Code Map"
-        verbose_name_plural = "Province Code Maps"
+        db_table = "province_codes"
+        verbose_name = "Province Code"
+        verbose_name_plural = "Province Codes"
 
     def __str__(self):
-        return f"{self.province} -> {self.code_system.code}"
+        return f"{self.province} -> {self.code.code}"
+
+
+class Regulation(models.Model):
+    """An Ontario regulation — base code enactment or amendment."""
+
+    class Role(models.TextChoices):
+        BASE = "base", "Base"
+        AMENDMENT = "amendment", "Amendment"
+
+    reg_id = models.CharField(max_length=50, unique=True)
+    edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="regulations"
+    )
+    role = models.CharField(max_length=20, choices=Role.choices)
+    amends = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="amended_by",
+    )
+    filed_date = models.DateField(null=True, blank=True)
+    effective_date = models.DateField()
+    source_pdf = models.CharField(max_length=200, blank=True, default="")
+    source_pages = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = "regulations"
+        indexes = [
+            models.Index(fields=["edition", "effective_date"]),
+        ]
+
+    def __str__(self):
+        return f"O. Reg. {self.reg_id} ({self.role})"
+
+
+class RegulationClause(models.Model):
+    """A single amendment directive within a regulation."""
+
+    class Action(models.TextChoices):
+        REVOKE_AND_SUBSTITUTE = "revoke_and_substitute", "Revoke and substitute"
+        AMEND_ADD = "amend_add", "Amend by adding"
+        AMEND_STRIKE_SUB = "amend_strike_sub", "Amend by striking and substituting"
+        REVOKE = "revoke", "Revoke"
+
+    class TargetLevel(models.TextChoices):
+        ARTICLE = "article", "Article"
+        SENTENCE = "sentence", "Sentence"
+        CLAUSE = "clause", "Clause"
+        SUBCLAUSE = "subclause", "Subclause"
+        SUBSECTION = "subsection", "Subsection"
+        SECTION = "section", "Section"
+        PART = "part", "Part"
+        TABLE = "table", "Table"
+
+    regulation = models.ForeignKey(
+        Regulation, on_delete=models.CASCADE, related_name="clauses"
+    )
+    clause_id = models.CharField(max_length=50)
+    parent_clause = models.CharField(max_length=50, blank=True, default="")
+    action = models.CharField(max_length=50, choices=Action.choices)
+    target_level = models.CharField(
+        max_length=50, choices=TargetLevel.choices, blank=True, default=""
+    )
+    target_id = models.CharField(max_length=200, blank=True, default="")
+    clause_text = models.TextField(blank=True, default="")
+    strike_text = models.TextField(null=True, blank=True)
+    sub_text = models.TextField(null=True, blank=True)
+    page = models.IntegerField(null=True, blank=True)
+    bbox = models.JSONField(null=True, blank=True)
+    overlay = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = "regulation_clauses"
+        indexes = [
+            models.Index(fields=["regulation"]),
+            models.Index(fields=["target_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["regulation", "clause_id"],
+                name="clause_regulation_clause_id_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.regulation.reg_id} cl. {self.clause_id}"
+
+
+class CodeEditionProvision(models.Model):
+    """Structural identity of a provision within an edition. No content."""
+
+    class Level(models.TextChoices):
+        DIVISION = "division", "Division"
+        PART = "part", "Part"
+        SECTION = "section", "Section"
+        SUBSECTION = "subsection", "Subsection"
+        ARTICLE = "article", "Article"
+        SENTENCE = "sentence", "Sentence"
+        CLAUSE = "clause", "Clause"
+
+    edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="provisions"
+    )
+    provision_id = models.CharField(max_length=200)
+    level = models.CharField(max_length=20, choices=Level.choices)
+    division = models.CharField(max_length=50, blank=True, default="")
+    parent = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.CASCADE, related_name="children",
+    )
+    appendix_of = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="appendix_entries",
+    )
+    version_count = models.PositiveSmallIntegerField(default=1)
+
+    class Meta:
+        db_table = "code_edition_provisions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["edition", "provision_id", "division"],
+                name="provision_edition_id_division_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["edition", "division", "provision_id"]),
+            models.Index(fields=["parent"]),
+        ]
+
+    def __str__(self):
+        prefix = f"{self.division} " if self.division else ""
+        return f"{prefix}{self.provision_id}"
+
+
+class CodeEditionProvisionVersion(models.Model):
+    """A frozen snapshot of a provision's content at a point in the amendment chain."""
+
+    class Action(models.TextChoices):
+        ORIGINAL = "original", "Original"
+        ADDED = "added", "Added"
+        REVOKE_AND_SUBSTITUTE = "revoke_and_substitute", "Revoke and substitute"
+        AMEND_ADD = "amend_add", "Amend by adding"
+        AMEND_STRIKE_SUB = "amend_strike_sub", "Amend by striking and substituting"
+        REVOKED = "revoked", "Revoked"
+
+    provision = models.ForeignKey(
+        CodeEditionProvision, on_delete=models.CASCADE, related_name="versions",
+    )
+    version = models.PositiveSmallIntegerField(default=0)
+    clause = models.ForeignKey(
+        RegulationClause, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="provision_versions",
+    )
+    action = models.CharField(
+        max_length=50, choices=Action.choices, default=Action.ORIGINAL
+    )
+    effective_date = models.DateField()
+    ineffective_date = models.DateField(null=True, blank=True)
+    transition_provision = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="transition_targets",
+    )
+
+    title = models.CharField(max_length=500, blank=True, default="")
+    html = models.TextField(blank=True, default="")
+    page_images = models.JSONField(null=True, blank=True)
+    keyword_counts = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = "code_edition_provision_versions"
+        ordering = ["version"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provision", "version"],
+                name="version_provision_version_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["provision", "effective_date"]),
+            models.Index(fields=["clause"]),
+            models.Index(fields=["effective_date", "ineffective_date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.provision} v{self.version}"
+
+
+class ProvisionVersionTable(models.Model):
+    """Table content associated with a provision version."""
+
+    version = models.ForeignKey(
+        CodeEditionProvisionVersion, on_delete=models.CASCADE, related_name="tables",
+    )
+    table_id = models.CharField(max_length=200)
+    caption = models.CharField(max_length=500, blank=True, default="")
+    images = models.JSONField(default=list)
+    notes = models.TextField(blank=True, default="")
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "provision_version_tables"
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["version", "table_id"],
+                name="table_version_table_id_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.version} — {self.table_id}"
+
+
+class ProvisionEditionMapping(models.Model):
+    """Cross-edition provision identity mapping."""
+
+    old_provision = models.ForeignKey(
+        CodeEditionProvision, on_delete=models.CASCADE, related_name="mapped_forward",
+    )
+    new_provision = models.ForeignKey(
+        CodeEditionProvision, on_delete=models.CASCADE, related_name="mapped_back",
+    )
+    mapping_type = models.CharField(max_length=20)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "provision_edition_mappings"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["old_provision", "new_provision"],
+                name="provision_mapping_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.old_provision} → {self.new_provision} ({self.mapping_type})"
 
 
 class KeywordIDF(models.Model):

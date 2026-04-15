@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from api.search import execute_search
-from core.models import CodeEdition, CodeMap, CodeMapNode, CodeSystem, ProvinceCodeMap
+from core.models import Code, CodeEdition, CodeMap, CodeMapNode, ProvinceCode
 
 
 @pytest.fixture
@@ -112,11 +112,11 @@ def test_get_applicable_codes_ontario_2026():
     """Test that ON province correctly resolves to OBC and NBC codes."""
     from config.code_metadata import get_applicable_codes
 
-    obc = CodeSystem.objects.create(code="OBC", display_name="Ontario Building Code")
-    nbc = CodeSystem.objects.create(
+    obc = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    nbc = Code.objects.create(
         code="NBC", display_name="National Building Code", is_national=True
     )
-    ProvinceCodeMap.objects.create(province="ON", code_system=obc)
+    ProvinceCode.objects.create(province="ON", code=obc)
     CodeEdition.objects.create(
         system=obc,
         edition_id="2024",
@@ -143,8 +143,8 @@ def test_get_applicable_codes_ontario_2010():
     """Test that a 2010 date resolves to a CCM OBC edition if loaded."""
     from config.code_metadata import get_applicable_codes
 
-    obc = CodeSystem.objects.create(code="OBC", display_name="Ontario Building Code")
-    ProvinceCodeMap.objects.create(province="ON", code_system=obc)
+    obc = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    ProvinceCode.objects.create(province="ON", code=obc)
     CodeEdition.objects.create(
         system=obc,
         edition_id="2006_v01",

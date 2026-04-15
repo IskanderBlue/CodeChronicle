@@ -29,11 +29,11 @@ def get_code_display_name(system_code: str) -> str:
     Get the display name for a code system (e.g., OBC -> Ontario Building Code).
     """
     try:
-        from core.models import CodeSystem
+        from core.models import Code
     except Exception:
         return system_code
 
-    system = CodeSystem.objects.filter(code=system_code).first()
+    system = Code.objects.filter(code=system_code).first()
     if system and system.display_name:
         return system.display_name
     return system_code
@@ -129,18 +129,18 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
     codes: list[str] = []
 
     try:
-        from core.models import CodeEdition, CodeSystem, ProvinceCodeMap
+        from core.models import Code, CodeEdition, ProvinceCode
     except Exception:
         return codes
 
     province_map = (
-        ProvinceCodeMap.objects.select_related("code_system")
+        ProvinceCode.objects.select_related("code")
         .filter(province=province)
         .first()
     )
     if province_map:
         edition = (
-            CodeEdition.objects.filter(system=province_map.code_system)
+            CodeEdition.objects.filter(system=province_map.code)
             .filter(effective_date__lte=search_date)
             .filter(models.Q(superseded_date__isnull=True) | models.Q(superseded_date__gt=search_date))
             .order_by("-effective_date")
@@ -149,7 +149,7 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
         if edition:
             codes.append(edition.code_name)
 
-    national_systems = CodeSystem.objects.filter(is_national=True)
+    national_systems = Code.objects.filter(is_national=True)
     for system in national_systems:
         edition = (
             CodeEdition.objects.filter(system=system)

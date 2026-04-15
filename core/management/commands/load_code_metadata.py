@@ -7,7 +7,7 @@ from coloured_logger import Logger
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from core.models import CodeEdition, CodeSystem, ProvinceCodeMap
+from core.models import Code, CodeEdition, ProvinceCode
 
 logger = Logger(__name__)
 
@@ -42,8 +42,8 @@ class Command(BaseCommand):
         with transaction.atomic():
             if reset:
                 CodeEdition.objects.all().delete()
-                ProvinceCodeMap.objects.all().delete()
-                CodeSystem.objects.all().delete()
+                ProvinceCode.objects.all().delete()
+                Code.objects.all().delete()
 
             self._load_from_payload(metadata_payload)
 
@@ -60,7 +60,7 @@ class Command(BaseCommand):
         systems = set(code_editions.keys()) | set(guide_editions.keys())
         for system_code in systems:
             document_type = "guide" if system_code in guide_editions else "code"
-            CodeSystem.objects.update_or_create(
+            Code.objects.update_or_create(
                 code=system_code,
                 defaults={
                     "display_name": display_names.get(system_code, ""),
@@ -70,14 +70,14 @@ class Command(BaseCommand):
             )
 
         for province, system_code in province_map.items():
-            code_system = CodeSystem.objects.get(code=system_code)
-            ProvinceCodeMap.objects.update_or_create(
+            code_system = Code.objects.get(code=system_code)
+            ProvinceCode.objects.update_or_create(
                 province=province,
-                defaults={"code_system": code_system},
+                defaults={"code": code_system},
             )
 
         for system_code, editions in code_editions.items():
-            code_system = CodeSystem.objects.get(code=system_code)
+            code_system = Code.objects.get(code=system_code)
             for edition in editions:
                 edition_id = edition["edition_id"]
                 code_key = f"{system_code}_{edition_id}"
@@ -103,7 +103,7 @@ class Command(BaseCommand):
                 )
 
         for system_code, editions in guide_editions.items():
-            code_system = CodeSystem.objects.get(code=system_code)
+            code_system = Code.objects.get(code=system_code)
             for edition in editions:
                 edition_id = edition["edition_id"]
                 code_key = f"{system_code}_{edition_id}"
