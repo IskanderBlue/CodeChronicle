@@ -12,7 +12,7 @@ from django.conf import settings
 from config.keywords import VALID_KEYWORDS
 
 SECTION_REF_RE = re.compile(
-    r"\b((?:(?:table|[a-z])-)?\d{1,2}(?:\.\d{1,2}){1,4})\b",
+    r"\b((?:(?:table|[a-z])-)?\d{1,2}(?:\.\d{1,2}){1,4}\.?(?:\(\d+(?:-\d+|(?:,\d+)*)\))?)(?=\s|$|[,;:!\?)\]])",
     re.IGNORECASE,
 )
 
