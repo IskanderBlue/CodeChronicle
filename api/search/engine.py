@@ -1,17 +1,19 @@
 """
-Search execution logic combining applicability resolution and DB-backed maps.
+Scoring engine for provision version search results.
+
+Receives a pre-filtered queryset of in-force versions and scores them
+against query terms using TF-IDF, synonym expansion, and fuzzy matching.
 """
 
 from math import log
 from typing import Any
 
 from building_code_mcp.mcp_server import SYNONYMS
-from django.db import transaction
-from django.db.models import Q
+from django.db.models import QuerySet
 
-from core.models import CodeMapNode, KeywordIDF
+from core.models import CodeEditionProvisionVersion
 
-SEARCH_RESULT_LIMIT = 10  # Unified limit for search results
+SEARCH_RESULT_LIMIT = 10
 
 
 try:
@@ -45,103 +47,85 @@ def _fuzzy_match_score(query_term: str, target_terms: set[str], threshold: int =
     return 0.0
 
 
-def _suggest_similar_keywords(query: str, map_code: str | None = None, limit: int = 3) -> list[str]:
-    if not FUZZY_AVAILABLE or not query:
-        return []
-
-    keyword_qs = CodeMapNode.objects.all()
-    if map_code:
-        keyword_qs = keyword_qs.filter(code_map__map_code=map_code)
-
-    keywords: set[str] = set()
-    for row in keyword_qs.values_list("keyword_counts", flat=True):
-        if not row:
-            continue
-        if isinstance(row, dict):
-            keywords.update(k.lower() for k in row.keys())
-
-    if not keywords:
-        return []
-
-    matches = process.extract(query.lower(), list(keywords), limit=limit, score_cutoff=60)
-    return [match[0] for match in matches]
-
-
 def _tf(term: str, counts: dict[str, int]) -> float:
     """Log-normalized term frequency."""
     raw = counts.get(term, 0)
     return (1 + log(raw)) if raw > 0 else 0.0
 
 
-def _search_code_db(
+def compute_idf(versions_qs: QuerySet[CodeEditionProvisionVersion]) -> dict[str, float]:
+    """Compute IDF weights from a queryset of provision versions."""
+    total_docs = 0
+    doc_freq: dict[str, int] = {}
+    for kw_counts in versions_qs.values_list("keyword_counts", flat=True):
+        if not kw_counts:
+            continue
+        total_docs += 1
+        for keyword in kw_counts:
+            doc_freq[keyword] = doc_freq.get(keyword, 0) + 1
+    if total_docs == 0:
+        return {}
+    return {kw: log(1 + total_docs / df) for kw, df in doc_freq.items()}
+
+
+def score_versions(
     query: str,
-    map_code: str,
-    limit: int,
-    section_references: list[str] | None = None,
-) -> dict[str, Any]:
+    versions_qs: QuerySet[CodeEditionProvisionVersion],
+    idf_map: dict[str, float],
+    provision_references: list[str] | None = None,
+    limit: int = SEARCH_RESULT_LIMIT,
+) -> list[dict[str, Any]]:
+    """Score provision versions against a query using TF-IDF + fuzzy matching.
+
+    Args:
+        query: Space-joined keywords from the parsed user query.
+        versions_qs: Pre-filtered queryset of in-force versions (with
+            select_related and prefetch_related already applied).
+        idf_map: Pre-computed IDF weights for the corpus.
+        provision_references: Explicit provision ID references from the query.
+        limit: Max results to return.
+
+    Returns:
+        Scored result dicts sorted by score descending.
+    """
     limit = max(1, min(limit, 50))
 
     has_query = query and isinstance(query, str) and query.strip()
-    has_sections = bool(section_references)
+    has_refs = bool(provision_references)
 
-    if not has_query and not has_sections:
-        return {"error": "Query is required", "query": "", "results": [], "total": 0}
+    if not has_query and not has_refs:
+        return []
 
     query_lower = query.lower().strip() if has_query else ""
     query_terms = set(query_lower.split()) if query_lower else set()
     expanded_terms = _expand_query_with_synonyms(query_terms) if query_terms else set()
 
-    # Load IDF weights for query terms from the materialized view.
-    # Wrapped in a savepoint so a matview error doesn't abort the
-    # outer transaction (PostgreSQL marks the whole tx as failed).
-    idf_map: dict[str, float] = {}
-    if expanded_terms:
-        try:
-            with transaction.atomic():
-                idf_rows = KeywordIDF.objects.filter(
-                    map_code=map_code, keyword__in=list(expanded_terms)
-                )
-                idf_map = {row.keyword: row.idf for row in idf_rows}
-        except Exception:
-            pass  # matview may not exist yet; fall back to equal weights
-
     def get_idf(term: str) -> float:
-        return idf_map.get(term, 1.0)  # unknown term gets neutral weight
+        return idf_map.get(term, 1.0)
+
+    # Filter the queryset to candidates matching keywords or references
+    from django.db.models import Q
 
     criteria = Q()
-
     if query_lower:
-        criteria |= Q(node_id__icontains=query_lower)
+        criteria |= Q(provision__provision_id__icontains=query_lower)
         for term in query_terms:
             criteria |= Q(title__icontains=term)
         if expanded_terms:
             for term in expanded_terms:
                 criteria |= Q(keyword_counts__has_key=term)
+    if has_refs:
+        for ref in provision_references:
+            criteria |= Q(provision__provision_id__icontains=ref)
 
-    if has_sections:
-        for ref in section_references:
-            criteria |= Q(node_id__icontains=ref)
-
-    candidates = (
-        CodeMapNode.objects.filter(code_map__map_code=map_code)
-        .filter(criteria)
-        .only(
-            "node_id",
-            "title",
-            "page",
-            "page_end",
-            "initial_page_top",
-            "final_page_bottom",
-            "keyword_counts",
-            "division",
-        )
-    )
+    candidates = versions_qs.filter(criteria)
 
     results: list[dict[str, Any]] = []
-    for node in candidates:
-        section_id = node.node_id or ""
-        title = node.title or ""
-        kw_counts: dict[str, int] = node.keyword_counts or {}
+    for version in candidates:
+        provision = version.provision
+        provision_id = provision.provision_id or ""
+        title = version.title or ""
+        kw_counts: dict[str, int] = version.keyword_counts or {}
         keywords = set(kw_counts.keys())
         title_words = set(title.lower().split())
         all_terms = keywords | title_words
@@ -149,30 +133,30 @@ def _search_code_db(
         score = 0.0
         match_type = None
 
-        if has_sections:
-            sid_lower = section_id.lower()
-            for ref in section_references:
-                if ref.lower() in sid_lower:
-                    ref_score = 2.5 if sid_lower.endswith(ref.lower()) else 2.0
+        # Provision reference match (highest priority)
+        if has_refs:
+            pid_lower = provision_id.lower()
+            for ref in provision_references:
+                if ref.lower() in pid_lower:
+                    ref_score = 2.5 if pid_lower.endswith(ref.lower()) else 2.0
                     if ref_score > score:
                         score = ref_score
-                        match_type = "section_ref"
+                        match_type = "provision_ref"
 
-        if score == 0 and query_lower and query_lower in section_id.lower():
-            score = 2.0 if section_id.lower().endswith(query_lower) else 1.5
+        # Exact query match in provision_id
+        if score == 0 and query_lower and query_lower in provision_id.lower():
+            score = 2.0 if provision_id.lower().endswith(query_lower) else 1.5
             match_type = "exact_id"
         elif score == 0 and expanded_terms:
             matches = expanded_terms & all_terms
             if matches:
                 original_matches = query_terms & all_terms
                 if original_matches:
-                    # TF-IDF scoring for exact query term matches
                     score = sum(_tf(t, kw_counts) * get_idf(t) for t in original_matches) / sum(
                         get_idf(t) for t in query_terms
                     )
                     match_type = "exact"
                 else:
-                    # TF-IDF scoring for synonym matches (10% penalty)
                     score = (
                         sum(_tf(t, kw_counts) * get_idf(t) for t in matches)
                         / sum(get_idf(t) for t in expanded_terms)
@@ -190,32 +174,21 @@ def _search_code_db(
                 match_type = "fuzzy"
 
         if score > 0:
-            result_item = {
-                "id": section_id,
+            results.append({
+                "version": version,
+                "provision": provision,
+                "id": provision_id,
                 "title": title,
-                "page": node.page,
-                "page_end": node.page_end,
-                "initial_page_top": node.initial_page_top,
-                "final_page_bottom": node.final_page_bottom,
+                "division": provision.division,
                 "score": round(score, 3),
-                "division": node.division,
-            }
-            if match_type:
-                result_item["match_type"] = match_type
-            results.append(result_item)
+                "match_type": match_type,
+                "code_edition": provision.edition.code_name,
+                "html_content": version.html,
+                "page_images": version.page_images,
+                "tables": list(version.tables.all()),
+                "clause": version.clause,
+                "is_base": version.version == 0,
+            })
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    limited_results = results[:limit]
-
-    response = {"results": limited_results, "total": len(results)}
-    if len(results) == 0:
-        similar = _suggest_similar_keywords(query, map_code)
-        if similar:
-            response["suggestion"] = (
-                f"No results for '{query}'. Did you mean: {', '.join(similar)}?"
-            )
-        else:
-            response["suggestion"] = (
-                f"No results for '{query}'. Try different keywords or check spelling."
-            )
-    return response
+    return results[:limit]

@@ -1,214 +1,322 @@
-from api.search import orchestration
+from datetime import date
+
+import pytest
+
+from api.search.orchestration import execute_search
+from core.models import (
+    Code,
+    CodeEdition,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
+    ProvinceCode,
+)
 
 
-def test_execute_search_returns_primary_results_only_outside_overlap_window(monkeypatch):
-    monkeypatch.setattr(
-        orchestration, "get_applicable_codes", lambda province, search_date: ["BCBC_2024"]
-    )
-    monkeypatch.setattr(
-        orchestration, "get_active_transitions", lambda applicable_codes, search_date: []
-    )
-    monkeypatch.setattr(orchestration, "get_map_codes", lambda code_name: ["BCBC"])
-    monkeypatch.setattr(
-        orchestration,
-        "_search_code_maps",
-        lambda **kwargs: [
-            {"id": "3.2.9.", "title": "Fire Separations", "code_edition": kwargs["code_name"]}
-        ],
-    )
+@pytest.fixture
+def obc_setup(db):
+    """Create a minimal OBC code system with one edition and provisions."""
+    code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    ProvinceCode.objects.create(province="ON", code=code)
 
-    response = orchestration.execute_search(
-        {"date": "2026-01-01", "keywords": ["fire"], "province": "BC"}
-    )
-
-    assert all("transition_context" not in result for result in response["results"])
-
-
-def test_execute_search_adds_overlap_results_inside_transition_window(monkeypatch):
-    monkeypatch.setattr(
-        orchestration, "get_applicable_codes", lambda province, search_date: ["BCBC_2024"]
-    )
-    monkeypatch.setattr(
-        orchestration,
-        "get_active_transitions",
-        lambda applicable_codes, search_date: [
-            {
-                "old_edition": "BCBC_2018",
-                "new_edition": "BCBC_2024",
-                "overlap_start": "2024-03-08",
-                "overlap_end": "2025-03-09",
-                "transition_type": "grace_period",
-                "applicability_text": "Applies during overlap.",
-                "citation_text": "Transition regulation",
-            }
-        ],
-    )
-    monkeypatch.setattr(orchestration, "get_map_codes", lambda code_name: [code_name])
-
-    def fake_search_code_maps(**kwargs):
-        return [
-            {
-                "id": "3.2.9.",
-                "title": "Fire Separations",
-                "code_edition": kwargs["code_name"],
-                "source_date": "2024-06-01",
-            }
-        ]
-
-    monkeypatch.setattr(orchestration, "_search_code_maps", fake_search_code_maps)
-
-    response = orchestration.execute_search(
-        {"date": "2024-06-01", "keywords": ["fire"], "province": "BC"}
+    edition = CodeEdition.objects.create(
+        system=code,
+        edition_id="2024",
+        year=2024,
+        map_codes=["OBC_Vol1"],
+        effective_date=date(2024, 1, 1),
     )
 
-    matched = [result for result in response["results"] if result["id"] == "3.2.9."]
-    assert len(matched) == 2
-    assert {result["code_edition"] for result in matched} == {"BCBC_2024", "BCBC_2018"}
-
-
-def test_overlap_results_include_transition_context_fields(monkeypatch):
-    monkeypatch.setattr(
-        orchestration, "get_applicable_codes", lambda province, search_date: ["BCBC_2024"]
+    parent_prov = CodeEditionProvision.objects.create(
+        edition=edition,
+        provision_id="3.2",
+        level=CodeEditionProvision.Level.SECTION,
+        division="B",
     )
-    monkeypatch.setattr(
-        orchestration,
-        "get_active_transitions",
-        lambda applicable_codes, search_date: [
-            {
-                "old_edition": "BCBC_2018",
-                "new_edition": "BCBC_2024",
-                "overlap_start": "2024-03-08",
-                "overlap_end": "2025-03-09",
-                "transition_type": "grace_period",
-                "applicability_text": "Applies during overlap.",
-                "citation_text": "Transition regulation",
-            }
-        ],
-    )
-    monkeypatch.setattr(orchestration, "get_map_codes", lambda code_name: [code_name])
-    monkeypatch.setattr(
-        orchestration,
-        "_search_code_maps",
-        lambda **kwargs: [
-            {
-                "id": "3.2.9.",
-                "title": "Fire Separations",
-                "code_edition": kwargs["code_name"],
-                "source_date": "2024-06-01",
-            }
-        ],
+    child_prov = CodeEditionProvision.objects.create(
+        edition=edition,
+        provision_id="3.2.9",
+        level=CodeEditionProvision.Level.SUBSECTION,
+        division="B",
+        parent=parent_prov,
     )
 
-    response = orchestration.execute_search(
-        {"date": "2024-06-01", "keywords": ["fire"], "province": "BC"}
+    parent_version = CodeEditionProvisionVersion.objects.create(
+        provision=parent_prov,
+        version=0,
+        effective_date=date(2024, 1, 1),
+        title="Fire Safety",
+        html="<p>Fire safety requirements.</p>",
+        keyword_counts={"fire": 5, "safety": 3},
+    )
+    child_version = CodeEditionProvisionVersion.objects.create(
+        provision=child_prov,
+        version=0,
+        effective_date=date(2024, 1, 1),
+        title="Fire Separations",
+        html="<p>Fire separation requirements for buildings.</p>",
+        keyword_counts={"fire": 4, "separation": 6, "building": 2},
     )
 
-    matched = [result for result in response["results"] if result["id"] == "3.2.9."]
-    ctx = matched[0]["transition_context"]
-    assert ctx["transition_type"] == "grace_period"
-    assert "citation_text" in ctx
-    assert "applicability_text" in ctx
+    return {
+        "code": code,
+        "edition": edition,
+        "parent_prov": parent_prov,
+        "child_prov": child_prov,
+        "parent_version": parent_version,
+        "child_version": child_version,
+    }
 
 
-def test_provision_scoped_transition_does_not_search_old_edition(monkeypatch):
-    """A transition with scope='provisions' should NOT trigger old-edition searching."""
-    search_calls = []
+@pytest.mark.django_db
+class TestExecuteSearchKeywords:
+    def test_keyword_query_returns_matching_provisions(self, obc_setup):
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": ["fire"],
+            "province": "ON",
+        })
 
-    monkeypatch.setattr(
-        orchestration, "get_applicable_codes", lambda province, search_date: ["OBC_2012_v09"]
-    )
-    monkeypatch.setattr(
-        orchestration,
-        "get_active_transitions",
-        lambda applicable_codes, search_date: [
-            {
-                "old_edition": "OBC_2012_v08",
-                "new_edition": "OBC_2012_v09",
-                "overlap_start": "2017-01-01",
-                "overlap_end": "2017-07-01",
-                "transition_type": "in_stream_project",
-                "applicability_text": "Certain provisions apply.",
-                "citation_text": "O. Reg. 332/12, s. 4.1.3",
-                "scope": "provisions",
-                "provisions": [
-                    {
-                        "new_section_id": "8.6.2.2.",
-                        "old_provision_ref": "Sentence 8.6.2.2.(5)",
-                        "as_read_on": "2016-12-31",
-                    }
-                ],
-            }
-        ],
-    )
-    monkeypatch.setattr(orchestration, "get_map_codes", lambda code_name: [code_name])
+        assert response["result_count"] > 0
+        ids = [r["id"] for r in response["results"]]
+        # Both provisions have "fire" in keyword_counts
+        assert "3.2" in ids or "3.2.9" in ids
 
-    def fake_search_code_maps(**kwargs):
-        search_calls.append(kwargs["code_name"])
-        return [
-            {
-                "id": "8.6.2.2",
-                "title": "Fire Safety",
-                "code_edition": kwargs["code_name"],
-                "source_date": "2017-03-15",
-            }
-        ]
+    def test_keyword_query_returns_scored_results(self, obc_setup):
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": ["separation"],
+            "province": "ON",
+        })
 
-    monkeypatch.setattr(orchestration, "_search_code_maps", fake_search_code_maps)
+        assert response["result_count"] >= 1
+        # The child provision has "separation" as a keyword
+        matching = [r for r in response["results"] if r["id"] == "3.2.9"]
+        assert len(matching) == 1
+        assert matching[0]["score"] > 0
 
-    response = orchestration.execute_search(
-        {"date": "2017-03-15", "keywords": ["fire"], "province": "ON"}
-    )
+    def test_no_results_when_keywords_dont_match(self, obc_setup):
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": ["plumbing"],
+            "province": "ON",
+        })
 
-    # Only the new edition should be searched, NOT the old edition
-    assert search_calls == ["OBC_2012_v09"]
-    assert len(response["results"]) == 1
-    assert response["results"][0]["code_edition"] == "OBC_2012_v09"
+        assert response["result_count"] == 0
+        assert response["results"] == []
+
+    def test_no_results_when_no_keywords_or_references(self, obc_setup):
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": [],
+            "province": "ON",
+        })
+
+        assert response["result_count"] == 0
+        assert response["results"] == []
+
+    def test_results_include_code_edition_field(self, obc_setup):
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": ["fire"],
+            "province": "ON",
+        })
+
+        for result in response["results"]:
+            assert result["code_edition"] == "OBC_2024"
+
+    def test_results_include_applicable_codes(self, obc_setup):
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": ["fire"],
+            "province": "ON",
+        })
+
+        assert "OBC_2024" in response["applicable_codes"]
+
+    def test_results_include_top_results_metadata(self, obc_setup):
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": ["fire"],
+            "province": "ON",
+        })
+
+        assert len(response["top_results_metadata"]) > 0
+        meta = response["top_results_metadata"][0]
+        assert "code" in meta
+        assert "section_id" in meta
+        assert "title" in meta
 
 
-def test_whole_code_transition_still_creates_compare_pairs(monkeypatch):
-    """Regression: whole_code transitions still get old-edition search and pairing."""
-    search_calls = []
+@pytest.mark.django_db
+class TestExecuteSearchProvisionReferences:
+    def test_provision_reference_matches_by_id(self, obc_setup):
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": [],
+            "section_references": ["3.2.9"],
+            "province": "ON",
+        })
 
-    monkeypatch.setattr(
-        orchestration, "get_applicable_codes", lambda province, search_date: ["BCBC_2024"]
-    )
-    monkeypatch.setattr(
-        orchestration,
-        "get_active_transitions",
-        lambda applicable_codes, search_date: [
-            {
-                "old_edition": "BCBC_2018",
-                "new_edition": "BCBC_2024",
-                "overlap_start": "2024-03-08",
-                "overlap_end": "2025-03-09",
-                "transition_type": "grace_period",
-                "applicability_text": "Applies during overlap.",
-                "citation_text": "Transition regulation",
-            }
-        ],
-    )
-    monkeypatch.setattr(orchestration, "get_map_codes", lambda code_name: [code_name])
+        assert response["result_count"] >= 1
+        ids = [r["id"] for r in response["results"]]
+        assert "3.2.9" in ids
 
-    def fake_search_code_maps(**kwargs):
-        search_calls.append(kwargs["code_name"])
-        return [
-            {
-                "id": "3.2.9.",
-                "title": "Fire Separations",
-                "code_edition": kwargs["code_name"],
-                "source_date": "2024-06-01",
-            }
-        ]
+    def test_provision_reference_partial_match(self, obc_setup):
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": [],
+            "section_references": ["3.2"],
+            "province": "ON",
+        })
 
-    monkeypatch.setattr(orchestration, "_search_code_maps", fake_search_code_maps)
+        # "3.2" appears in both "3.2" and "3.2.9" provision_ids
+        assert response["result_count"] >= 1
 
-    response = orchestration.execute_search(
-        {"date": "2024-06-01", "keywords": ["fire"], "province": "BC"}
-    )
 
-    # Both editions should be searched
-    assert "BCBC_2024" in search_calls
-    assert "BCBC_2018" in search_calls
-    # Transition pairing should be applied
-    paired = [r for r in response["results"] if r.get("transition_context")]
-    assert len(paired) == 2
+@pytest.mark.django_db
+class TestExecuteSearchTransitions:
+    def test_overlapping_versions_grouped_as_transition(self, db):
+        """Two versions of the same provision with overlapping dates get transition_context."""
+        code = Code.objects.create(code="BCBC", display_name="BC Building Code")
+        ProvinceCode.objects.create(province="BC", code=code)
+
+        edition = CodeEdition.objects.create(
+            system=code,
+            edition_id="2024",
+            year=2024,
+            map_codes=["BCBC"],
+            effective_date=date(2024, 1, 1),
+        )
+
+        provision = CodeEditionProvision.objects.create(
+            edition=edition,
+            provision_id="3.2.9",
+            level=CodeEditionProvision.Level.SUBSECTION,
+            division="B",
+            version_count=2,
+        )
+
+        # Version 0: old version, in force until mid-2025 (grace period)
+        CodeEditionProvisionVersion.objects.create(
+            provision=provision,
+            version=0,
+            effective_date=date(2024, 1, 1),
+            ineffective_date=date(2025, 6, 1),
+            title="Fire Separations (old)",
+            html="<p>Old fire separation requirements.</p>",
+            keyword_counts={"fire": 4, "separation": 5},
+        )
+
+        # Version 1: new version, effective from mid-2024 (overlaps with v0)
+        CodeEditionProvisionVersion.objects.create(
+            provision=provision,
+            version=1,
+            effective_date=date(2024, 6, 1),
+            ineffective_date=None,
+            title="Fire Separations (new)",
+            html="<p>New fire separation standards.</p>",
+            keyword_counts={"fire": 4, "separation": 5},
+        )
+
+        # Search during overlap period
+        response = execute_search({
+            "date": "2024-09-01",
+            "keywords": ["fire"],
+            "province": "BC",
+        })
+
+        fire_results = [r for r in response["results"] if r["id"] == "3.2.9"]
+        assert len(fire_results) == 2
+
+        # Both should have transition_context
+        contexts = [r.get("transition_context") for r in fire_results]
+        assert all(ctx is not None for ctx in contexts)
+        primary_count = sum(1 for ctx in contexts if ctx.get("is_primary"))
+        assert primary_count == 1
+
+    def test_no_transition_when_single_version_in_force(self, obc_setup):
+        """A single in-force version should not have transition_context."""
+        response = execute_search({
+            "date": "2024-06-01",
+            "keywords": ["fire"],
+            "province": "ON",
+        })
+
+        for result in response["results"]:
+            assert result.get("transition_context") is None
+
+
+@pytest.mark.django_db
+class TestExecuteSearchDateFiltering:
+    def test_version_not_yet_effective_excluded(self, db):
+        """Versions with effective_date after search_date should not appear."""
+        code = Code.objects.create(code="NBC", display_name="National Building Code")
+        ProvinceCode.objects.create(province="AB", code=code)
+
+        edition = CodeEdition.objects.create(
+            system=code,
+            edition_id="2025",
+            year=2025,
+            map_codes=["NBC"],
+            effective_date=date(2025, 1, 1),
+        )
+
+        provision = CodeEditionProvision.objects.create(
+            edition=edition,
+            provision_id="5.1",
+            level=CodeEditionProvision.Level.SECTION,
+            division="B",
+        )
+
+        CodeEditionProvisionVersion.objects.create(
+            provision=provision,
+            version=0,
+            effective_date=date(2025, 6, 1),
+            title="Future provision",
+            keyword_counts={"fire": 3},
+        )
+
+        response = execute_search({
+            "date": "2025-01-15",
+            "keywords": ["fire"],
+            "province": "AB",
+        })
+
+        assert response["result_count"] == 0
+
+    def test_ineffective_version_excluded(self, db):
+        """Versions whose ineffective_date has passed should not appear."""
+        code = Code.objects.create(code="NBC", display_name="National Building Code")
+        ProvinceCode.objects.create(province="AB", code=code)
+
+        edition = CodeEdition.objects.create(
+            system=code,
+            edition_id="2020",
+            year=2020,
+            map_codes=["NBC"],
+            effective_date=date(2020, 1, 1),
+        )
+
+        provision = CodeEditionProvision.objects.create(
+            edition=edition,
+            provision_id="5.1",
+            level=CodeEditionProvision.Level.SECTION,
+            division="B",
+        )
+
+        CodeEditionProvisionVersion.objects.create(
+            provision=provision,
+            version=0,
+            effective_date=date(2020, 1, 1),
+            ineffective_date=date(2023, 1, 1),
+            title="Old provision",
+            keyword_counts={"fire": 3},
+        )
+
+        response = execute_search({
+            "date": "2024-01-01",
+            "keywords": ["fire"],
+            "province": "AB",
+        })
+
+        assert response["result_count"] == 0

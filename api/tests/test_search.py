@@ -1,96 +1,104 @@
 from datetime import date
-from unittest.mock import patch
 
 import pytest
 
 from api.search import execute_search
-from core.models import Code, CodeEdition, CodeMap, CodeMapNode, ProvinceCode
+from core.models import (
+    Code,
+    CodeEdition,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
+    ProvinceCode,
+)
 
 
-@pytest.fixture
-def mock_search_deps(db):
-    with (
-        patch("api.search.orchestration.get_applicable_codes") as mock_codes,
-        patch("api.search.orchestration.get_map_codes") as mock_map_codes,
-    ):
-        mock_codes.return_value = ["NBC_2020", "OBC_2024"]
-        mock_map_codes.side_effect = lambda code_name: {
-            "NBC_2020": ["NBC"],
-            "NBC_2025": ["NBC"],
-            "OBC_2024": ["OBC_Vol1", "OBC_Vol2"],
-        }.get(code_name, [])
-        yield mock_codes
+def _create_obc_fixtures():
+    """Create OBC system with provisions for ON province."""
+    obc = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    ProvinceCode.objects.create(province="ON", code=obc)
+
+    obc_edition = CodeEdition.objects.create(
+        system=obc,
+        edition_id="2024",
+        year=2024,
+        map_codes=["OBC_Vol1", "OBC_Vol2"],
+        effective_date=date(2024, 1, 1),
+    )
+
+    obc_provision = CodeEditionProvision.objects.create(
+        edition=obc_edition,
+        provision_id="3.1.1.1",
+        level=CodeEditionProvision.Level.ARTICLE,
+        division="B",
+    )
+    CodeEditionProvisionVersion.objects.create(
+        provision=obc_provision,
+        version=0,
+        effective_date=date(2024, 1, 1),
+        title="Fire Safety",
+        html="<p>OBC content</p>",
+        keyword_counts={"fire": 1},
+    )
+
+    return obc, obc_edition
 
 
 @pytest.mark.django_db
-def test_execute_search_basic(mock_search_deps):
-    """Test search resolution with mocked dependencies."""
+def test_execute_search_basic():
+    """Test search resolution with real DB fixtures."""
+    _create_obc_fixtures()
+
     params = {"date": "2024-01-01", "keywords": ["fire"], "province": "ON"}
-
-    nbc_map = CodeMap.objects.create(code_name="NBC_2020", map_code="NBC")
-    CodeMapNode.objects.create(
-        code_map=nbc_map,
-        node_id="3.1.1.1",
-        title="Fire Safety",
-        page=50,
-        page_end=52,
-        initial_page_top=640.0,
-        final_page_bottom=88.0,
-        keyword_counts={"fire": 1},
-    )
-    obc_map = CodeMap.objects.create(code_name="OBC_2024", map_code="OBC_Vol1")
-    CodeMapNode.objects.create(
-        code_map=obc_map,
-        node_id="3.1.1.1",
-        title="Fire Safety",
-        page=10,
-        page_end=12,
-        keyword_counts={"fire": 1},
-        html="<p>OBC content</p>",
-    )
-
     response = execute_search(params)
 
     assert "OBC_2024" in response["applicable_codes"]
     assert len(response["results"]) > 0
     assert response["results"][0]["id"] == "3.1.1.1"
-    nbc_result = next(r for r in response["results"] if r["code_edition"] == "NBC_2020")
+
     obc_result = next(r for r in response["results"] if r["code_edition"] == "OBC_2024")
-    assert nbc_result["initial_page_top"] == 640.0
-    assert nbc_result["final_page_bottom"] == 88.0
     assert obc_result["html_content"] == "<p>OBC content</p>"
 
 
 @pytest.mark.django_db
-def test_execute_search_doors_fire_safety(mock_search_deps):
-    """Test that a realistic query for doors/fire/safety in ON finds results."""
-    mock_search_deps.return_value = ["OBC_2024", "NBC_2025"]
+def test_execute_search_doors_fire_safety():
+    """Test that a realistic query for doors/fire/safety in ON finds OBC results."""
+    obc = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    ProvinceCode.objects.create(province="ON", code=obc)
 
-    obc_map = CodeMap.objects.create(code_name="OBC_2024", map_code="OBC_Vol1")
-    CodeMapNode.objects.create(
-        code_map=obc_map,
-        node_id="3.1.8.1",
+    obc_edition = CodeEdition.objects.create(
+        system=obc,
+        edition_id="2024",
+        year=2024,
+        map_codes=["OBC_Vol1", "OBC_Vol2"],
+        effective_date=date(2024, 1, 1),
+    )
+
+    # OBC provisions
+    obc_p1 = CodeEditionProvision.objects.create(
+        edition=obc_edition,
+        provision_id="3.1.8.1",
+        level=CodeEditionProvision.Level.ARTICLE,
+        division="B",
+    )
+    CodeEditionProvisionVersion.objects.create(
+        provision=obc_p1,
+        version=0,
+        effective_date=date(2024, 1, 1),
         title="Fire Separations",
-        page=120,
-        page_end=125,
         keyword_counts={"fire": 1, "separations": 1},
     )
-    CodeMapNode.objects.create(
-        code_map=obc_map,
-        node_id="3.1.8.5",
+    obc_p2 = CodeEditionProvision.objects.create(
+        edition=obc_edition,
+        provision_id="3.1.8.5",
+        level=CodeEditionProvision.Level.ARTICLE,
+        division="B",
+    )
+    CodeEditionProvisionVersion.objects.create(
+        provision=obc_p2,
+        version=0,
+        effective_date=date(2024, 1, 1),
         title="Fire-Rated Doors",
-        page=125,
-        page_end=128,
         keyword_counts={"fire": 1, "doors": 1},
-    )
-    nbc_map = CodeMap.objects.create(code_name="NBC_2025", map_code="NBC")
-    CodeMapNode.objects.create(
-        code_map=nbc_map,
-        node_id="3.1.8.1",
-        title="Fire Separations",
-        page=220,
-        page_end=225,
-        keyword_counts={"fire": 1, "separations": 1},
     )
 
     params = {
@@ -98,13 +106,11 @@ def test_execute_search_doors_fire_safety(mock_search_deps):
         "keywords": ["doors", "fire", "safety"],
         "province": "ON",
     }
-
     response = execute_search(params)
 
     assert response["result_count"] > 0
     assert len(response["results"]) > 0
     assert "OBC_2024" in response["applicable_codes"]
-    assert "NBC_2025" in response["applicable_codes"]
 
 
 @pytest.mark.django_db
@@ -163,11 +169,10 @@ def test_get_applicable_codes_ontario_2010():
 
 @pytest.mark.django_db
 def test_execute_search_no_codes():
-    """Test when no codes are found for the date."""
-    with patch("api.search.orchestration.get_applicable_codes") as mock_codes:
-        mock_codes.return_value = []
-        params = {"date": "1950-01-01", "keywords": ["fire"], "province": "ON"}
+    """Test when no codes are found — province has no ProvinceCode mapping."""
+    params = {"date": "1950-01-01", "keywords": ["fire"], "province": "XX"}
 
-        response = execute_search(params)
-    assert "error" in response
+    response = execute_search(params)
+
     assert response["results"] == []
+    assert response["result_count"] == 0

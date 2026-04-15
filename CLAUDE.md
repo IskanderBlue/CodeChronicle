@@ -84,6 +84,7 @@ Write throwaway scripts, debug helpers, and scratch files to `.tmp/` (gitignored
 - **Imports**: stdlib → Django → third-party → local
 - **Type hints** on all function signatures
 - **Naming**: snake_case files/functions, PascalCase classes, UPPER_SNAKE_CASE constants, singular model names
+- **Terminology**: Use "provision" (not "section") as the generic term for any structural unit in the code (part, section, subsection, article). "Section" is only correct when referring to the specific `section` level (e.g., `2.11.`). Variables, function names, comments, and docs should all say `provision` when the meaning is generic.
 - **API responses**: `{"success": bool, "data": {...}, "error": str|null, "meta": {...}}`
 - **Commits**: conventional style (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`)
 - **Tests**: pytest with `pytest-django`; fixtures for common setup

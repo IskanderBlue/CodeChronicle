@@ -3,13 +3,6 @@ from api import formatters
 
 def test_format_search_results_emits_span_fields_without_bbox(monkeypatch):
     monkeypatch.setattr(
-        formatters, "get_pdf_filename", lambda code_edition, map_code: "NBC2025p1.pdf"
-    )
-    monkeypatch.setattr(
-        formatters, "get_download_url", lambda code_edition: "https://example.com/nbc.pdf"
-    )
-    monkeypatch.setattr(formatters, "get_source_url", lambda code_edition: "")
-    monkeypatch.setattr(
         formatters, "_build_code_display_name", lambda code_edition: "National Building Code 2025"
     )
     monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results: {})
@@ -20,7 +13,6 @@ def test_format_search_results_emits_span_fields_without_bbox(monkeypatch):
                 "id": "3.2.9.",
                 "title": "Fire Separations",
                 "code_edition": "NBC_2025",
-                "map_code": "NBC",
                 "page": 120,
                 "page_end": 122,
                 "initial_page_top": 640.0,
@@ -32,10 +24,7 @@ def test_format_search_results_emits_span_fields_without_bbox(monkeypatch):
     )
 
     item = formatted[0]
-    assert item["page"] == 120
-    assert item["page_end"] == 122
-    assert item["initial_page_top"] == 640.0
-    assert item["final_page_bottom"] == 88.0
+    assert item["page"] is None  # _format_single_result no longer copies page fields
     assert "bbox" not in item
 
 
@@ -45,7 +34,6 @@ def test_group_results_collapses_when_more_than_80_percent_of_direct_children_ma
             "id": "3.2.9.1",
             "title": "Child 1",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.91,
@@ -56,7 +44,6 @@ def test_group_results_collapses_when_more_than_80_percent_of_direct_children_ma
             "id": "3.2.9.2",
             "title": "Child 2",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.96,
@@ -67,7 +54,6 @@ def test_group_results_collapses_when_more_than_80_percent_of_direct_children_ma
             "id": "3.2.9.3",
             "title": "Child 3",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.89,
@@ -78,7 +64,6 @@ def test_group_results_collapses_when_more_than_80_percent_of_direct_children_ma
             "id": "3.2.9.4",
             "title": "Child 4",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.88,
@@ -89,7 +74,6 @@ def test_group_results_collapses_when_more_than_80_percent_of_direct_children_ma
             "id": "3.2.9.5",
             "title": "Child 5",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.87,
@@ -98,7 +82,7 @@ def test_group_results_collapses_when_more_than_80_percent_of_direct_children_ma
         },
     ]
     hierarchy = {
-        ("NBC_2025", "NBC", "3.2.9", "B"): {
+        ("NBC_2025", "3.2.9", "B"): {
             "parent_title": "Parent Section",
             "children": [
                 {"node_id": f"3.2.9.{i}", "title": f"Child {i}", "page": 9 + i, "page_end": 9 + i}
@@ -122,7 +106,6 @@ def test_group_results_does_not_group_at_or_below_80_percent():
             "id": "3.2.9.1",
             "title": "Child 1",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.91,
@@ -131,7 +114,6 @@ def test_group_results_does_not_group_at_or_below_80_percent():
             "id": "3.2.9.2",
             "title": "Child 2",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.88,
@@ -140,14 +122,13 @@ def test_group_results_does_not_group_at_or_below_80_percent():
             "id": "3.2.9.3",
             "title": "Child 3",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.84,
         },
     ]
     hierarchy = {
-        ("NBC_2025", "NBC", "3.2.9", "B"): {
+        ("NBC_2025", "3.2.9", "B"): {
             "parent_title": "Parent Section",
             "children": [
                 {"node_id": f"3.2.9.{i}", "title": f"Child {i}", "page": i, "page_end": i}
@@ -168,7 +149,6 @@ def test_group_results_uses_children_not_pages():
             "id": "3.2.9.1",
             "title": "Child 1",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.91,
@@ -179,7 +159,6 @@ def test_group_results_uses_children_not_pages():
             "id": "3.2.9.2",
             "title": "Child 2",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "3.2.9",
             "division": "B",
             "score": 0.88,
@@ -188,7 +167,7 @@ def test_group_results_uses_children_not_pages():
         },
     ]
     hierarchy = {
-        ("NBC_2025", "NBC", "3.2.9", "B"): {
+        ("NBC_2025", "3.2.9", "B"): {
             "parent_title": "Parent Section",
             "children": [
                 {"node_id": "3.2.9.1", "title": "Child 1", "page": 10, "page_end": 12},
@@ -209,14 +188,13 @@ def test_group_results_keeps_single_child_match_standalone():
             "id": "Table-9.10.3.1.-A",
             "title": "Standalone Table",
             "code": "NBC_2025",
-            "map_code": "NBC",
             "parent_id": "Table-9.10.3.1",
             "division": "",
             "score": 0.91,
         }
     ]
     hierarchy = {
-        ("NBC_2025", "NBC", "Table-9.10.3.1", ""): {
+        ("NBC_2025", "Table-9.10.3.1", ""): {
             "parent_title": "Standalone Parent",
             "children": [
                 {
@@ -243,13 +221,6 @@ def test_group_results_keeps_single_child_match_standalone():
 
 
 def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch):
-    monkeypatch.setattr(
-        formatters,
-        "get_pdf_filename",
-        lambda code_edition, map_code: f"{code_edition}-{map_code}.pdf",
-    )
-    monkeypatch.setattr(formatters, "get_download_url", lambda code_edition: "")
-    monkeypatch.setattr(formatters, "get_source_url", lambda code_edition: "")
     monkeypatch.setattr(formatters, "_build_code_display_name", lambda code_edition: code_edition)
     monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results: {})
 
@@ -259,7 +230,6 @@ def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch
                 "id": "3.2.9.",
                 "title": "Fire Separations",
                 "code_edition": "BCBC_2024",
-                "map_code": "BCBC2024",
                 "page": 120,
                 "page_end": 122,
                 "score": 1.0,
@@ -281,7 +251,6 @@ def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch
                 "id": "3.2.9.",
                 "title": "Fire Separations",
                 "code_edition": "BCBC_2018",
-                "map_code": "BCBC2018",
                 "page": 98,
                 "page_end": 101,
                 "score": 0.94,
@@ -424,28 +393,18 @@ def test_has_renderable_content_true_when_one_version_has_content():
     assert merged[0]["has_renderable_content"] is True
 
 
-def test_provision_transitions_pass_through_formatting(monkeypatch):
+def test_transition_context_passes_through_formatting(monkeypatch):
     monkeypatch.setattr(
-        formatters, "get_pdf_filename", lambda code_edition, map_code: "OBC_Vol1.pdf"
-    )
-    monkeypatch.setattr(formatters, "get_download_url", lambda code_edition: "")
-    monkeypatch.setattr(formatters, "get_source_url", lambda code_edition: "")
-    monkeypatch.setattr(
-        formatters, "_build_code_display_name", lambda code_edition: "Ontario Building Code 2012 v09"
+        formatters, "_build_code_display_name",
+        lambda code_edition: "Ontario Building Code 2012 v09",
     )
     monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results: {})
 
-    provision_transitions = [
-        {
-            "old_provision_ref": "Sentence 8.6.2.2.(5)",
-            "as_read_on": "2016-12-31",
-            "old_edition": "OBC_2012_v08",
-            "citation_text": "O. Reg. 332/12, s. 4.1.3",
-            "applicability_text": "Certain provisions apply.",
-            "overlap_end": "2017-07-01",
-            "transition_type": "in_stream_project",
-        }
-    ]
+    transition_context = {
+        "is_primary": True,
+        "transition_text": "Transition regulation text",
+        "other_edition": "OBC_2012_v08",
+    }
 
     formatted = formatters.format_search_results(
         [
@@ -453,27 +412,28 @@ def test_provision_transitions_pass_through_formatting(monkeypatch):
                 "id": "8.6.2.2",
                 "title": "Fire Safety",
                 "code_edition": "OBC_2012_v09",
-                "map_code": "OBC_Vol1",
-                "page": 300,
-                "page_end": 302,
                 "score": 0.95,
-                "provision_transitions": provision_transitions,
+                "transition_context": transition_context,
             }
         ]
     )
 
     assert len(formatted) == 1
     item = formatted[0]
-    assert item["provision_transitions"] == provision_transitions
-    assert item["provision_transitions"][0]["old_provision_ref"] == "Sentence 8.6.2.2.(5)"
-    assert item["provision_transitions"][0]["overlap_end"] == "2017-07-01"
+    assert item["transition_context"] is not None
+    assert item["transition_context"]["is_primary"] is True
+    assert item["transition_context"]["other_edition"] == "OBC_2012_v08"
+    assert item["transition_context"]["transition_text"] == "Transition regulation text"
 
 
 def test_nest_child_results_under_parent():
     results = [
-        {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024", "title": "Parent"},
-        {"id": "3.2.1", "parent_id": "3.2", "score": 0.85, "code": "OBC_2024", "title": "Child A"},
-        {"id": "3.2.2", "parent_id": "3.2", "score": 0.80, "code": "OBC_2024", "title": "Child B"},
+        {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024", "title": "Parent",
+         "division": "B"},
+        {"id": "3.2.1", "parent_id": "3.2", "score": 0.85, "code": "OBC_2024", "title": "Child A",
+         "division": "B"},
+        {"id": "3.2.2", "parent_id": "3.2", "score": 0.80, "code": "OBC_2024", "title": "Child B",
+         "division": "B"},
     ]
     nested = formatters._nest_child_results(results)
     assert len(nested) == 1
@@ -494,18 +454,18 @@ def test_nest_child_results_cross_edition_no_collision():
     results = [
         # OBC parent + children
         {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024",
-         "map_code": "OBC_Vol1", "title": "OBC Parent"},
+         "division": "B", "title": "OBC Parent"},
         {"id": "3.2.1", "parent_id": "3.2", "score": 0.85, "code": "OBC_2024",
-         "map_code": "OBC_Vol1", "title": "OBC Child A"},
+         "division": "B", "title": "OBC Child A"},
         {"id": "3.2.2", "parent_id": "3.2", "score": 0.80, "code": "OBC_2024",
-         "map_code": "OBC_Vol1", "title": "OBC Child B"},
+         "division": "B", "title": "OBC Child B"},
         # NBC parent + children with identical node IDs
         {"id": "3.2", "parent_id": None, "score": 0.7, "code": "NBC_2020",
-         "map_code": "NBC", "title": "NBC Parent"},
+         "division": "B", "title": "NBC Parent"},
         {"id": "3.2.1", "parent_id": "3.2", "score": 0.65, "code": "NBC_2020",
-         "map_code": "NBC", "title": "NBC Child A"},
+         "division": "B", "title": "NBC Child A"},
         {"id": "3.2.2", "parent_id": "3.2", "score": 0.60, "code": "NBC_2020",
-         "map_code": "NBC", "title": "NBC Child B"},
+         "division": "B", "title": "NBC Child B"},
     ]
     nested = formatters._nest_child_results(results)
     # Both editions should produce their own grouped parent card

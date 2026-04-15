@@ -6,13 +6,8 @@ import difflib
 import re
 from typing import Any, Dict, Iterable, List, Tuple
 
-from config.code_metadata import (
-    get_code_display_name,
-    get_download_url,
-    get_pdf_filename,
-    get_source_url,
-)
-from core.models import CodeMapNode
+from config.code_metadata import get_code_display_name
+from core.models import CodeEditionProvision
 
 _HTML_TAG_RE = re.compile(r"(<[^>]+>)")
 # Splits text into words and whitespace runs, preserving both.
@@ -127,79 +122,99 @@ def _code_order_key(value: str) -> Tuple[Any, ...]:
 
 def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
     code_edition = result.get("code_edition", "Unknown")
-    page = result.get("page")
-    page_end = result.get("page_end", page)
+    provision = result.get("provision")
+    parent_id = ""
+    if provision and provision.parent:
+        parent_id = provision.parent.provision_id
 
-    pdf_filename = ""
-    map_code = result.get("map_code", "")
-    if map_code:
-        pdf_filename = get_pdf_filename(code_edition, map_code) or ""
-
-    section_data = {
+    return {
         "id": result.get("id"),
         "title": result.get("title", "No title"),
         "code": code_edition,
         "code_display_name": _build_code_display_name(code_edition),
-        "map_code": map_code,
-        "parent_id": result.get("parent_id"),
+        "map_code": "",
+        "parent_id": parent_id,
         "source_date": result.get("source_date"),
-        "page": page,
-        "page_end": page_end,
-        "initial_page_top": result.get("initial_page_top"),
-        "final_page_bottom": result.get("final_page_bottom"),
+        "page": None,
+        "page_end": None,
+        "initial_page_top": None,
+        "final_page_bottom": None,
         "score": result.get("score", 0),
-        "pdf_filename": pdf_filename,
-        "pdf_download_url": get_download_url(code_edition) if pdf_filename else "",
+        "pdf_filename": "",
+        "pdf_download_url": "",
         "html_content": result.get("html_content"),
-        "notes_html": result.get("notes_html"),
-        "source_url": get_source_url(code_edition),
+        "page_images": result.get("page_images") or [],
+        "tables": result.get("tables") or [],
+        "notes_html": None,
+        "source_url": "",
         "group_type": None,
         "result_type": None,
         "transition_context": result.get("transition_context"),
-        "provision_transitions": result.get("provision_transitions", []),
+        "division": result.get("division", ""),
+        "clause": result.get("clause"),
+        "is_base": result.get("is_base", True),
     }
-    section_data["division"] = result.get("division", "")
-    section_data["amendments"] = get_amendments_for_section(
-        str(result.get("id") or ""), code_edition
-    )
-    return section_data
 
 
-def _build_group_lookup_key(result: Dict[str, Any]) -> tuple[str, str, str, str] | None:
+def _build_group_lookup_key(result: Dict[str, Any]) -> tuple[str, str, str] | None:
     parent_id = result.get("parent_id")
     code = result.get("code")
-    map_code = result.get("map_code")
-    if not parent_id or not code or not map_code:
+    if not parent_id or not code:
         return None
     division = result.get("division", "")
-    return str(code), str(map_code), str(parent_id), str(division)
+    return str(code), str(parent_id), str(division)
 
 
 def _load_group_hierarchy(
     formatted_results: Iterable[Dict[str, Any]],
-) -> Dict[tuple[str, str, str, str], Dict[str, Any]]:
+) -> Dict[tuple[str, str, str], Dict[str, Any]]:
     group_keys = {
         key for result in formatted_results if (key := _build_group_lookup_key(result)) is not None
     }
-    hierarchy: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
+    hierarchy: Dict[tuple[str, str, str], Dict[str, Any]] = {}
 
-    for code_edition, map_code, parent_id, division in group_keys:
-        div_filter: Dict[str, str] = {"code_map__map_code": map_code}
+    for code_edition, parent_id, division in group_keys:
+        system_code = code_edition.split("_", 1)[0] if "_" in code_edition else code_edition
+        edition_id = code_edition.split("_", 1)[1] if "_" in code_edition else ""
+
+        prov_filter: Dict[str, Any] = {
+            "edition__system__code": system_code,
+            "edition__edition_id": edition_id,
+        }
         if division:
-            div_filter["division"] = division
-        parent_node = (
-            CodeMapNode.objects.filter(node_id=parent_id, **div_filter)
-            .values("node_id", "title")
+            prov_filter["division"] = division
+
+        parent_prov = (
+            CodeEditionProvision.objects.filter(provision_id=parent_id, **prov_filter)
             .first()
         )
-        child_nodes = list(
-            CodeMapNode.objects.filter(parent_id=parent_id, **div_filter).values(
-                "node_id", "title", "page", "page_end"
-            )
-        )
+        # Get the latest version title for the parent
+        parent_title = parent_id
+        if parent_prov:
+            latest_version = parent_prov.versions.order_by("-version").first()
+            if latest_version:
+                parent_title = latest_version.title or parent_id
+
+        child_provs = CodeEditionProvision.objects.filter(
+            parent=parent_prov, **{
+                k: v for k, v in prov_filter.items()
+                if k not in ("edition__system__code", "edition__edition_id")
+            }
+        ) if parent_prov else CodeEditionProvision.objects.none()
+
+        child_nodes = []
+        for child in child_provs:
+            latest = child.versions.order_by("-version").first()
+            child_nodes.append({
+                "node_id": child.provision_id,
+                "title": (latest.title if latest else "") or child.provision_id,
+                "page": None,
+                "page_end": None,
+            })
         child_nodes.sort(key=lambda item: _code_order_key(str(item.get("node_id") or "")))
-        hierarchy[(code_edition, map_code, parent_id, division)] = {
-            "parent_title": (parent_node or {}).get("title") or parent_id,
+
+        hierarchy[(code_edition, parent_id, division)] = {
+            "parent_title": parent_title,
             "children": child_nodes,
         }
 
@@ -209,7 +224,7 @@ def _load_group_hierarchy(
 def _build_grouped_result(
     matched_results: List[Dict[str, Any]],
     hierarchy: Dict[str, Any],
-    group_key: tuple[str, str, str, str],
+    group_key: tuple[str, str, str],
 ) -> Dict[str, Any] | None:
     if len(matched_results) <= 1:
         return None
@@ -232,7 +247,7 @@ def _build_grouped_result(
         matched_results,
         key=lambda item: (item.get("score", 0), -matched_results.index(item)),
     )
-    parent_id = group_key[2]
+    parent_id = group_key[1]
     children = []
     for child in child_nodes:
         child_id = str(child.get("node_id"))
@@ -274,25 +289,25 @@ def _build_grouped_result(
 
 def group_formatted_results(
     formatted_results: List[Dict[str, Any]],
-    hierarchy_by_group: Dict[tuple[str, str, str, str], Dict[str, Any]] | None = None,
+    hierarchy_by_group: Dict[tuple[str, str, str], Dict[str, Any]] | None = None,
 ) -> List[Dict[str, Any]]:
     if hierarchy_by_group is None:
         hierarchy_by_group = _load_group_hierarchy(formatted_results)
 
-    matched_results_by_group: Dict[tuple[str, str, str, str], List[Dict[str, Any]]] = {}
+    matched_results_by_group: Dict[tuple[str, str, str], List[Dict[str, Any]]] = {}
     for result in formatted_results:
         key = _build_group_lookup_key(result)
         if key is None:
             continue
         matched_results_by_group.setdefault(key, []).append(result)
 
-    grouped_results_by_key: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
+    grouped_results_by_key: Dict[tuple[str, str, str], Dict[str, Any]] = {}
     for key, matched_results in matched_results_by_group.items():
         grouped = _build_grouped_result(matched_results, hierarchy_by_group.get(key, {}), key)
         if grouped is not None:
             grouped_results_by_key[key] = grouped
 
-    collapsed_keys: set[tuple[str, str, str, str]] = set()
+    collapsed_keys: set[tuple[str, str, str]] = set()
     output: List[Dict[str, Any]] = []
     for result in formatted_results:
         key = _build_group_lookup_key(result)
@@ -349,9 +364,9 @@ def merge_transition_compare_results(
         consumed_keys.add(key)
         has_renderable_content = bool(
             old_version.get("html_content")
-            or old_version.get("pdf_filename")
+            or old_version.get("page_images")
             or new_version.get("html_content")
-            or new_version.get("pdf_filename")
+            or new_version.get("page_images")
         )
         old_diff, new_diff = _diff_html_content(
             old_version.get("html_content"),
@@ -385,11 +400,10 @@ def merge_transition_compare_results(
 
 def _nest_result_key(
     result: Dict[str, Any],
-) -> tuple[str, str, str, str]:
-    """Build a (code, map_code, id, division) key that scopes nesting per edition."""
+) -> tuple[str, str, str]:
+    """Build a (code, id, division) key that scopes nesting per edition."""
     return (
         str(result.get("code") or ""),
-        str(result.get("map_code") or ""),
         str(result.get("id") or ""),
         str(result.get("division") or ""),
     )
@@ -408,14 +422,14 @@ def _nest_child_results(
     collide.
     """
     # Full composite key → result
-    results_by_key: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
+    results_by_key: Dict[tuple[str, str, str], Dict[str, Any]] = {}
     for result in results:
         key = _nest_result_key(result)
         if key[2]:  # has an id
             results_by_key[key] = result
 
     # Collect children per parent (only when the parent itself is also a result)
-    children_by_parent: Dict[tuple[str, str, str, str], List[Dict[str, Any]]] = {}
+    children_by_parent: Dict[tuple[str, str, str], List[Dict[str, Any]]] = {}
     for result in results:
         parent_id = result.get("parent_id")
         if not parent_id:
@@ -427,7 +441,6 @@ def _nest_child_results(
             continue
         parent_key = (
             str(result.get("code") or ""),
-            str(result.get("map_code") or ""),
             str(parent_id),
             str(result.get("division") or ""),
         )
@@ -439,7 +452,7 @@ def _nest_child_results(
         children_by_parent.setdefault(parent_key, []).append(result)
 
     # Convert each parent + children set into a grouped card
-    absorbed_child_keys: set[tuple[str, str, str, str]] = set()
+    absorbed_child_keys: set[tuple[str, str, str]] = set()
     for parent_key, children in children_by_parent.items():
         parent = results_by_key[parent_key]
         top_child = max(children, key=lambda c: (c.get("score", 0),))
@@ -470,9 +483,8 @@ def _nest_child_results(
         parent["child_total_count"] = len(children)
         parent["matched_child_ids"] = [str(c.get("id", "")) for c in children]
         # Carry over content fields from the top-scoring child for the document block
-        for field in ("pdf_filename", "pdf_download_url", "source_url", "html_content",
-                      "notes_html", "map_code", "page", "page_end",
-                      "initial_page_top", "final_page_bottom"):
+        for field in ("html_content", "page_images", "tables", "notes_html",
+                      "page", "page_end"):
             if top_child.get(field) is not None:
                 parent[field] = top_child[field]
 
@@ -488,6 +500,6 @@ def format_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return _nest_child_results(merged)
 
 
-def get_amendments_for_section(section_id: str, code_edition: str) -> List[Dict[str, Any]]:
-    """Mock amendment lookup placeholder."""
+def get_amendments_for_provision(provision_id: str, code_edition: str) -> List[Dict[str, Any]]:
+    """Placeholder for amendment chain lookup. Will be populated from regulation data."""
     return []

@@ -1,25 +1,47 @@
 """Tests for TF-IDF keyword scoring in the search engine."""
 
-from unittest.mock import patch
+from datetime import date
 
 import pytest
 
-from api.search import execute_search
-from api.search.engine import _search_code_db, _tf
-from core.models import CodeMap, CodeMapNode
+from api.search.engine import _tf, compute_idf, score_versions
+from core.models import (
+    Code,
+    CodeEdition,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
+    ProvinceCode,
+)
 
 
 @pytest.fixture
-def mock_search_deps(db):
-    with (
-        patch("api.search.orchestration.get_applicable_codes") as mock_codes,
-        patch("api.search.orchestration.get_map_codes") as mock_map_codes,
-    ):
-        mock_codes.return_value = ["OBC_2024"]
-        mock_map_codes.side_effect = lambda code_name: {
-            "OBC_2024": ["OBC_Vol1"],
-        }.get(code_name, [])
-        yield mock_codes
+def edition_with_provisions(db):
+    """Create an edition with provisions for TF-IDF testing."""
+    code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    ProvinceCode.objects.create(province="ON", code=code)
+    edition = CodeEdition.objects.create(
+        system=code, edition_id="2024", year=2024,
+        effective_date=date(2024, 1, 1), map_codes=[],
+    )
+    prov_a = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="3.1.1.1.", level="article",
+    )
+    prov_b = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="3.1.8.5.", level="article",
+    )
+    CodeEditionProvisionVersion.objects.create(
+        provision=prov_a, version=0, action="original",
+        effective_date=date(2024, 1, 1),
+        title="General Building",
+        keyword_counts={"fire": 1, "building": 10},
+    )
+    CodeEditionProvisionVersion.objects.create(
+        provision=prov_b, version=0, action="original",
+        effective_date=date(2024, 1, 1),
+        title="Fire Sprinkler Systems",
+        keyword_counts={"fire": 8, "sprinkler": 3},
+    )
+    return edition
 
 
 def test_tf_log_normalization():
@@ -37,117 +59,56 @@ def test_tf_zero_for_missing_term():
 
 
 @pytest.mark.django_db
-def test_tfidf_ranks_rare_repeated_term_higher(mock_search_deps):
-    """A section mentioning a rare term many times should rank higher."""
-    obc_map = CodeMap.objects.create(code_name="OBC_2024", map_code="OBC_Vol1")
+def test_tfidf_ranks_rare_repeated_term_higher(edition_with_provisions):
+    """A provision mentioning a rare term many times should rank higher."""
+    edition = edition_with_provisions
+    qs = CodeEditionProvisionVersion.objects.filter(
+        provision__edition=edition,
+    ).select_related("provision__edition__system", "clause__regulation")
 
-    # Section A: mentions "fire" once, "building" many times
-    CodeMapNode.objects.create(
-        code_map=obc_map,
-        node_id="3.1.1.1",
-        title="General Building",
-        page=10,
-        page_end=12,
-        keyword_counts={"fire": 1, "building": 10},
-    )
-    # Section B: mentions "fire" many times, "sprinkler" present
-    CodeMapNode.objects.create(
-        code_map=obc_map,
-        node_id="3.1.8.5",
-        title="Fire Sprinkler Systems",
-        page=125,
-        page_end=128,
-        keyword_counts={"fire": 8, "sprinkler": 3},
-    )
+    idf_map = compute_idf(qs)
+    results = score_versions("fire sprinkler", qs, idf_map)
 
-    result = _search_code_db("fire sprinkler", "OBC_Vol1", limit=10)
-    assert len(result["results"]) == 2
-    # Section B should rank higher: it has more "fire" mentions and "sprinkler"
-    assert result["results"][0]["id"] == "3.1.8.5"
-    assert result["results"][1]["id"] == "3.1.1.1"
+    assert len(results) == 2
+    # Provision B should rank higher: more "fire" mentions and has "sprinkler"
+    assert results[0]["id"] == "3.1.8.5."
+    assert results[1]["id"] == "3.1.1.1."
 
 
 @pytest.mark.django_db
-def test_tfidf_fallback_when_no_idf_data(mock_search_deps):
-    """Search should work gracefully when the matview doesn't exist or is empty."""
-    obc_map = CodeMap.objects.create(code_name="OBC_2024", map_code="OBC_Vol1")
-    CodeMapNode.objects.create(
-        code_map=obc_map,
-        node_id="3.1.1.1",
-        title="Fire Safety",
-        page=10,
-        page_end=12,
-        keyword_counts={"fire": 1, "safety": 1},
-    )
+def test_tfidf_works_with_single_provision(edition_with_provisions):
+    """Search should work when only one provision matches."""
+    edition = edition_with_provisions
 
-    # Even with no matview data, search should still find results
-    result = _search_code_db("fire safety", "OBC_Vol1", limit=10)
-    assert len(result["results"]) == 1
-    assert result["results"][0]["id"] == "3.1.1.1"
-    assert result["results"][0]["score"] > 0
+    qs = CodeEditionProvisionVersion.objects.filter(
+        provision__edition=edition,
+    ).select_related("provision__edition__system", "clause__regulation")
+
+    idf_map = compute_idf(qs)
+    results = score_versions("sprinkler", qs, idf_map)
+
+    assert len(results) == 1
+    assert results[0]["id"] == "3.1.8.5."
+    assert results[0]["score"] > 0
 
 
 @pytest.mark.django_db
-def test_keyword_counts_loaded_in_search(mock_search_deps):
-    """execute_search should work with keyword_counts field."""
-    obc_map = CodeMap.objects.create(code_name="OBC_2024", map_code="OBC_Vol1")
-    CodeMapNode.objects.create(
-        code_map=obc_map,
-        node_id="3.1.8.1",
-        title="Fire Separations",
-        page=120,
-        page_end=125,
-        keyword_counts={"fire": 2, "separations": 1},
-    )
+def test_compute_idf_returns_weights(edition_with_provisions):
+    """compute_idf should return IDF weights for keywords in the corpus."""
+    edition = edition_with_provisions
 
-    params = {"date": "2026-01-01", "keywords": ["fire"], "province": "ON"}
-    response = execute_search(params)
-    assert response["result_count"] > 0
+    qs = CodeEditionProvisionVersion.objects.filter(provision__edition=edition)
+    idf_map = compute_idf(qs)
+
+    # "fire" appears in both docs → lower IDF
+    # "sprinkler" appears in one doc → higher IDF
+    assert "fire" in idf_map
+    assert "sprinkler" in idf_map
+    assert idf_map["sprinkler"] > idf_map["fire"]
 
 
 @pytest.mark.django_db
-def test_suggest_similar_keywords_uses_keyword_counts(mock_search_deps):
-    """Keyword suggestions should draw from keyword_counts keys."""
-    from api.search.engine import _suggest_similar_keywords
-
-    obc_map = CodeMap.objects.create(code_name="OBC_2024", map_code="OBC_Vol1")
-    CodeMapNode.objects.create(
-        code_map=obc_map,
-        node_id="3.1.1.1",
-        title="Fire Safety",
-        page=10,
-        page_end=12,
-        keyword_counts={"fire": 3, "sprinkler": 2, "safety": 1},
-    )
-
-    suggestions = _suggest_similar_keywords("fir", "OBC_Vol1")
-    assert "fire" in suggestions
-
-
-@pytest.mark.django_db
-def test_load_maps_keyword_counts_from_json(tmp_path):
-    """load_maps should load keyword_counts from map JSON."""
-    import json
-
-    from django.core.management import call_command
-
-    payload = {
-        "code_name": "TEST_2024",
-        "provisions": [
-            {
-                "id": "1.1.1.1",
-                "title": "Test Section",
-                "page": 1,
-                "page_end": 2,
-                "keyword_counts": {"fire": 3, "safety": 1},
-            },
-        ],
-    }
-
-    map_path = tmp_path / "TEST_Vol1.json"
-    map_path.write_text(json.dumps(payload), encoding="utf-8")
-
-    call_command("load_maps", source=str(tmp_path))
-
-    node = CodeMapNode.objects.get(node_id="1.1.1.1")
-    assert node.keyword_counts == {"fire": 3, "safety": 1}
+def test_compute_idf_empty_corpus():
+    """compute_idf returns empty dict for empty queryset."""
+    qs = CodeEditionProvisionVersion.objects.none()
+    assert compute_idf(qs) == {}
