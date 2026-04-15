@@ -49,21 +49,17 @@ is correct by showing:
 
 ### Pre-rendered images
 
-Two image schemes:
+Full page images at `documents/{document_name}/{page}.webp`, shared
+across all provisions on the same page. Each provision and table carries
+bbox data (`{l, t, r, b}`) pointing to its region on the page.
 
-**Source document pages** (shared, one per unique PDF page):
-```
-documents/{document_name}/{page}.webp
-```
+The frontend defaults to a cropped/focused view using the bbox, with a
+"View full page" toggle showing the uncropped image with the region
+highlighted. Provisions spanning columns or pages have multiple bbox
+entries in reading order.
 
-**Amended/composited images** (per provision version):
-```
-amended/{code}/{edition}/{provision_id}/{version}/{num}.webp
-```
-
-Base provision versions reference source document pages directly. Amended
-provisions with new HTML have no page images (HTML is the display). Amended
-tables reference pre-composited images under the `amended/` prefix.
+Amended tables with structural changes (column/row replacement) get
+pre-composited images at `amended/{code}/{edition}/{table_id}/{version}/{num}.webp`.
 
 Image management sits under CodeChronicle, not CCM.
 

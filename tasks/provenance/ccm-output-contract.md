@@ -160,7 +160,7 @@ Provision bboxes encompass the provision text plus any associated tables.
       "title": "Definitions",
       "html": "<p>In this Code,</p><p>...</p>",
       "page_images": [
-        "documents/obc_1997_v2.pdf/42.webp"
+        {"image": "documents/obc_1997_v2.pdf/42.webp", "bboxes": [{"l": 50, "t": 200, "r": 380, "b": 80}]}
       ],
       "keyword_counts": {"fire": 3, "safety": 1},
 
@@ -209,7 +209,7 @@ Provision bboxes encompass the provision text plus any associated tables.
       "title": "",
       "html": "<p>The OBC applies to both site-built and...</p>",
       "page_images": [
-        "documents/obc_1997_appendix.pdf/12.webp"
+        {"image": "documents/obc_1997_appendix.pdf/12.webp", "bboxes": [{"l": 50, "t": 300, "r": 380, "b": 200}]}
       ],
       "keyword_counts": {},
 
@@ -286,21 +286,34 @@ Null when no transition applies.
 
 ### `versions[].page_images`
 
-S3 paths to page images. Two schemes:
+List of objects, each referencing a full page image plus a bbox defining
+the provision's region on that page. Provisions that span columns or
+pages have multiple entries in reading order.
 
-**Source document pages** (shared, reused across provisions):
-```
-"documents/obc_1997_v2.pdf/42.webp"
+```json
+"page_images": [
+  {
+    "image": "documents/obc_1997_v3.pdf/143.webp",
+    "bboxes": [
+      {"l": 50, "t": 400, "r": 380, "b": 120},
+      {"l": 400, "t": 30, "r": 750, "b": 350}
+    ]
+  }
+]
 ```
 
-**Amended composites** (per provision version):
-```
-"amended/obc/1997/1.1.3.2./1/1.webp"
-```
+- `image`: S3 path to the full page image (shared across provisions on
+  the same page).
+- `bboxes`: list of `{l, t, r, b}` regions on that page, in reading
+  order. Multiple bboxes handle provisions that flow across columns
+  (e.g., starts bottom of left column, continues top of right column).
+  The frontend shows each bbox as a separate cropped region by default.
+  "View full page" shows the uncropped image with all bboxes highlighted.
 
-Base provisions (v0) reference source document pages — no duplication.
-Amended provisions with HTML-only changes may have empty `page_images`
-(HTML is the display).
+Multiple entries in `page_images` handle provisions spanning pages.
+Each entry is one page; bboxes within that entry are column regions.
+
+Empty list when no page images exist (HTML-only amended provisions).
 
 ### `versions[].tables[]`
 
@@ -311,16 +324,19 @@ Tables belonging to this provision at this version.
   "table_id": "Table-3.1.4.7.",
   "caption": "Fire Resistance Ratings",
   "images": [
-    "documents/obc_1997_v2.pdf/143.webp",
-    "documents/obc_1997_v2.pdf/144.webp"
+    {"image": "documents/obc_1997_v2.pdf/143.webp", "bboxes": [{"l": 50, "t": 100, "r": 750, "b": 30}]},
+    {"image": "documents/obc_1997_v2.pdf/144.webp", "bboxes": [{"l": 50, "t": 30, "r": 750, "b": 600}]}
   ],
   "notes": "Note (1): For buildings of...",
   "order": 0
 }
 ```
 
-- `images`: S3 paths. For base tables, source document pages. For
-  amended tables, pre-composited images under `amended/`.
+- `images`: list of `{image, bboxes}` objects. Same format as
+  `page_images` — full page image path + bboxes for the table region.
+  For base tables, these are source document pages. For amended tables
+  with pre-composited overlays, the `image` path points to the
+  composited image (bbox covers the full composited image).
 - `notes`: Table notes as text. Notes that were amended have the
   amended text here.
 - `order`: Display order when a provision has multiple tables.
@@ -328,9 +344,6 @@ Tables belonging to this provision at this version.
 When a table is amended but its parent provision's text is unchanged,
 the parent still gets a new version (with the same `html`) because the
 table content changed.
-
-Table bboxes are included in the parent provision's overall bbox, not
-tracked separately.
 
 ## `edition_mappings[]`
 
@@ -371,13 +384,16 @@ CodeChronicle's deploy/ingest pipeline.
 
 | Content | Source | Output path |
 |---------|--------|-------------|
-| Base provision pages | Code PDF | `documents/{pdf_name}/{page}.webp` |
-| Base table pages | Code PDF | `documents/{pdf_name}/{page}.webp` |
-| Amended table pages | Base + amendment PDF | `amended/{code}/{edition}/{table_id}/{version}/{num}.webp` |
-| Gazette regulation pages | Gazette PDF | `documents/{pdf_name}/{page}.webp` |
+| Full page images | Any PDF | `documents/{pdf_name}/{page}.webp` |
+| Amended table composites | Base + amendment PDF | `amended/{code}/{edition}/{table_id}/{version}/{num}.webp` |
 
-Source document pages are shared — the same page image is referenced by
-every provision on that page. No duplication.
+Full page images are shared — the same image is referenced by every
+provision/table/clause on that page, each with its own bbox. No
+duplication of page images.
+
+Bboxes are provided per provision and per table in the JSON. The
+frontend uses bbox to crop/focus the view by default, with a "View
+full page" toggle for the uncropped image.
 
 ### Gazette page images
 

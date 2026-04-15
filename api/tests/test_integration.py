@@ -36,7 +36,7 @@ def _create_obc_fixtures():
     )
     ProvinceCode.objects.create(province="ON", code=system)
     edition = CodeEdition.objects.create(
-        system=system,
+        code=system,
         edition_id="2024",
         year=2024,
         map_codes=["OBC_2024"],
@@ -112,7 +112,7 @@ def _create_nbc_fixtures():
     )
     ProvinceCode.objects.create(province="ON", code=system)
     edition = CodeEdition.objects.create(
-        system=system,
+        code=system,
         edition_id="2025",
         year=2025,
         map_codes=["NBC"],
@@ -252,7 +252,7 @@ class TestTransitionContextInOverlapWindow:
         ProvinceCode.objects.create(province="BC", code=system)
 
         old_edition = CodeEdition.objects.create(
-            system=system,
+            code=system,
             edition_id="2018",
             year=2018,
             map_codes=["BCBC_2018"],
@@ -260,7 +260,7 @@ class TestTransitionContextInOverlapWindow:
             superseded_date=date(2025, 3, 10),
         )
         new_edition = CodeEdition.objects.create(
-            system=system,
+            code=system,
             edition_id="2024",
             year=2024,
             map_codes=["BCBC_2024"],

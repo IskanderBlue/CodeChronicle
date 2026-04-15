@@ -252,7 +252,7 @@ class CodeEdition(models.Model):
     A specific edition/version of a code system.
     """
 
-    system = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="editions")
+    code = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="editions")
     edition_id = models.CharField(max_length=50)
     year = models.IntegerField()
     map_codes = ArrayField(models.CharField(max_length=100))
@@ -276,19 +276,19 @@ class CodeEdition(models.Model):
         verbose_name_plural = "Code Editions"
         constraints = [
             models.UniqueConstraint(
-                fields=["system", "edition_id"], name="code_system_edition_unique"
+                fields=["code", "edition_id"], name="code_edition_code_edition_unique"
             ),
         ]
         indexes = [
-            models.Index(fields=["system", "effective_date"], name="code_edition_effective_idx"),
+            models.Index(fields=["code", "effective_date"], name="code_edition_effective_idx"),
         ]
 
     def __str__(self):
-        return f"{self.system.code}_{self.edition_id}"
+        return f"{self.code.code}_{self.edition_id}"
 
     @property
     def code_name(self) -> str:
-        return f"{self.system.code}_{self.edition_id}"
+        return f"{self.code.code}_{self.edition_id}"
 
 
 class ProvinceCode(models.Model):

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{{ edition }} — Amendment Chain — CodeChronicle{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    {# Header #}
+    <div class="mb-8">
+        <h1 class="text-2xl font-bold">{{ edition.code.code }} {{ edition.edition_id }} — Amendment Chain</h1>
+        <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+            Effective: <span class="font-ref">{{ edition.effective_date|date:"Y-m-d" }}</span>
+            {% if edition.superseded_date %} &middot; Superseded: <span class="font-ref">{{ edition.superseded_date|date:"Y-m-d" }}</span>{% endif %}
+        </p>
+        <div class="mt-2">
+            {% if edition.amendment_chain_complete %}
+            <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">Chain complete</span>
+            {% else %}
+            <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Chain incomplete</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Vertical timeline #}
+    <div class="relative">
+        {# Timeline spine #}
+        <div class="absolute left-4 top-0 bottom-0 w-0.5 bg-neutral-300 dark:bg-neutral-600"></div>
+
+        {% for reg in regulations %}
+        <div class="relative pl-10 pb-8 last:pb-0">
+            {# Timeline node #}
+            <div class="absolute left-2.5 top-1 w-3 h-3 rounded-full border-2 {% if reg.role == 'base' %}bg-primary-500 border-primary-500{% else %}bg-white dark:bg-neutral-800 border-amber-500 dark:border-amber-400{% endif %}"></div>
+
+            <div class="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <a href="{% url 'core:regulation_detail' reg.pk %}"
+                            class="text-base font-bold font-ref text-primary-600 dark:text-primary-400 hover:underline">
+                            O. Reg. {{ reg.reg_id }}
+                        </a>
+                        {% if reg.role == 'base' %}
+                        <span class="ml-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300">Base</span>
+                        {% else %}
+                        <span class="ml-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Amendment</span>
+                        {% endif %}
+                    </div>
+                    <span class="text-xs text-neutral-500 dark:text-neutral-400 font-ref shrink-0">{{ reg.effective_date|date:"Y-m-d" }}</span>
+                </div>
+                {% if reg.amends %}
+                <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                    Amends <span class="font-ref">O. Reg. {{ reg.amends.reg_id }}</span>
+                </p>
+                {% endif %}
+                {% if reg.filed_date %}
+                <p class="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">
+                    Filed: <span class="font-ref">{{ reg.filed_date|date:"Y-m-d" }}</span>
+                </p>
+                {% endif %}
+                <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                    {{ reg.clauses.count }} clause{{ reg.clauses.count|pluralize }}
+                </p>
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-8 text-neutral-500 dark:text-neutral-400">
+            <p>No regulations recorded for this edition.</p>
+        </div>
+        {% endfor %}
+
+        {# Revocation marker (if edition is superseded) #}
+        {% if edition.superseded_date %}
+        <div class="relative pl-10 pt-2">
+            <div class="absolute left-2.5 top-3 w-3 h-3 rounded-full bg-red-500 border-2 border-red-500"></div>
+            <p class="text-sm font-semibold text-red-600 dark:text-red-400">
+                Superseded <span class="font-ref">{{ edition.superseded_date|date:"Y-m-d" }}</span>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

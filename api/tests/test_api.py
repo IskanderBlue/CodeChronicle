@@ -28,7 +28,7 @@ class TestApiEndpoints:
             is_national=True,
         )
         CodeEdition.objects.create(
-            system=nbc,
+            code=nbc,
             edition_id="2025",
             year=2025,
             map_codes=["NBC"],

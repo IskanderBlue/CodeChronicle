@@ -19,7 +19,7 @@ def obc_setup(db):
     ProvinceCode.objects.create(province="ON", code=code)
 
     edition = CodeEdition.objects.create(
-        system=code,
+        code=code,
         edition_id="2024",
         year=2024,
         map_codes=["OBC_Vol1"],
@@ -181,7 +181,7 @@ class TestExecuteSearchTransitions:
         ProvinceCode.objects.create(province="BC", code=code)
 
         edition = CodeEdition.objects.create(
-            system=code,
+            code=code,
             edition_id="2024",
             year=2024,
             map_codes=["BCBC"],
@@ -254,7 +254,7 @@ class TestExecuteSearchDateFiltering:
         ProvinceCode.objects.create(province="AB", code=code)
 
         edition = CodeEdition.objects.create(
-            system=code,
+            code=code,
             edition_id="2025",
             year=2025,
             map_codes=["NBC"],
@@ -290,7 +290,7 @@ class TestExecuteSearchDateFiltering:
         ProvinceCode.objects.create(province="AB", code=code)
 
         edition = CodeEdition.objects.create(
-            system=code,
+            code=code,
             edition_id="2020",
             year=2020,
             map_codes=["NBC"],

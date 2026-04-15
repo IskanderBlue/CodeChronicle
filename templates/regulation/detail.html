@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}O. Reg. {{ regulation.reg_id }} — CodeChronicle{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    {# Header #}
+    <div class="mb-8">
+        <h1 class="text-2xl font-bold font-ref">O. Reg. {{ regulation.reg_id }}</h1>
+        {% if regulation.amends %}
+        <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+            Amending <span class="font-ref">O. Reg. {{ regulation.amends.reg_id }}</span>
+            ({{ regulation.edition.code.code }} {{ regulation.edition.edition_id }})
+        </p>
+        {% else %}
+        <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+            Base regulation for {{ regulation.edition.code.code }} {{ regulation.edition.edition_id }}
+        </p>
+        {% endif %}
+        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-500">
+            {% if regulation.filed_date %}Filed: <span class="font-ref">{{ regulation.filed_date|date:"Y-m-d" }}</span> | {% endif %}Effective: <span class="font-ref">{{ regulation.effective_date|date:"Y-m-d" }}</span>
+        </p>
+    </div>
+
+    {# Clauses #}
+    {% for clause in clauses %}
+    <div class="mb-6 border-l-2 border-neutral-200 dark:border-neutral-700 pl-4">
+        <div class="flex items-center gap-2">
+            <span class="text-lg font-bold font-ref">{{ clause.clause_id }}</span>
+            {% if clause.action == 'revoke_and_substitute' %}
+            <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">{{ clause.get_action_display }}</span>
+            {% elif clause.action == 'amend_add' %}
+            <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">{{ clause.get_action_display }}</span>
+            {% elif clause.action == 'amend_strike_sub' %}
+            <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300">{{ clause.get_action_display }}</span>
+            {% elif clause.action == 'revoke' %}
+            <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-red-200 text-red-900 dark:bg-red-900/60 dark:text-red-200">{{ clause.get_action_display }}</span>
+            {% else %}
+            <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300">{{ clause.get_action_display }}</span>
+            {% endif %}
+        </div>
+        {% if clause.target_level or clause.target_id %}
+        <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+            Target: {{ clause.get_target_level_display }} <span class="font-ref">{{ clause.target_id }}</span>
+        </p>
+        {% endif %}
+        {% if clause.clause_text %}
+        <p class="text-sm mt-1 text-neutral-700 dark:text-neutral-300">{{ clause.clause_text }}</p>
+        {% endif %}
+        {% if clause.strike_text %}
+        <p class="text-sm mt-1 text-neutral-600 dark:text-neutral-400">
+            <del class="text-red-600 dark:text-red-400">{{ clause.strike_text }}</del>
+            <span class="text-neutral-400 dark:text-neutral-500 mx-1">&rarr;</span>
+            <span class="text-green-700 dark:text-green-400">{{ clause.sub_text }}</span>
+        </p>
+        {% endif %}
+        {# Gazette page image (collapsible) #}
+        {% if clause.page and regulation.source_pdf %}
+        <div class="mt-2" x-data="{ showSource: false }">
+            <button type="button" @click.stop="showSource = !showSource"
+                class="text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500 cursor-pointer flex items-center gap-1">
+                <span x-text="showSource ? '&#9662;' : '&#9656;'" class="text-[10px]"></span>
+                Source document
+            </button>
+            <div x-show="showSource" x-cloak class="mt-1.5 accordion-content">
+                <div class="rounded-md overflow-hidden paper-container" style="border-style: dashed;">
+                    {% with img_entry_image="documents/"|add:regulation.source_pdf|add:"/"|add:clause.page|add:".webp" %}
+                    <div class="relative" x-data="{ fullPage: false }">
+                        <img src="{{ img_entry_image }}" alt="Gazette page {{ clause.page }}"
+                            class="w-full fade-in-image" loading="lazy">
+                        {% if clause.bbox %}
+                        <div class="absolute border border-amber-600/30 bg-amber-600/[0.06] pointer-events-none"
+                            style="left: {{ clause.bbox.l }}px; top: {{ clause.bbox.t }}px; right: {{ clause.bbox.r }}px; bottom: {{ clause.bbox.b }}px;">
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endwith %}
+                </div>
+                <p class="mt-1 text-[11px] text-neutral-400 dark:text-neutral-500 font-ref">
+                    {{ regulation.source_pdf }} &middot; p.{{ clause.page }}
+                </p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% empty %}
+    <div class="text-center py-8 text-neutral-500 dark:text-neutral-400">
+        <p>No clauses recorded for this regulation.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

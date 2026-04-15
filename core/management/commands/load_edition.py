@@ -14,6 +14,8 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    ProvinceCode,
+    ProvisionEditionMapping,
     ProvisionVersionTable,
     Regulation,
     RegulationClause,
@@ -70,9 +72,10 @@ class Command(BaseCommand):
             table_count = self._load_tables(version_lookup, data.get("provisions", []))
             self._resolve_transition_provisions(version_lookup, prov_lookup, data.get("provisions", []))
             self._update_version_counts(prov_lookup)
+            mapping_count = self._load_edition_mappings(code, data.get("edition_mappings", []))
 
         logger.info(
-            "Loaded %s %s: %d regulations, %d clauses, %d provisions, %d versions, %d tables",
+            "Loaded %s %s: %d regulations, %d clauses, %d provisions, %d versions, %d tables, %d mappings",
             code_str,
             edition_str,
             len(reg_lookup),
@@ -80,6 +83,7 @@ class Command(BaseCommand):
             len(prov_lookup),
             len(version_lookup),
             table_count,
+            mapping_count,
         )
 
     def _load_edition(self, data: dict[str, Any]) -> tuple[Code, CodeEdition]:
@@ -91,7 +95,7 @@ class Command(BaseCommand):
             },
         )
         edition, _ = CodeEdition.objects.update_or_create(
-            system=code,
+            code=code,
             edition_id=data["edition"],
             defaults={
                 "year": int(data.get("year", data["edition"])),
@@ -101,6 +105,13 @@ class Command(BaseCommand):
                 "map_codes": data.get("map_codes", []),
             },
         )
+
+        province = data.get("province")
+        if province:
+            ProvinceCode.objects.update_or_create(
+                province=province,
+                defaults={"code": code},
+            )
 
         # Clear existing provenance data for idempotency
         edition.provisions.all().delete()
@@ -365,6 +376,56 @@ class Command(BaseCommand):
             CodeEditionProvisionVersion.objects.bulk_update(
                 versions_to_update, ["transition_provision"], batch_size=500
             )
+
+    def _load_edition_mappings(
+        self,
+        code: Code,
+        edition_mappings: list[dict[str, Any]],
+    ) -> int:
+        mappings_to_create: list[ProvisionEditionMapping] = []
+
+        for mapping_data in edition_mappings:
+            old_edition_id = mapping_data["old_edition"]
+            new_edition_id = mapping_data["new_edition"]
+            old_provision_id = mapping_data["old_provision_id"]
+            new_provision_id = mapping_data["new_provision_id"]
+            old_division = mapping_data.get("old_division", "")
+            new_division = mapping_data.get("new_division", "")
+
+            old_provision = CodeEditionProvision.objects.filter(
+                edition__code=code,
+                edition__edition_id=old_edition_id,
+                provision_id=old_provision_id,
+                division=old_division,
+            ).first()
+            new_provision = CodeEditionProvision.objects.filter(
+                edition__code=code,
+                edition__edition_id=new_edition_id,
+                provision_id=new_provision_id,
+                division=new_division,
+            ).first()
+
+            if not old_provision or not new_provision:
+                logger.warning(
+                    "Skipping mapping %s/%s -> %s/%s: provision not found",
+                    old_edition_id, old_provision_id,
+                    new_edition_id, new_provision_id,
+                )
+                continue
+
+            mappings_to_create.append(ProvisionEditionMapping(
+                old_provision=old_provision,
+                new_provision=new_provision,
+                mapping_type=mapping_data.get("mapping_type", ""),
+                notes=mapping_data.get("notes", ""),
+            ))
+
+        if mappings_to_create:
+            ProvisionEditionMapping.objects.bulk_create(
+                mappings_to_create, ignore_conflicts=True
+            )
+
+        return len(mappings_to_create)
 
     def _update_version_counts(
         self,

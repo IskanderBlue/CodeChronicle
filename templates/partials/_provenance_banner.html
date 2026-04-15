@@ -1,0 +1,85 @@
+{# Provenance banner: in-force date, regulation, amendment chain, next version, copy button #}
+<div class="mt-3 rounded-md {% if result.clause %}border-l-2 border-amended{% else %}border-l-2 border-primary-400 dark:border-primary-600{% endif %} bg-neutral-50/70 dark:bg-neutral-900/40 px-3 py-2.5 text-xs"
+    x-data="{ copied: false, showChain: false }">
+    <div class="flex items-start justify-between gap-2">
+        <div class="space-y-1 text-neutral-600 dark:text-neutral-400">
+            {# In-force date + base regulation #}
+            {% if result.version %}
+            <p>
+                <span class="font-semibold text-neutral-700 dark:text-neutral-300">In force</span>
+                <span class="font-ref">{{ result.version.effective_date|date:"Y-m-d" }}</span>
+                {% if result.base_regulation %}
+                <span class="text-neutral-500 dark:text-neutral-500">&middot;</span>
+                <span class="font-ref">O. Reg. {{ result.base_regulation.reg_id }}</span>
+                {% endif %}
+            </p>
+            {% endif %}
+
+            {# Amendment info (if amended) #}
+            {% if result.clause %}
+            <p>
+                <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Amended</span>
+                <span class="font-ref">O. Reg. {{ result.clause.regulation.reg_id }}</span>, cl. <span class="font-ref">{{ result.clause.clause_id }}</span>
+                <span class="text-neutral-500 dark:text-neutral-500">&middot; effective <span class="font-ref">{{ result.clause.regulation.effective_date|date:"Y-m-d" }}</span></span>
+            </p>
+            {% elif result.is_base %}
+            <p class="text-neutral-500 dark:text-neutral-500">
+                Original &mdash; base regulation
+            </p>
+            {% endif %}
+
+            {# Amendment chain (staggered reveal) #}
+            {% if result.amendment_chain and result.amendment_chain|length > 1 %}
+            <div>
+                <button type="button" @click.stop="showChain = !showChain"
+                    class="text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500 cursor-pointer">
+                    <span x-show="!showChain">{{ result.amendment_chain|length|add:"-1" }} earlier amendment{{ result.amendment_chain|length|add:"-1"|pluralize }}</span>
+                    <span x-show="showChain" x-cloak>Hide amendment chain</span>
+                </button>
+                <div x-show="showChain" x-cloak class="mt-1.5 space-y-1 pl-2 border-l border-neutral-300 dark:border-neutral-600 accordion-content">
+                    {% for entry in result.amendment_chain %}
+                    {% if not forloop.first and entry.clause %}
+                    <p class="text-[11px] text-neutral-500 dark:text-neutral-400"
+                        x-show="showChain"
+                        x-transition:enter="transition ease-out"
+                        x-transition:enter-start="opacity-0 translate-y-1"
+                        x-transition:enter-end="opacity-100 translate-y-0"
+                        style="transition-delay: {{ forloop.counter0 }}00ms">
+                        <span class="font-ref">O. Reg. {{ entry.clause.regulation.reg_id }}</span>, cl. <span class="font-ref">{{ entry.clause.clause_id }}</span>
+                        <span class="text-neutral-400 dark:text-neutral-500">&middot; <span class="font-ref">{{ entry.effective_date|date:"Y-m-d" }}</span></span>
+                    </p>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {# Next version proof line #}
+            {% if result.next_version %}
+            <p class="text-neutral-400 dark:text-neutral-500 italic">
+                Next: <span class="font-ref">O. Reg. {{ result.next_version.clause.regulation.reg_id }}</span>
+                (not in force until <span class="font-ref">{{ result.next_version.effective_date|date:"Y-m-d" }}</span>)
+            </p>
+            {% endif %}
+        </div>
+
+        {# Copy reference button #}
+        <button type="button" title="Copy structured reference"
+            class="inline-flex items-center p-1.5 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 cursor-pointer shrink-0 relative"
+            @click.stop="
+                let ref = '{{ result.code_display_name|escapejs }}';
+                {% if result.division %}ref += ', {{ result.division|escapejs }}';{% endif %}
+                ref += ', S {{ result.id|escapejs }} -- {{ result.title|escapejs }}';
+                {% if result.version %}ref += '\nIn force: {{ result.version.effective_date|date:"Y-m-d"|escapejs }}';{% endif %}
+                {% if result.base_regulation %}ref += ' (O. Reg. {{ result.base_regulation.reg_id|escapejs }})';{% endif %}
+                {% if result.clause %}ref += '\nAmended by: O. Reg. {{ result.clause.regulation.reg_id|escapejs }}, cl. {{ result.clause.clause_id|escapejs }}';{% endif %}
+                {% if result.next_version %}ref += '\nNext: O. Reg. {{ result.next_version.clause.regulation.reg_id|escapejs }} (not in force until {{ result.next_version.effective_date|date:"Y-m-d"|escapejs }})';{% endif %}
+                navigator.clipboard.writeText(ref);
+                copied = true;
+                setTimeout(() => copied = false, 1500);
+            ">
+            <svg x-show="!copied" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            <svg x-show="copied" x-cloak class="h-3.5 w-3.5 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        </button>
+    </div>
+</div>

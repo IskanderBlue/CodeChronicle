@@ -23,4 +23,6 @@ urlpatterns = [
     path("stripe/success/", views.stripe_success, name="stripe_success"),
     path("stripe/cancel/", views.stripe_cancel, name="stripe_cancel"),
     path("stripe/portal/", views.create_customer_portal_session, name="stripe_portal"),
+    path("regulation/<int:pk>/", views.regulation_detail, name="regulation_detail"),
+    path("edition/<int:pk>/chain/", views.edition_chain, name="edition_chain"),
 ]

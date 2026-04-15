@@ -111,12 +111,17 @@ Always visible. Integrated with provision identity:
 
 ### Content area
 
-- **Base provision (v0)**: PDF page image in a paper-like container
-  (subtle warm tint, hairline border, minimal shadow).
+- **Page images**: shown cropped/focused to the provision's bbox by
+  default. Paper-like container (subtle warm tint, hairline border).
+  "View full page" toggle shows the uncropped image with the bbox
+  region highlighted (tinted overlay). Provisions spanning columns or
+  pages show multiple crops stacked vertically in reading order.
 - **Amended provision (v1+)**: Rendered HTML in matching container.
   Literata serif, generous line-height.
 - Both container styles match — scrolling from page image to HTML
   shouldn't feel like a visual jump.
+- Same image component used for provision page images, table images,
+  and gazette clause images in the regulation browsing view.
 
 ### Tables
 

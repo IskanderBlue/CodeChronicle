@@ -39,7 +39,7 @@ class TestLoadEdition:
         assert code.display_name == "Ontario Building Code"
         assert code.is_national is False
 
-        edition = CodeEdition.objects.get(system=code, edition_id="1997")
+        edition = CodeEdition.objects.get(code=code, edition_id="1997")
         assert edition.effective_date == date(1998, 4, 6)
         assert edition.ineffective_date == date(2006, 12, 31)
         assert edition.amendment_chain_complete is True
@@ -74,13 +74,17 @@ class TestLoadEdition:
     def test_creates_provisions(self, edition_json: Path) -> None:
         call_command("load_edition", "--source", str(edition_json))
 
-        assert CodeEditionProvision.objects.count() == 4
+        assert CodeEditionProvision.objects.count() == 10
 
         subsection = CodeEditionProvision.objects.get(
             provision_id="1.1.3.", division="Division A"
         )
         assert subsection.level == CodeEditionProvision.Level.SUBSECTION
-        assert subsection.parent is None
+
+        section = CodeEditionProvision.objects.get(
+            provision_id="1.1.", division="Division A"
+        )
+        assert subsection.parent == section
 
         article = CodeEditionProvision.objects.get(
             provision_id="1.1.3.2.", division="Division A"
@@ -111,7 +115,7 @@ class TestLoadEdition:
         assert v0.clause is None
         assert v0.effective_date == date(1998, 4, 6)
         assert v0.ineffective_date == date(1998, 4, 6)
-        assert "original definitions" in v0.html
+        assert "Alternative measure" in v0.html
 
         v1 = versions[1]
         assert v1.version == 1
@@ -119,7 +123,7 @@ class TestLoadEdition:
         assert v1.clause is not None
         assert v1.clause.clause_id == "1.(1)"
         assert v1.ineffective_date is None
-        assert "amended definitions" in v1.html
+        assert "other than Part 8" in v1.html
 
     def test_creates_tables(self, edition_json: Path) -> None:
         call_command("load_edition", "--source", str(edition_json))
@@ -129,8 +133,8 @@ class TestLoadEdition:
 
         tbl = tables.first()
         assert tbl.table_id == "Table-3.1.4.7."
-        assert tbl.caption == "Fire Resistance Ratings"
-        assert len(tbl.images) == 1
+        assert tbl.caption == "Minimum Fire-Resistance Rating for Fire Separations"
+        assert isinstance(tbl.images, list)
         assert "Note (1)" in tbl.notes
 
     def test_version_count_updated(self, edition_json: Path) -> None:
@@ -154,8 +158,8 @@ class TestLoadEdition:
         assert CodeEdition.objects.count() == 1
         assert Regulation.objects.count() == 2
         assert RegulationClause.objects.count() == 2
-        assert CodeEditionProvision.objects.count() == 4
-        assert CodeEditionProvisionVersion.objects.count() == 5
+        assert CodeEditionProvision.objects.count() == 10
+        assert CodeEditionProvisionVersion.objects.count() == 12
         assert ProvisionVersionTable.objects.count() == 1
 
     def test_missing_file_raises(self) -> None:

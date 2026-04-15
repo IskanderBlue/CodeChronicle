@@ -20,7 +20,7 @@ def edition_with_provisions(db):
     code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
     ProvinceCode.objects.create(province="ON", code=code)
     edition = CodeEdition.objects.create(
-        system=code, edition_id="2024", year=2024,
+        code=code, edition_id="2024", year=2024,
         effective_date=date(2024, 1, 1), map_codes=[],
     )
     prov_a = CodeEditionProvision.objects.create(
@@ -64,7 +64,7 @@ def test_tfidf_ranks_rare_repeated_term_higher(edition_with_provisions):
     edition = edition_with_provisions
     qs = CodeEditionProvisionVersion.objects.filter(
         provision__edition=edition,
-    ).select_related("provision__edition__system", "clause__regulation")
+    ).select_related("provision__edition__code", "clause__regulation")
 
     idf_map = compute_idf(qs)
     results = score_versions("fire sprinkler", qs, idf_map)
@@ -82,7 +82,7 @@ def test_tfidf_works_with_single_provision(edition_with_provisions):
 
     qs = CodeEditionProvisionVersion.objects.filter(
         provision__edition=edition,
-    ).select_related("provision__edition__system", "clause__regulation")
+    ).select_related("provision__edition__code", "clause__regulation")
 
     idf_map = compute_idf(qs)
     results = score_versions("sprinkler", qs, idf_map)

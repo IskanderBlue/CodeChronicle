@@ -83,7 +83,7 @@ class Command(BaseCommand):
                 code_key = f"{system_code}_{edition_id}"
                 download_url = pdf_download_links.get(code_key, "")
                 CodeEdition.objects.update_or_create(
-                    system=code_system,
+                    code=code_system,
                     edition_id=edition_id,
                     defaults={
                         "year": edition["year"],
@@ -109,7 +109,7 @@ class Command(BaseCommand):
                 code_key = f"{system_code}_{edition_id}"
                 download_url = pdf_download_links.get(code_key, "")
                 CodeEdition.objects.update_or_create(
-                    system=code_system,
+                    code=code_system,
                     edition_id=edition_id,
                     defaults={
                         "year": edition["year"],

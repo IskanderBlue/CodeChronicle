@@ -18,8 +18,8 @@ def _find_edition(code_name: str):
     except Exception:
         return None
     return (
-        CodeEdition.objects.select_related("system")
-        .filter(system__code=system, edition_id=edition_id)
+        CodeEdition.objects.select_related("code")
+        .filter(code__code=system, edition_id=edition_id)
         .first()
     )
 
@@ -101,14 +101,14 @@ def get_pdf_expectations() -> list[dict[str, str | int | None]]:
         return []
 
     expectations: list[dict[str, str | int | None]] = []
-    editions = CodeEdition.objects.select_related("system").all()
+    editions = CodeEdition.objects.select_related("code").all()
     for edition in editions:
         if not edition.pdf_files:
             continue
         for map_code, filename in edition.pdf_files.items():
             expectations.append(
                 {
-                    "system": edition.system.code,
+                    "system": edition.code.code,
                     "year": edition.year,
                     "effective_date": edition.effective_date.isoformat(),
                     "map_code": map_code,
@@ -140,7 +140,7 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
     )
     if province_map:
         edition = (
-            CodeEdition.objects.filter(system=province_map.code)
+            CodeEdition.objects.filter(code=province_map.code)
             .filter(effective_date__lte=search_date)
             .filter(models.Q(superseded_date__isnull=True) | models.Q(superseded_date__gt=search_date))
             .order_by("-effective_date")
@@ -152,7 +152,7 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
     national_systems = Code.objects.filter(is_national=True)
     for system in national_systems:
         edition = (
-            CodeEdition.objects.filter(system=system)
+            CodeEdition.objects.filter(code=system)
             .filter(effective_date__lte=search_date)
             .filter(models.Q(superseded_date__isnull=True) | models.Q(superseded_date__gt=search_date))
             .order_by("-effective_date")

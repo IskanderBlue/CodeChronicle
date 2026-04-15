@@ -202,10 +202,12 @@ class CodeEditionProvisionVersion(models.Model):
     title = models.CharField(max_length=500, blank=True, default="")
     html = models.TextField(blank=True, default="")
     page_images = models.JSONField(null=True, blank=True)
-        # Source document pages:
-        #   ["documents/obc_1997_v2.pdf/42.webp"]
-        # Amended composites:
-        #   ["amended/obc/1997/1.1.3.2./1/1.webp"]
+        # List of {image, bboxes} objects:
+        #   [{"image": "documents/obc_1997_v3.pdf/42.webp",
+        #     "bboxes": [{"l": 50, "t": 400, "r": 380, "b": 120},
+        #                {"l": 400, "t": 30, "r": 750, "b": 350}]}]
+        # Multiple bboxes per page (column flow). Multiple entries for
+        # provisions spanning pages.
 
     # Search support
     keyword_counts = models.JSONField(null=True, blank=True)

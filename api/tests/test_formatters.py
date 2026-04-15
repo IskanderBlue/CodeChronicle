@@ -24,7 +24,7 @@ def test_format_search_results_emits_span_fields_without_bbox(monkeypatch):
     )
 
     item = formatted[0]
-    assert item["page"] is None  # _format_single_result no longer copies page fields
+    assert "page" not in item  # page fields removed from formatted results
     assert "bbox" not in item
 
 

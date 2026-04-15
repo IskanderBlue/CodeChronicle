@@ -61,7 +61,7 @@ class Command(BaseCommand):
         if empty_count:
             for ed in empty_editions:
                 self.stdout.write(
-                    self.style.WARNING(f"  {ed.system.code}_{ed.edition_id}")
+                    self.style.WARNING(f"  {ed.code.code}_{ed.edition_id}")
                 )
         else:
             self.stdout.write(self.style.SUCCESS("  All editions have map_codes."))

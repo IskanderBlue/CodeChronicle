@@ -57,8 +57,8 @@ def _build_viewer_url_params(
         return None
     system_code, edition_id = code_name.split("_", 1)
     edition = (
-        CodeEdition.objects.select_related("system")
-        .filter(system__code=system_code, edition_id=edition_id)
+        CodeEdition.objects.select_related("code")
+        .filter(code__code=system_code, edition_id=edition_id)
         .first()
     )
     if not edition:
@@ -101,7 +101,7 @@ def _build_viewer_url_params(
         "id": node.node_id,
         "title": node.title,
         "code": code_name,
-        "code_display_name": f"{get_code_display_name(edition.system.code)} {edition.edition_id}".strip(),
+        "code_display_name": f"{get_code_display_name(edition.code.code)} {edition.edition_id}".strip(),
         "map_code": map_code,
         "page": node.page,
         "page_end": node.page_end,
@@ -127,16 +127,16 @@ def _build_viewer_navigation(
 
     system_code, edition_id = current_code.split("_", 1)
     current_edition = (
-        CodeEdition.objects.select_related("system")
-        .filter(system__code=system_code, edition_id=edition_id)
+        CodeEdition.objects.select_related("code")
+        .filter(code__code=system_code, edition_id=edition_id)
         .first()
     )
     if not current_edition:
         return {"previous": None, "next": None}
 
     editions = list(
-        CodeEdition.objects.select_related("system")
-        .filter(system=current_edition.system)
+        CodeEdition.objects.select_related("code")
+        .filter(code=current_edition.code)
         .order_by("effective_date", "year", "edition_id")
     )
     current_index = next(
@@ -203,8 +203,8 @@ def viewer_edition_dates(request: HttpRequest):
     if code and "_" in code:
         system_code, edition_id = code.split("_", 1)
         edition = (
-            CodeEdition.objects.select_related("system")
-            .filter(system__code=system_code, edition_id=edition_id)
+            CodeEdition.objects.select_related("code")
+            .filter(code__code=system_code, edition_id=edition_id)
             .first()
         )
         if edition:
@@ -214,7 +214,7 @@ def viewer_edition_dates(request: HttpRequest):
             )
             edition_info["code_name"] = code
             edition_info["code_display_name"] = (
-                f"{get_code_display_name(edition.system.code)} {edition.edition_id}".strip()
+                f"{get_code_display_name(edition.code.code)} {edition.edition_id}".strip()
             )
 
             # Find any transition that gives this edition lingering validity

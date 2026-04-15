@@ -107,16 +107,16 @@ def _load_code_rows_from_db() -> list[dict[str, str | int]]:
     """Primary source for code listings."""
     from core.models import CodeEdition
 
-    editions = CodeEdition.objects.select_related("system").all()
+    editions = CodeEdition.objects.select_related("code").all()
     rows: list[dict[str, str | int]] = []
     for edition in editions:
         rows.append(
             {
                 "id": edition.code_name,
-                "code": edition.system.code,
+                "code": edition.code.code,
                 "edition_id": edition.edition_id,
                 "year": edition.year,
-                "name": f"{edition.system.code} {edition.year}".strip(),
+                "name": f"{edition.code.code} {edition.year}".strip(),
             }
         )
 

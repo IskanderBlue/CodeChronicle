@@ -18,7 +18,7 @@ def _create_obc_fixtures():
     ProvinceCode.objects.create(province="ON", code=obc)
 
     obc_edition = CodeEdition.objects.create(
-        system=obc,
+        code=obc,
         edition_id="2024",
         year=2024,
         map_codes=["OBC_Vol1", "OBC_Vol2"],
@@ -66,7 +66,7 @@ def test_execute_search_doors_fire_safety():
     ProvinceCode.objects.create(province="ON", code=obc)
 
     obc_edition = CodeEdition.objects.create(
-        system=obc,
+        code=obc,
         edition_id="2024",
         year=2024,
         map_codes=["OBC_Vol1", "OBC_Vol2"],
@@ -124,14 +124,14 @@ def test_get_applicable_codes_ontario_2026():
     )
     ProvinceCode.objects.create(province="ON", code=obc)
     CodeEdition.objects.create(
-        system=obc,
+        code=obc,
         edition_id="2024",
         year=2024,
         map_codes=["OBC_Vol1", "OBC_Vol2"],
         effective_date=date(2025, 1, 1),
     )
     CodeEdition.objects.create(
-        system=nbc,
+        code=nbc,
         edition_id="2025",
         year=2025,
         map_codes=["NBC"],
@@ -152,7 +152,7 @@ def test_get_applicable_codes_ontario_2010():
     obc = Code.objects.create(code="OBC", display_name="Ontario Building Code")
     ProvinceCode.objects.create(province="ON", code=obc)
     CodeEdition.objects.create(
-        system=obc,
+        code=obc,
         edition_id="2006_v01",
         year=2006,
         map_codes=["OBC_2006_v01"],

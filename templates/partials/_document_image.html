@@ -1,0 +1,35 @@
+{# Reusable document image: bbox-cropped by default, "View full page" toggle #}
+{# Expects: img_entry (dict with .image and .bboxes list), alt_text (string) #}
+{% if img_entry.bboxes %}
+<div class="relative document-image" x-data="{ fullPage: false }">
+    {# Cropped views (default) — one crop per bbox in reading order #}
+    <div x-show="!fullPage" class="space-y-0.5">
+        {% for bbox in img_entry.bboxes %}
+        <div class="overflow-hidden">
+            <img src="{{ img_entry.image }}" alt="{{ alt_text }}"
+                class="w-full fade-in-image" loading="lazy">
+        </div>
+        {% endfor %}
+    </div>
+    {# Full page view with all bboxes highlighted #}
+    <div x-show="fullPage" x-cloak class="relative">
+        <img src="{{ img_entry.image }}" alt="{{ alt_text }} (full page)"
+            class="w-full fade-in-image" loading="lazy" style="opacity: 0.5;">
+        {% for bbox in img_entry.bboxes %}
+        <div class="absolute border border-amber-600/40 bg-amber-500/[0.08] pointer-events-none rounded-sm"
+            style="left: {{ bbox.l }}%; top: {{ bbox.t }}%; width: {{ bbox.r }}%; height: {{ bbox.b }}%;">
+        </div>
+        {% endfor %}
+    </div>
+    <div class="flex justify-end mt-0.5">
+        <button type="button" @click.stop="fullPage = !fullPage"
+            class="text-[11px] text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
+            <span x-show="!fullPage">View full page</span>
+            <span x-show="fullPage" x-cloak>View focused</span>
+        </button>
+    </div>
+</div>
+{% elif img_entry.image %}
+{# No bboxes — show image as-is #}
+<img src="{{ img_entry.image }}" alt="{{ alt_text }}" class="w-full fade-in-image" loading="lazy">
+{% endif %}

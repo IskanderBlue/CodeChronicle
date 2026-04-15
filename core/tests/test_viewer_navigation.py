@@ -6,10 +6,10 @@ from core.views.search import _build_viewer_navigation, _build_viewer_url_params
 
 def _fake_edition(pk, system_code, edition_id, system_display=""):
     """Build a lightweight stand-in for a CodeEdition instance."""
-    system = SimpleNamespace(code=system_code, display_name=system_display)
+    code_obj = SimpleNamespace(code=system_code, display_name=system_display)
     return SimpleNamespace(
         pk=pk,
-        system=system,
+        code=code_obj,
         edition_id=edition_id,
         code_name=f"{system_code}_{edition_id}",
         map_codes=[f"{system_code}_{edition_id}_map"],

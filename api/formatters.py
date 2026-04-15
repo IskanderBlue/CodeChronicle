@@ -13,6 +13,25 @@ _HTML_TAG_RE = re.compile(r"(<[^>]+>)")
 # Splits text into words and whitespace runs, preserving both.
 _WORD_SPACE_RE = re.compile(r"(\S+)")
 
+_APPENDIX_REF_RE = re.compile(
+    r'\(See Note (A-[\d.]+(?:\.\)?\(\d+(?:-\d+|(?:,\d+)*)\))?)\)',
+    re.IGNORECASE,
+)
+
+
+def _linkify_appendix_refs(html: str) -> str:
+    """Replace (See Note A-X.X.X.X.(N)) with clickable anchors."""
+    def _replace(match: re.Match[str]) -> str:
+        ref_id = match.group(1)
+        return (
+            f'(<a href="#" @click.prevent="'
+            f"$dispatch('expand-appendix'); "
+            f'document.getElementById(\'appendix-{ref_id}\')?.scrollIntoView({{behavior: \'smooth\'}})"'
+            f' class="text-primary-600 dark:text-primary-400 hover:underline">'
+            f'See Note {ref_id}</a>)'
+        )
+    return _APPENDIX_REF_RE.sub(_replace, html)
+
 
 def _tokenize_html_for_diff(html: str) -> list[tuple[str, str]]:
     """Split HTML into (token_text, token_type) pairs.
@@ -123,36 +142,67 @@ def _code_order_key(value: str) -> Tuple[Any, ...]:
 def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
     code_edition = result.get("code_edition", "Unknown")
     provision = result.get("provision")
+    version = result.get("version")
     parent_id = ""
     if provision and provision.parent:
         parent_id = provision.parent.provision_id
+
+    # Derive provenance from prefetched relationships
+    base_regulation = None
+    all_versions = []
+    appendix_notes = []
+    if provision:
+        # Base regulation: from prefetched edition.regulations
+        for reg in provision.edition.regulations.all():
+            if reg.role == "base":
+                base_regulation = reg
+                break
+        # Full version chain: from prefetched provision.versions
+        all_versions = list(provision.versions.all())
+        # Appendix notes: from prefetched provision.appendix_entries
+        for ap in provision.appendix_entries.all():
+            latest = ap.versions.order_by("-version").first() if ap.versions.all() else None
+            appendix_notes.append({
+                "id": ap.provision_id,
+                "title": latest.title if latest else "",
+                "html": latest.html if latest else "",
+            })
+
+    # Next version: first in chain after current
+    next_version = None
+    if version and all_versions:
+        for v in all_versions:
+            if v.version > version.version:
+                next_version = v
+                break
+
+    html_content = result.get("html_content")
+    if html_content and appendix_notes:
+        html_content = _linkify_appendix_refs(html_content)
 
     return {
         "id": result.get("id"),
         "title": result.get("title", "No title"),
         "code": code_edition,
         "code_display_name": _build_code_display_name(code_edition),
-        "map_code": "",
         "parent_id": parent_id,
         "source_date": result.get("source_date"),
-        "page": None,
-        "page_end": None,
-        "initial_page_top": None,
-        "final_page_bottom": None,
         "score": result.get("score", 0),
-        "pdf_filename": "",
-        "pdf_download_url": "",
-        "html_content": result.get("html_content"),
+        "html_content": html_content,
         "page_images": result.get("page_images") or [],
         "tables": result.get("tables") or [],
-        "notes_html": None,
-        "source_url": "",
         "group_type": None,
         "result_type": None,
         "transition_context": result.get("transition_context"),
         "division": result.get("division", ""),
         "clause": result.get("clause"),
         "is_base": result.get("is_base", True),
+        "version": version,
+        "provision": provision,
+        "base_regulation": base_regulation,
+        "next_version": next_version,
+        "amendment_chain": all_versions,
+        "appendix_notes": appendix_notes,
     }
 
 
@@ -178,7 +228,7 @@ def _load_group_hierarchy(
         edition_id = code_edition.split("_", 1)[1] if "_" in code_edition else ""
 
         prov_filter: Dict[str, Any] = {
-            "edition__system__code": system_code,
+            "edition__code__code": system_code,
             "edition__edition_id": edition_id,
         }
         if division:
@@ -198,7 +248,7 @@ def _load_group_hierarchy(
         child_provs = CodeEditionProvision.objects.filter(
             parent=parent_prov, **{
                 k: v for k, v in prov_filter.items()
-                if k not in ("edition__system__code", "edition__edition_id")
+                if k not in ("edition__code__code", "edition__edition_id")
             }
         ) if parent_prov else CodeEditionProvision.objects.none()
 
