@@ -62,21 +62,41 @@ or `CodeMapNode.provision_transitions` to use the `Transition` model instead.
       query
 - [ ] Attach Transition records to search results (all transitions for the
       edition + any node-specific transitions)
+- [ ] Prefetch Amendment records for matched nodes (avoid N+1):
+      `Amendment.objects.filter(node__in=matched_nodes).order_by("node", "order")`
 - [ ] For national codes, include both publication and provincial adoption
       Transitions
+- [ ] Build provenance context per result:
+      - `result.commencement` — node-level Transition if exists, else
+        edition-level Transition
+      - `result.amendments` — Amendment queryset for the node
+      - `result.is_provision_specific` — True if node has own Transition
+        or any Amendments
 
 ### `api/formatters.py`
 - [ ] Replace `transition_context` dict construction with Transition model
       fields
 - [ ] Pass through `provision_quote`, `source_url`, `jurisdiction`
 - [ ] Update `merge_transition_compare_results()` to use Transition data
+- [ ] Build copy-button reference string data:
+      `"{code} {year}, Div {div}, § {id} — {title}\n
+       In force: {date} ({regulation}, {provision_id})\n
+       Amended by: {amendment_reg}, {amendment_provision_id} ({date})"`
+
+### `core/management/commands/load_maps.py`
+- [ ] Import section-level `commencement` from map JSON as node-level
+      Transition records
+- [ ] Import section-level `amendments` from map JSON as Amendment records
+      (ordered, most recent first → order=0)
+- [ ] Clear and recreate Amendment records on re-import (idempotent)
 
 ### Tests
-- [ ] Update `test_orchestration.py` — mock Transition queries instead of
-      `transitions.json`
-- [ ] Update `test_search.py`, `test_integration.py` — use Transition
-      fixtures
-- [ ] Update `test_load_maps.py` — CodeMap.edition FK, no provision stamping
+- [ ] Update `test_orchestration.py` — mock Transition + Amendment queries
+      instead of `transitions.json`
+- [ ] Update `test_search.py`, `test_integration.py` — use Transition +
+      Amendment fixtures
+- [ ] Update `test_load_maps.py` — CodeMap.edition FK, no provision stamping,
+      Amendment import
 - [ ] Rename `ProvinceCodeMap` in all test fixtures
 
 ## Verification

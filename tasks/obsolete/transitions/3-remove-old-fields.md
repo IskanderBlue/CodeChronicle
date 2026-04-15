@@ -24,9 +24,10 @@ and `CodeMap.edition` FK.
 - [ ] `map_codes` — replaced by `edition.maps.all()`
 - [ ] `pdf_files` — moved to `CodeMap.pdf_file`
 - [ ] `download_url` — moved to `CodeMap.download_url`
-- [ ] `amendments` — never consumed by any code. Drop entirely, or rename
-      to `legislative_history` if we want to preserve "which regulations
-      were consolidated into this edition" for reference.
+- [ ] `amendments` — drop entirely. Per-section amendment history is now
+      on the `Amendment` model (node-level). Edition-level "which regulations
+      were consolidated" is derivable from `Amendment.objects.filter(
+      node__code_map__edition=edition).values("regulation").distinct()`.
 
 ### Migration: CodeMapNode — drop field
 - [ ] `provision_transitions` — replaced by `node.transitions.all()`
