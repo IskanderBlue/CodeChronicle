@@ -144,21 +144,32 @@ gain an optional `introduced_by` field:
   "provision_mappings": [
     {
       "old_provision_id": "9.23.9.5.",
-      "old_division": "Part 9",
+      "old_division": "",
       "old_edition": "1997",
       "new_provision_id": "9.23.9.6.",
-      "new_division": "Part 9",
+      "new_division": "",
       "new_edition": "1997",
       "mapping_type": "renumbered",
       "introduced_by": {
         "provision_id": "9.23.9.6.",
-        "division": "Part 9",
-        "version": 2
+        "division": "",
+        "version": 1
       }
     }
   ]
 }
 ```
+
+The `division` strings are the per-provision `division` field —
+top-level Division A/B/C in NBC-style codes.  OBC 1997 has no
+Division A/B/C structure, so all five entries from O. Reg. 22/98
+cl. 25.(2) carry `""`; codes that do (e.g. NBC 2025 Division B
+Part 9) populate the field.
+
+`introduced_by.version` uses 0-based version numbering: v0 = the
+`original` action recorded for every base-map provision, v1 = the
+`renumbered` action that closes the prior content and stamps the
+carried-forward content at the new id.
 
 Cross-edition entries omit `introduced_by` and have differing
 `old_edition` / `new_edition` values.
