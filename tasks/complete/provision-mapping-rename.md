@@ -1,5 +1,33 @@
 # ProvisionMapping Rename + `introduced_by_version` FK
 
+**Status: COMPLETE** (2026-04-17)
+
+Shipped in commit `e59cf59` on branch `cepv` — bundles the model
+rename, migration `0015_provision_mapping_rename.py`, loader rewrite,
+search-orchestration updates, admin rename, and contract-doc rewrite.
+CCM-side counterpart landed earlier in CCM commits `2270653`, `c15115d`,
+`9d2555e`.
+
+## Verification status
+
+- `python manage.py check core` passes.
+- The migration file is consistent with the model changes (rename +
+  new FK + `mapping_type` choices + enum extensions on
+  `RegulationClause.action` and `CodeEditionProvisionVersion.action`).
+- CCM's OBC 1997 assembly produces exactly the `provision_mappings[]`
+  shape this loader expects (verified on the CCM side).
+
+## Verification limits
+
+- **Not yet exercised**: `python manage.py migrate` against a real
+  Postgres DB and the pytest suite. Local Postgres auth failed in the
+  dev environment, so end-to-end ingest-then-query verification is
+  deferred to the first deployment (or a session with working
+  credentials). The four new pytest checks listed under "Verification"
+  below remain to be written/run.
+
+---
+
 ## What
 
 Rename `ProvisionEditionMapping` → `ProvisionMapping`, add an
