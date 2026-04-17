@@ -15,7 +15,7 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     ProvinceCode,
-    ProvisionEditionMapping,
+    ProvisionMapping,
     ProvisionVersionTable,
     Regulation,
     RegulationClause,
@@ -61,6 +61,13 @@ class Command(BaseCommand):
         if not code_str or not edition_str:
             raise CommandError("JSON must have 'code' and 'edition' top-level fields.")
 
+        if "edition_mappings" in data:
+            raise CommandError(
+                "JSON contains the deprecated 'edition_mappings' key. "
+                "Re-run CCM to emit 'provision_mappings' instead "
+                "(see CCM impl-19 / CC provision-mapping-rename)."
+            )
+
         with transaction.atomic():
             code, edition = self._load_edition(data)
             reg_lookup = self._load_regulations(edition, data.get("regulations", []))
@@ -72,7 +79,9 @@ class Command(BaseCommand):
             table_count = self._load_tables(version_lookup, data.get("provisions", []))
             self._resolve_transition_provisions(version_lookup, prov_lookup, data.get("provisions", []))
             self._update_version_counts(prov_lookup)
-            mapping_count = self._load_edition_mappings(code, data.get("edition_mappings", []))
+            mapping_count = self._load_provision_mappings(
+                code, version_lookup, data.get("provision_mappings", []),
+            )
 
         logger.info(
             "Loaded %s %s: %d regulations, %d clauses, %d provisions, %d versions, %d tables, %d mappings",
@@ -377,14 +386,29 @@ class Command(BaseCommand):
                 versions_to_update, ["transition_provision"], batch_size=500
             )
 
-    def _load_edition_mappings(
+    def _load_provision_mappings(
         self,
         code: Code,
-        edition_mappings: list[dict[str, Any]],
+        version_lookup: dict[tuple[str, str, int], CodeEditionProvisionVersion],
+        provision_mappings: list[dict[str, Any]],
     ) -> int:
-        mappings_to_create: list[ProvisionEditionMapping] = []
+        """Load the unified provision_mappings[] array.
 
-        for mapping_data in edition_mappings:
+        Each entry links an old ``CodeEditionProvision`` to a new one.
+        The two endpoints may share an edition (intra-edition renumber
+        triggered by a gazette amendment) or differ (cross-edition
+        identity change produced by CCM's matcher).
+
+        For intra-edition entries CCM emits an ``introduced_by``
+        sub-dict identifying the ``CodeEditionProvisionVersion`` whose
+        ``action == "renumbered"`` produced the mapping.  We resolve it
+        through ``version_lookup`` (already keyed by ``(provision_id,
+        division, version_num)``) and assign the FK.  Cross-edition
+        entries omit ``introduced_by`` and leave the FK null.
+        """
+        mappings_to_create: list[ProvisionMapping] = []
+
+        for mapping_data in provision_mappings:
             old_edition_id = mapping_data["old_edition"]
             new_edition_id = mapping_data["new_edition"]
             old_provision_id = mapping_data["old_provision_id"]
@@ -413,15 +437,44 @@ class Command(BaseCommand):
                 )
                 continue
 
-            mappings_to_create.append(ProvisionEditionMapping(
+            introduced_by_version: CodeEditionProvisionVersion | None = None
+            intro = mapping_data.get("introduced_by")
+            if intro is not None:
+                intro_provision_id = intro["provision_id"]
+                intro_division = intro.get("division", "")
+                intro_version_num = intro["version"]
+                introduced_by_version = version_lookup.get(
+                    (intro_provision_id, intro_division, intro_version_num)
+                )
+                if introduced_by_version is None:
+                    logger.warning(
+                        "Mapping %s -> %s: introduced_by version "
+                        "%s/%s/v%d not found; storing without FK",
+                        old_provision_id, new_provision_id,
+                        intro_provision_id, intro_division, intro_version_num,
+                    )
+                elif introduced_by_version.action != (
+                    CodeEditionProvisionVersion.Action.RENUMBERED
+                ):
+                    logger.warning(
+                        "Mapping %s -> %s: introduced_by points at "
+                        "%s/v%d with action=%r (expected 'renumbered'); "
+                        "storing FK anyway",
+                        old_provision_id, new_provision_id,
+                        intro_provision_id, intro_version_num,
+                        introduced_by_version.action,
+                    )
+
+            mappings_to_create.append(ProvisionMapping(
                 old_provision=old_provision,
                 new_provision=new_provision,
                 mapping_type=mapping_data.get("mapping_type", ""),
+                introduced_by_version=introduced_by_version,
                 notes=mapping_data.get("notes", ""),
             ))
 
         if mappings_to_create:
-            ProvisionEditionMapping.objects.bulk_create(
+            ProvisionMapping.objects.bulk_create(
                 mappings_to_create, ignore_conflicts=True
             )
 

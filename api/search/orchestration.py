@@ -11,7 +11,7 @@ from django.db.models import Prefetch, Q
 from core.models import (
     CodeEditionProvisionVersion,
     ProvinceCode,
-    ProvisionEditionMapping,
+    ProvisionMapping,
 )
 
 from .engine import SEARCH_RESULT_LIMIT, compute_idf, score_versions
@@ -152,20 +152,30 @@ def _group_transitions(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         output.append(newer)
         output.append(older)
 
-    # Cross-edition transitions via ProvisionEditionMapping
-    output = _merge_cross_edition_transitions(output)
+    # Cross- and intra-edition transitions via ProvisionMapping
+    output = _merge_provision_mapping_transitions(output)
 
     return output
 
 
-def _merge_cross_edition_transitions(
+def _merge_provision_mapping_transitions(
     results: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Check for cross-edition pairs via ProvisionEditionMapping.
+    """Check for old↔new provision pairs via ProvisionMapping.
 
-    If provision A in edition X maps to provision B in edition Y, and both
-    appear in results (without an existing transition_context), group them
-    as a transition pair.
+    If provision A maps to provision B, and both appear in results
+    (without an existing transition_context), group them as a transition
+    pair.  The pair may straddle editions (cross-edition mapping) or sit
+    inside a single edition (intra-edition renumber); we surface both
+    through the same transition_context, with ``same_edition`` letting
+    the UI render them distinctly.
+
+    For intra-edition pairs the transition prose comes from the gazette
+    clause that triggered the renumber — reachable via
+    ``mapping.introduced_by_version.clause.clause_text``.  For
+    cross-edition pairs no such clause exists; we fall back to the new
+    version's ``transition_provision`` (a Division C / Part 12 entry on
+    the receiving edition).
     """
     # Build lookup: provision PK -> result (only ungrouped results)
     ungrouped = [r for r in results if not r.get("transition_context")]
@@ -178,9 +188,13 @@ def _merge_cross_edition_transitions(
     if not provision_pks:
         return results
 
-    mappings = ProvisionEditionMapping.objects.filter(
+    mappings = ProvisionMapping.objects.filter(
         Q(old_provision_id__in=provision_pks) | Q(new_provision_id__in=provision_pks)
-    ).select_related("old_provision", "new_provision")
+    ).select_related(
+        "old_provision__edition",
+        "new_provision__edition",
+        "introduced_by_version__clause",
+    )
 
     if not mappings:
         return results
@@ -202,23 +216,35 @@ def _merge_cross_edition_transitions(
         if old_pk in paired_pks or new_pk in paired_pks:
             continue
 
-        # Build transition context
+        same_edition = (
+            mapping.old_provision.edition_id == mapping.new_provision.edition_id
+        )
+
         transition_text = ""
-        new_version = new_result.get("version")
-        if new_version and hasattr(new_version, "transition_provision"):
-            tp = new_version.transition_provision
-            if tp:
-                transition_text = tp.html
+        if same_edition and mapping.introduced_by_version is not None:
+            clause = mapping.introduced_by_version.clause
+            if clause is not None:
+                transition_text = clause.clause_text
+        else:
+            new_version = new_result.get("version")
+            if new_version and hasattr(new_version, "transition_provision"):
+                tp = new_version.transition_provision
+                if tp:
+                    transition_text = tp.html
 
         new_result["transition_context"] = {
             "is_primary": True,
             "transition_text": transition_text,
             "other_edition": old_result.get("code_edition", ""),
+            "same_edition": same_edition,
+            "mapping_type": mapping.mapping_type,
         }
         old_result["transition_context"] = {
             "is_primary": False,
             "transition_text": transition_text,
             "other_edition": new_result.get("code_edition", ""),
+            "same_edition": same_edition,
+            "mapping_type": mapping.mapping_type,
         }
         paired_pks.add(old_pk)
         paired_pks.add(new_pk)

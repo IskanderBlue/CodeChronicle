@@ -8,7 +8,7 @@ from .models import (
     CodeMap,
     CodeMapNode,
     ProvinceCode,
-    ProvisionEditionMapping,
+    ProvisionMapping,
     ProvisionVersionTable,
     Regulation,
     RegulationClause,
@@ -42,4 +42,4 @@ admin.site.register(RegulationClause)
 admin.site.register(CodeEditionProvision)
 admin.site.register(CodeEditionProvisionVersion)
 admin.site.register(ProvisionVersionTable)
-admin.site.register(ProvisionEditionMapping)
+admin.site.register(ProvisionMapping)

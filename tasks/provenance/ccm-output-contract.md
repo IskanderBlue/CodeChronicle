@@ -21,7 +21,7 @@ populate its provenance models for that edition.
 
   "regulations": [ ... ],
   "provisions": [ ... ],
-  "edition_mappings": [ ... ]
+  "provision_mappings": [ ... ]
 }
 ```
 
@@ -82,6 +82,7 @@ effective date then filing date.
 | `amend_add` | Add content to/after target |
 | `amend_strike_sub` | Find and replace text in target |
 | `revoke` | Remove target |
+| `renumber` | Re-id target (pairs with a `provision_mappings[]` entry) |
 
 ### `clauses[].target_level` values
 
@@ -255,6 +256,7 @@ collapse sub-article IDs into the parent article.
 | `amend_add` | Content added to provision |
 | `amend_strike_sub` | Text replaced within provision |
 | `revoked` | Provision removed — `html` is empty |
+| `renumbered` | Provision re-identified — the paired new-id provision is added via a `provision_mappings[]` entry |
 
 ### `versions[].regulation` + `versions[].clause_id`
 
@@ -345,27 +347,83 @@ When a table is amended but its parent provision's text is unchanged,
 the parent still gets a new version (with the same `html`) because the
 table content changed.
 
-## `edition_mappings[]`
+## `provision_mappings[]`
 
-Cross-edition provision identity mappings. Optional — only present when
-mapping data exists.
+Provision identity mappings — both intra-edition renumbers driven by
+gazette directives and cross-edition identity carries. A single unified
+array; the two cases are distinguished by whether the old/new editions
+match, not by a separate payload shape.
+
+Optional — only present when mapping data exists.
+
+### Intra-edition renumber (introduced by a gazette clause)
 
 ```json
 {
+  "old_provision_id": "9.10.18.6.",
+  "old_division": "",
   "old_edition": "1997",
+  "new_provision_id": "9.10.18.7.",
+  "new_division": "",
+  "new_edition": "1997",
+  "mapping_type": "renumbered",
+  "introduced_by": {
+    "provision_id": "9.10.18.7.",
+    "division": "",
+    "version": 1
+  },
+  "notes": ""
+}
+```
+
+`introduced_by` is the **new-id version** that first materialises the
+renumber (the version whose `action` is `"renumbered"`). Triple-resolved
+by CodeChronicle through the version lookup built from `provisions[]`,
+then attached as `ProvisionMapping.introduced_by_version`. This lets the
+UI render the gazette clause text (`introduced_by_version.clause.clause_text`)
+as the transition narrative for intra-edition pairs.
+
+OBC 1997 has no Division A/B/C structure, so `division` is an empty
+string in the example above. For Division-bearing editions (OBC 2006+,
+NBC), populate `division` with the top-level Division name.
+
+### Cross-edition identity carry
+
+```json
+{
   "old_provision_id": "9.10.18.6.",
   "old_division": "Part 9",
-  "new_edition": "2006",
+  "old_edition": "1997",
   "new_provision_id": "9.10.18.6.",
   "new_division": "Division B",
-  "mapping_type": "renamed",
+  "new_edition": "2006",
+  "mapping_type": "renumbered",
+  "introduced_by": null,
   "notes": "Renumbered when Division B introduced"
 }
 ```
 
-CodeChronicle resolves `old_edition` + `old_provision_id` and
-`new_edition` + `new_provision_id` to `CodeEditionProvision` FKs during
-ingestion.
+Cross-edition pairs have no introducing gazette clause (the new edition
+is a wholesale re-enactment), so `introduced_by` is null. The UI falls
+back to the new version's `transition_provision_id` (a Division C /
+Part 12 entry on the receiving edition) for the transition narrative.
+
+### `mapping_type` values
+
+| Value | Meaning |
+|-------|---------|
+| `renumbered` | Same content, different id (most common) |
+| `split` | One provision becomes several |
+| `merged` | Several provisions become one |
+| `replaced` | Substantively replaced across the identity boundary |
+
+### Resolution
+
+CodeChronicle resolves `old_edition` + `old_provision_id` +
+`old_division` and `new_edition` + `new_provision_id` + `new_division` to
+`CodeEditionProvision` FKs during ingestion. `introduced_by` is resolved
+via the `(provision_id, division, version)` triple to a
+`CodeEditionProvisionVersion` FK on the new-id side.
 
 ## Image Pre-Rendering
 

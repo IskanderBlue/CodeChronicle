@@ -347,6 +347,7 @@ class RegulationClause(models.Model):
         AMEND_ADD = "amend_add", "Amend by adding"
         AMEND_STRIKE_SUB = "amend_strike_sub", "Amend by striking and substituting"
         REVOKE = "revoke", "Revoke"
+        RENUMBER = "renumber", "Renumber"
 
     class TargetLevel(models.TextChoices):
         ARTICLE = "article", "Article"
@@ -448,6 +449,7 @@ class CodeEditionProvisionVersion(models.Model):
         AMEND_ADD = "amend_add", "Amend by adding"
         AMEND_STRIKE_SUB = "amend_strike_sub", "Amend by striking and substituting"
         REVOKED = "revoked", "Revoked"
+        RENUMBERED = "renumbered", "Renumbered"
 
     provision = models.ForeignKey(
         CodeEditionProvision, on_delete=models.CASCADE, related_name="versions",
@@ -517,8 +519,21 @@ class ProvisionVersionTable(models.Model):
         return f"{self.version} — {self.table_id}"
 
 
-class ProvisionEditionMapping(models.Model):
-    """Cross-edition provision identity mapping."""
+class ProvisionMapping(models.Model):
+    """Old↔new provision identity mapping.
+
+    The two endpoints may share an edition (intra-edition renumber
+    triggered by a gazette amendment) or differ (cross-edition migration
+    produced by CCM's edition matcher).  ``introduced_by_version`` is
+    populated only for intra-edition rows — the version whose
+    ``action == "renumbered"`` is the structural origin of the mapping.
+    """
+
+    class MappingType(models.TextChoices):
+        RENUMBERED = "renumbered", "Renumbered"
+        SPLIT = "split", "Split"
+        MERGED = "merged", "Merged"
+        REPLACED = "replaced", "Replaced"
 
     old_provision = models.ForeignKey(
         CodeEditionProvision, on_delete=models.CASCADE, related_name="mapped_forward",
@@ -526,11 +541,17 @@ class ProvisionEditionMapping(models.Model):
     new_provision = models.ForeignKey(
         CodeEditionProvision, on_delete=models.CASCADE, related_name="mapped_back",
     )
-    mapping_type = models.CharField(max_length=20)
+    mapping_type = models.CharField(max_length=20, choices=MappingType.choices)
+    introduced_by_version = models.ForeignKey(
+        CodeEditionProvisionVersion,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="introduced_mappings",
+    )
     notes = models.TextField(blank=True, default="")
 
     class Meta:
-        db_table = "provision_edition_mappings"
+        db_table = "provision_mappings"
         constraints = [
             models.UniqueConstraint(
                 fields=["old_provision", "new_provision"],
