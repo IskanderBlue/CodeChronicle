@@ -151,9 +151,7 @@ Provision bboxes encompass the provision text plus any associated tables.
   "versions": [
     {
       "version": 0,
-      "action": "original",
-      "regulation": "403/97",
-      "clause_id": null,
+      "clauses": [],
       "effective_date": "1998-04-06",
       "ineffective_date": "1998-04-06",
       "transition_provision_id": null,
@@ -169,9 +167,9 @@ Provision bboxes encompass the provision text plus any associated tables.
     },
     {
       "version": 1,
-      "action": "revoke_and_substitute",
-      "regulation": "22/98",
-      "clause_id": "1.(1)",
+      "clauses": [
+        {"regulation": "22/98", "clause_id": "1.(1)"}
+      ],
       "effective_date": "1998-04-06",
       "ineffective_date": null,
       "transition_provision_id": null,
@@ -187,6 +185,14 @@ Provision bboxes encompass the provision text plus any associated tables.
 }
 ```
 
+Note v0's `ineffective_date` equalling its `effective_date` — a
+zero-width window. Emitted whenever the first amendment on a
+provision falls on the same date as the base edition's effective
+date (common: day-zero amendments filed simultaneously with the
+base regulation). Preserves the "as-filed" snapshot without
+claiming it was ever in force. Consumers that only want in-force
+windows can filter `v.ineffective_date == v.effective_date`.
+
 ### Appendix provision example
 
 ```json
@@ -200,9 +206,7 @@ Provision bboxes encompass the provision text plus any associated tables.
   "versions": [
     {
       "version": 0,
-      "action": "original",
-      "regulation": "403/97",
-      "clause_id": null,
+      "clauses": [],
       "effective_date": "1998-04-06",
       "ineffective_date": null,
       "transition_provision_id": null,
@@ -246,34 +250,69 @@ No `table` level — tables are content within provisions. `sentence` and
 `clause` levels are used by appendix provisions only — body provisions
 collapse sub-article IDs into the parent article.
 
-### `versions[].action` values
+### Version-level `action` is not stored
 
-| Value | Meaning |
-|-------|---------|
-| `original` | From base regulation (version 0 of base provisions) |
-| `added` | New provision created by an amendment (version 0 of added provisions) |
-| `revoke_and_substitute` | Entire provision replaced |
-| `amend_add` | Content added to provision |
-| `amend_strike_sub` | Text replaced within provision |
-| `revoked` | Provision removed — `html` is empty |
-| `renumbered` | Provision re-identified — the paired new-id provision is added via a `provision_mappings[]` entry |
+Versions do not carry a version-level `action` field. Where a kind-
+of-change label is needed, it is **derived** from the version's
+contributing clauses:
 
-### `versions[].regulation` + `versions[].clause_id`
+| Semantic | Derivation |
+|----------|------------|
+| "original" | `version == 0 AND clauses == []` |
+| "added"    | `version == 0 AND any clause has `action == "amend_add"` whose `directives[]` creates this provision id` |
+| "revoked"  | Any contributing clause has `action == "revoke"` |
+| "renumbered" (new id) | A `provision_mappings[]` entry points its `introduced_by.version` at this version |
+| Other kinds (revoke_and_substitute, amend_strike_sub, amend_add content-only) | Inspect contributing clauses' actions directly |
 
-Together these identify the source. CodeChronicle resolves these to
-`Regulation` and `RegulationClause` FKs during ingestion.
+Fine-grained amendment intent lives on `RegulationClause.action`,
+which is where it belongs — per clause, not per version (a single
+version can aggregate clauses of different kinds; see below).
 
-- For `action: "original"`: `regulation` = base reg_id, `clause_id` = null
-- For `action: "added"`: `regulation` = amending reg_id, `clause_id` = the clause
-- For all others: `regulation` = amending reg_id, `clause_id` = the clause
+### `versions[].clauses[]`
+
+The list of gazette clauses that contributed to this version, in
+application order. Each entry references a clause on a regulation
+elsewhere in `regulations[]`.
+
+```json
+"clauses": [
+  {"regulation": "22/98", "clause_id": "18"},
+  {"regulation": "122/98", "clause_id": "2.(1)"},
+  {"regulation": "122/98", "clause_id": "2.(2)"}
+]
+```
+
+- `version == 0` base originals emit `clauses: []`.
+- `version == 0` amend-add-created provisions emit the single
+  creating clause.
+- Every other version emits one entry per clause that applied
+  during this version's window.
+- Application order is `(regulation.filed_date, clause_id)` — the
+  order in which the applicator actually processed them.
+
+CodeChronicle resolves each `(regulation, clause_id)` tuple to a
+`RegulationClause` FK during ingestion and stores the list as an
+M2M relation on `CodeEditionProvisionVersion`.
 
 ### `versions[].effective_date` / `ineffective_date`
 
-- `effective_date`: when this version comes into force
-- `ineffective_date`: when this version ceases to be in force. Null if
-  this is the current version and the edition is still in force.
-- During a transition period, the old version's `ineffective_date` is
-  extended to the overlap end. Both versions have overlapping date ranges.
+**One `ProvisionVersion` per `(provision_id, effective_date)` pair.**
+If ten clauses — from any number of regulations — act on one
+provision on one date, they collapse into a single version carrying
+all ten clause refs in `clauses[]`. Version numbers are a strict
+ascending sequence per provision: v0, v1, v2, …  No version-number
+collisions, no same-date duplicates.
+
+- `effective_date`: when this version comes into force.
+- `ineffective_date`: when this version ceases to be in force. Null
+  if this is the current version and the edition is still in force.
+- `ineffective_date == effective_date` — a zero-width window — is
+  legal and carries the "as-filed but superseded same day" case.
+  Typical for v0 of a provision whose first amendment shares the
+  base regulation's effective date.
+- During a transition period, the old version's `ineffective_date`
+  is extended to the overlap end. Both versions have overlapping
+  date ranges.
 
 ### `versions[].transition_provision_id`
 
