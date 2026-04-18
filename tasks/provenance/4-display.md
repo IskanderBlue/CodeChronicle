@@ -128,12 +128,37 @@ Always visible. Integrated with provision identity:
 Tables are `ProvisionVersionTable` records, displayed inline.
 
 - Caption above in small caps.
-- Images in a scrollable container (`overflow-y: auto`, max-height).
-  Multi-page tables scroll vertically — no pagination clicks.
-  Engineers scan tables looking for specific rows; free scrolling is
-  faster than clicking through 20 pages.
-- Subtle blue-gray tinted background (engineering drawings convention).
-- Notes below with thin top rule, smaller size.
+- Render rule — per version, per table:
+  - If `html` is non-empty, render it directly inside the table container
+    with `|safe`. Trust boundary is CCM, not the template: same
+    convention already in use for `CodeEditionProvisionVersion.html`
+    and `ProvisionVersionTable.notes`-adjacent HTML (see the `|safe`
+    calls in `templates/partials/_result_document_block.html`). If a
+    future source is less trusted than e-Laws, add the sanitizer in
+    CCM, not here — keeping the render path uniform.
+  - Else render `images` in a scrollable container (`overflow-y: auto`,
+    max-height). Multi-page tables scroll vertically — no pagination
+    clicks. Engineers scan tables looking for specific rows; free
+    scrolling is faster than clicking through 20 pages.
+- Both forms share the same outer container styling so the switch
+  between HTML and image tables is not visually jarring: subtle
+  blue-gray tinted background (engineering drawings convention),
+  hairline border, caption band on top.
+- HTML tables inherit the `prose` stack already applied to provision
+  HTML. Specific typographic refinements (Literata for cells, numeric
+  alignment, header weighting) layer on via a `provision-table-html`
+  class without changing the render contract.
+- Notes below with thin top rule, smaller size. When the HTML form
+  already embeds notes, CCM sends `notes=""` — don't render the notes
+  block in that case (avoid duplication).
+
+#### Why the dual representation
+
+`html` is available only where e-Laws (or another structured source)
+publishes a point-in-time form. That's typically base v0 of the source
+edition and the latest consolidation; historical amended versions stay
+image-only. Picking per-version keeps the authoritative artifact on
+screen for each slice of history without forcing a reconstruction pass.
 
 ### Mobile
 
@@ -327,7 +352,10 @@ Built in JavaScript from data attributes on the provenance header.
 - Base provision: page image displayed, teal spine
 - Amended provision: HTML text displayed, brick spine
 - Revoked provision: previous version shown with "Revoked" banner
-- Table: scrollable image container with caption and notes
+- Table (image form): scrollable image container with caption and notes
+- Table (HTML form, e-Laws-sourced versions): sanitized `<table>`
+  rendered inline; matches image-form container styling; notes
+  suppressed when embedded in HTML
 - "Next amendment" shown when applicable
 - Transition: both versions visible with block quote header
 - Regulation view: all clauses listed, action pills, links work

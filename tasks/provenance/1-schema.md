@@ -246,7 +246,12 @@ class ProvisionVersionTable(models.Model):
     table_id = models.CharField(max_length=200)  # "Table-3.1.4.7."
     caption = models.CharField(max_length=500, blank=True, default="")
     images = models.JSONField(default=list)
-        # Source document pages or pre-composited amended images
+        # Source document pages or pre-composited amended images.
+        # May be empty when `html` is populated and no image is needed.
+    html = models.TextField(blank=True, default="")
+        # Structured table markup from e-Laws (current consolidation) or
+        # other HTML sources. Empty string = no HTML available; fall back
+        # to `images`. See display rules in 4-display.md.
     notes = models.TextField(blank=True, default="")
     order = models.PositiveSmallIntegerField(default=0)
 

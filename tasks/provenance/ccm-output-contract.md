@@ -368,6 +368,7 @@ Tables belonging to this provision at this version.
     {"image": "documents/obc_1997_v2.pdf/143.webp", "bboxes": [{"l": 50, "t": 100, "r": 750, "b": 30}]},
     {"image": "documents/obc_1997_v2.pdf/144.webp", "bboxes": [{"l": 50, "t": 30, "r": 750, "b": 600}]}
   ],
+  "html": "",
   "notes": "Note (1): For buildings of...",
   "order": 0
 }
@@ -378,8 +379,18 @@ Tables belonging to this provision at this version.
   For base tables, these are source document pages. For amended tables
   with pre-composited overlays, the `image` path points to the
   composited image (bbox covers the full composited image).
+  May be an empty list when `html` is populated and no authoritative
+  image form is available for this version.
+- `html`: Structured table markup (e.g. `<table>...</table>`) sourced
+  from e-Laws when a point-in-time HTML form exists for this version.
+  Empty string when unavailable — the renderer falls back to `images`.
+  Typically populated for base v0 of e-Laws-sourced editions and the
+  latest consolidated version; historical amended versions usually
+  stay image-only because e-Laws only publishes current consolidations.
 - `notes`: Table notes as text. Notes that were amended have the
-  amended text here.
+  amended text here. When `html` is populated, notes may already be
+  embedded in the markup — in that case emit `notes: ""` to avoid
+  double-rendering.
 - `order`: Display order when a provision has multiple tables.
 
 When a table is amended but its parent provision's text is unchanged,

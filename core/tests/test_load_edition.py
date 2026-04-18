@@ -137,6 +137,43 @@ class TestLoadEdition:
         assert isinstance(tbl.images, list)
         assert "Note (1)" in tbl.notes
 
+    def test_table_html_ingests_when_present(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """CCM-emitted ``html`` on a table lands on ``ProvisionVersionTable.html``."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        markup = "<table><tbody><tr><td>Between suites</td><td>1 h</td></tr></tbody></table>"
+        injected = 0
+        for prov in data["provisions"]:
+            for ver in prov.get("versions", []):
+                for tbl in ver.get("tables", []):
+                    tbl["html"] = markup
+                    injected += 1
+        assert injected >= 1, "fixture has no tables to test against"
+
+        with_html = tmp_path / "OBC_1997_with_html.json"
+        with_html.write_text(json.dumps(data), encoding="utf-8")
+
+        call_command("load_edition", "--source", str(with_html))
+
+        tbl = ProvisionVersionTable.objects.get(table_id="Table-3.1.4.7.")
+        assert tbl.html == markup
+
+    def test_table_html_defaults_empty(self, edition_json: Path, tmp_path: Path) -> None:
+        """Tables without an ``html`` key ingest with ``html == ""``."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        for prov in data["provisions"]:
+            for ver in prov.get("versions", []):
+                for tbl in ver.get("tables", []):
+                    tbl.pop("html", None)
+        stripped = tmp_path / "OBC_1997_no_html.json"
+        stripped.write_text(json.dumps(data), encoding="utf-8")
+
+        call_command("load_edition", "--source", str(stripped))
+
+        tbl = ProvisionVersionTable.objects.get(table_id="Table-3.1.4.7.")
+        assert tbl.html == ""
+
     def test_version_count_updated(self, edition_json: Path) -> None:
         call_command("load_edition", "--source", str(edition_json))
 

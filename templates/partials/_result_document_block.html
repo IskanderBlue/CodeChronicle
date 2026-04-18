@@ -88,11 +88,15 @@
 </div>
 {% endif %}
 
-{# Tables #}
+{# Tables — HTML form when available (e-Laws source), else image form. #}
 {% for table in result.tables %}
 <div class="mt-4 border-t border-neutral-200 dark:border-neutral-700 pt-3">
     <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">{{ table.caption|default:table.table_id }}</p>
-    {% if table.images %}
+    {% if table.html %}
+    <div class="rounded-md overflow-y-auto table-container prose dark:prose-invert prose-primary max-w-none provision-table-html" style="max-height: 500px;">
+        {{ table.html|safe }}
+    </div>
+    {% elif table.images %}
     <div class="rounded-md overflow-y-auto table-container" style="max-height: 500px;">
         {% for img_entry in table.images %}
         {% include "partials/_document_image.html" with img_entry=img_entry alt_text=table.table_id %}

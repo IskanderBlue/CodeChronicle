@@ -34,7 +34,8 @@ python manage.py load_edition --source path/to/OBC_1997.json
    - Set `effective_date`, `ineffective_date`, `clause` FK
    - Set `transition_provision` FK where transitions apply
 5. **Tables**: Create `ProvisionVersionTable` records from table data on
-   each version (table_id, caption, notes, image paths)
+   each version (table_id, caption, notes, image paths, `html` when
+   CCM provides an e-Laws-sourced HTML form)
 6. **Cross-edition mappings**: Create `ProvisionEditionMapping` records
    if mapping data is present
 
@@ -95,11 +96,30 @@ to S3. The `load_edition` command reads image paths from the JSON and
 stores them on `CodeEditionProvisionVersion.page_images` and
 `ProvisionVersionTable.images`.
 
+### HTML tables from e-Laws
+
+For editions whose source includes an e-Laws consolidation (Ontario
+regulations), CCM parses the e-Laws HTML and emits a `html` string in
+`versions[].tables[]` for each table it can match to a provision. The
+match key is `table_id` — CCM normalizes e-Laws table numbering to the
+same `"Table-X.Y.Z."` form used for image-based tables.
+
+`load_edition` stores this verbatim on `ProvisionVersionTable.html`. No
+sanitization at ingest — sanitize at render time (see 4-display.md) so
+we don't lose fidelity if the allow-list changes.
+
+Typical coverage: base v0 of the e-Laws source edition plus the latest
+consolidated version. Mid-chain amended versions usually have
+`html = ""` and render from `images` — e-Laws doesn't expose
+point-in-time HTML, so CCM can't emit it.
+
 ## Verification
 
 - `load_edition` ingests a CCM-produced JSON without errors
 - All provisions, versions, regulations, clauses populated
 - `ProvisionVersionTable` records created for table data
+- `ProvisionVersionTable.html` populated for versions whose CCM input
+  carried an e-Laws HTML form; empty string otherwise
 - Image paths resolve to real S3 objects
 - `version_count` matches actual version records
 - `effective_date` / `ineffective_date` form non-overlapping ranges per

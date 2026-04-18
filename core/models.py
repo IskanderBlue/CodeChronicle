@@ -502,6 +502,7 @@ class ProvisionVersionTable(models.Model):
     table_id = models.CharField(max_length=200)
     caption = models.CharField(max_length=500, blank=True, default="")
     images = models.JSONField(default=list)
+    html = models.TextField(blank=True, default="")
     notes = models.TextField(blank=True, default="")
     order = models.PositiveSmallIntegerField(default=0)
 

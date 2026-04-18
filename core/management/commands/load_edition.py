@@ -325,6 +325,7 @@ class Command(BaseCommand):
                         table_id=tbl_data["table_id"],
                         caption=tbl_data.get("caption", ""),
                         images=tbl_data.get("images", []),
+                        html=tbl_data.get("html", ""),
                         notes=tbl_data.get("notes", ""),
                         order=tbl_data.get("order", 0),
                     ))

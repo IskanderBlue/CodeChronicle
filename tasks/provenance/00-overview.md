@@ -42,8 +42,11 @@ is correct by showing:
 ### Display strategy
 
 - **Text** (articles, sentences): HTML rendered from applied amendments
-- **Tables**: Pre-composited images (base page + amendment patches baked in
-  at ingest time). No in-browser compositing.
+- **Tables**: HTML when e-Laws (or another structured source) publishes
+  a point-in-time form for that version; otherwise pre-composited
+  images (base page + amendment patches baked in at ingest time). No
+  in-browser compositing. Per-version, per-table switch — see
+  `4-display.md` for render rules.
 - **Base edition content**: PDF page images (the actual documents)
 - **Amended text content**: Rendered HTML (amendments produce new text)
 
