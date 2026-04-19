@@ -67,8 +67,7 @@ effective date then filing date.
       "strike_text": null,
       "sub_text": null,
       "page": 29,
-      "bbox": {"l": 194, "t": 625, "r": 366, "b": 30},
-      "overlay": null
+      "bbox": {"l": 194, "t": 625, "r": 366, "b": 30}
     }
   ]
 }
@@ -155,31 +154,6 @@ Until impl-27 lands, `amended_by` entries may appear on **stub
 clauses** that carry only `clause_id` + `amended_by` (no `action`,
 no `target_*` of their own). Merge with the full clause entry when
 both are present; otherwise render as a back-pointer-only row.
-
-### `clauses[].overlay`
-
-For table amendments with structural changes (column/row replacement),
-an overlay descriptor. Null for non-table amendments.
-
-```json
-{
-  "base_coverage": {
-    "pages": [28, 29, 30],
-    "column_x_ranges": [
-      {"label": "Peterborough", "x0": 339, "x1": 347}
-    ]
-  },
-  "replacement_source": {
-    "pdf": "ont_reg_1998_v1.pdf",
-    "page": 32,
-    "grid_bbox": {"l": 194.5, "t": 625.5, "r": 366.0, "b": 30.5}
-  }
-}
-```
-
-CodeChronicle does not use this at runtime — it's consumed by the image
-pre-compositor during ingest. Stored on `RegulationClause.overlay` for
-reference.
 
 ## `provisions[]`
 
@@ -423,9 +397,9 @@ Tables belonging to this provision at this version.
 
 - `images`: list of `{image, bboxes}` objects. Same format as
   `page_images` — full page image path + bboxes for the table region.
-  For base tables, these are source document pages. For amended tables
-  with pre-composited overlays, the `image` path points to the
-  composited image (bbox covers the full composited image).
+  For base tables, these are source document pages. For amended tables,
+  the `image` path points to the pre-composited image (bbox covers the
+  full composited image).
   May be an empty list when `html` is populated and no authoritative
   image form is available for this version.
 - `html`: Structured table markup (e.g. `<table>...</table>`) sourced
