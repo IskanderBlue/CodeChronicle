@@ -364,14 +364,18 @@ class RegulationClause(models.Model):
     )
     clause_id = models.CharField(max_length=50)
     parent_clause = models.CharField(max_length=50, blank=True, default="")
-    action = models.CharField(max_length=50, choices=Action.choices)
+    action = models.CharField(
+        max_length=50, choices=Action.choices, blank=True, default=""
+    )
     target_level = models.CharField(
         max_length=50, choices=TargetLevel.choices, blank=True, default=""
     )
     target_id = models.CharField(max_length=200, blank=True, default="")
+    target_reg = models.CharField(max_length=50, blank=True, default="")
     clause_text = models.TextField(blank=True, default="")
     strike_text = models.TextField(null=True, blank=True)
     sub_text = models.TextField(null=True, blank=True)
+    amended_by = models.JSONField(null=True, blank=True)
     page = models.IntegerField(null=True, blank=True)
     bbox = models.JSONField(null=True, blank=True)
     overlay = models.JSONField(null=True, blank=True)

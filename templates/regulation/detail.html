@@ -33,13 +33,19 @@
             <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300">{{ clause.get_action_display }}</span>
             {% elif clause.action == 'revoke' %}
             <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-red-200 text-red-900 dark:bg-red-900/60 dark:text-red-200">{{ clause.get_action_display }}</span>
-            {% else %}
+            {% elif clause.action %}
             <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300">{{ clause.get_action_display }}</span>
             {% endif %}
         </div>
-        {% if clause.target_level or clause.target_id %}
+        {% if clause.target_level or clause.target_id or clause.target_reg %}
         <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-            Target: {{ clause.get_target_level_display }} <span class="font-ref">{{ clause.target_id }}</span>
+            Target:
+            {% if clause.target_level %}{{ clause.get_target_level_display }}{% endif %}
+            {% if clause.target_id %}<span class="font-ref">{{ clause.target_id }}</span>{% endif %}
+            {% if clause.target_reg %}
+            <span class="text-neutral-400 dark:text-neutral-500">in</span>
+            <span class="font-ref">O. Reg. {{ clause.target_reg }}</span>
+            {% endif %}
         </p>
         {% endif %}
         {% if clause.clause_text %}
@@ -51,6 +57,29 @@
             <span class="text-neutral-400 dark:text-neutral-500 mx-1">&rarr;</span>
             <span class="text-green-700 dark:text-green-400">{{ clause.sub_text }}</span>
         </p>
+        {% endif %}
+        {% if clause.amended_by %}
+        <div class="mt-1.5">
+            <p class="text-xs text-neutral-500 dark:text-neutral-500 mb-1">
+                Subsequently amended by:
+            </p>
+            <ul class="text-sm space-y-0.5 pl-3 border-l border-amber-300 dark:border-amber-700">
+                {% for entry in clause.amended_by %}
+                <li class="text-neutral-700 dark:text-neutral-300">
+                    {% if entry.action == 'revoke' %}
+                    <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-red-200 text-red-900 dark:bg-red-900/60 dark:text-red-200">{{ entry.action }}</span>
+                    {% elif entry.action %}
+                    <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">{{ entry.action }}</span>
+                    {% endif %}
+                    <span class="font-ref">O. Reg. {{ entry.reg_id }}</span>,
+                    cl. <span class="font-ref">{{ entry.clause_id }}</span>
+                    {% if entry.effective_date %}
+                    <span class="text-neutral-400 dark:text-neutral-500">&middot; effective <span class="font-ref">{{ entry.effective_date }}</span></span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
         {% endif %}
         {# Gazette page image (collapsible) #}
         {% if clause.page and regulation.source_pdf %}

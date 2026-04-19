@@ -109,6 +109,53 @@ The directive text from the gazette, verbatim. E.g.:
 > system' and 'Sewage system' in Article 1.1.3.2. of the Regulation are
 > revoked and the following substituted"
 
+### `clauses[].target_reg` (optional)
+
+Regulation slug (e.g. `"360/13"`) when the clause targets another
+regulation's clauses rather than a base-code provision
+(**meta-amendment**). Empty string (the default) means the target is a
+base-code provision — this keeps the field fully back-compatible with
+pre-impl-26 JSONs.
+
+```json
+{
+  "clause_id": "165",
+  "target_reg": "360/13",
+  "target_id": "5",
+  "target_level": "section"
+}
+```
+
+Meta-amendment clauses currently ship as **pointer-only** entries —
+`action`, `clause_text`, `strike_text`, and `sub_text` are absent.
+Full text-mutation fields arrive in impl-27. Consumers must tolerate
+clauses without `action`.
+
+### `clauses[].amended_by` (optional)
+
+Back-pointers on a **target regulation's** clauses listing the
+meta-amending clauses that touched them. Populated automatically from
+forward-pointer clauses — callers don't emit this themselves.
+
+```json
+{
+  "clause_id": "5",
+  "amended_by": [
+    {
+      "reg_id": "191/14",
+      "clause_id": "165",
+      "action": "revoke",
+      "effective_date": "2015-01-01"
+    }
+  ]
+}
+```
+
+Until impl-27 lands, `amended_by` entries may appear on **stub
+clauses** that carry only `clause_id` + `amended_by` (no `action`,
+no `target_*` of their own). Merge with the full clause entry when
+both are present; otherwise render as a back-pointer-only row.
+
 ### `clauses[].overlay`
 
 For table amendments with structural changes (column/row replacement),
