@@ -9,7 +9,7 @@ logger = Logger(__name__)
 
 def extract_keywords():
     # Path to the neighboring CodeChronicleMapping repo
-    maps_dir = os.path.abspath(os.path.join("..", "CodeChronicleMapping", "maps"))
+    maps_dir = os.path.abspath(os.path.join("..", "CodeChronicleMapping", "data", "outputs"))
     map_files = glob.glob(os.path.join(maps_dir, "*.json"))
 
     # Derive synonyms dynamically from the mcp_server.py

@@ -39,8 +39,6 @@ def _run_load_maps(tmp_path, filename, payload):
         mock_cmn.objects.filter.return_value = filter_qs
 
         # CodeMapNode(...) — capture constructor calls by returning real SimpleNamespace
-        original_fields = {}
-
         def fake_node_init(**kwargs):
             node = SimpleNamespace(**kwargs)
             return node
