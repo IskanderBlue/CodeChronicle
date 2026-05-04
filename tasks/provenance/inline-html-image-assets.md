@@ -23,11 +23,27 @@ The current contract has slots for full-page images (`versions[].page_images`)
 and table-region images (`versions[].tables[].images`) but no slot for
 images referenced from inside `versions[].html`.
 
-CCM's pipeline currently drops these tags during payload extraction,
-silently omitting equations and figures from new provisions added by
-post-2017 amendments.  Fixing the drop on the CCM side requires CC to
-accept inline `<img>` references and a manifest of the assets they
-point to.
+## Design — URL-mirrored layout (no `<img src>` rewrite)
+
+CCM mirrors each referenced image to its on-disk build artifact at the
+**URL path verbatim**:
+
+```
+data/outputs/
+├── OBC_2012.json
+└── laws/
+    └── images/
+        └── en/
+            └── R19088_e_files/
+                ├── image007.gif
+                └── image008.gif
+```
+
+Because `<img src>` in the source filing already says
+`/laws/images/en/R19088_e_files/image007.gif` (root-relative URL), and
+CC mounts the asset bucket at host root with the same prefix, the
+references resolve directly.  **No rewrite of `<img src>` is needed**
+on either side — the HTML coming out of CCM's parser is the final form.
 
 ## Proposed contract addition
 
@@ -39,11 +55,11 @@ A regulation-level asset registry, keyed by stable relative path:
 "regulations": [
   {
     "reg_id": "88/19",
-    "role": "amend",
+    "role": "amendment",
     ...,
     "assets": [
       {
-        "path": "images/88-19/abc12345_image007.gif",
+        "path": "laws/images/en/R19088_e_files/image007.gif",
         "original_url": "https://www.ontario.ca/laws/images/en/R19088_e_files/image007.gif",
         "sha256": "abc12345...",
         "bytes": 4231,
@@ -55,67 +71,82 @@ A regulation-level asset registry, keyed by stable relative path:
 ]
 ```
 
-- `path`: stable, sha-prefixed relative path used as the `src` attribute
-  of every `<img>` tag in `versions[].html` that references this asset.
-  Sha-prefix makes the path content-addressed: identical bytes
-  collapse to one record across regs/editions if CC wants.
-- `original_url`: source URL (for provenance / refetch).
-- `sha256`: full hash of the bytes for verification.
+- `path`: stable relative path that matches the URL path component of
+  the corresponding `<img src>` (sans leading slash) AND the on-disk
+  location under the build artifact root.  CC serves at this same path,
+  prefixed by host root, so the inline `src` references resolve.
+- `original_url`: source URL (for provenance / refetch).  Documentary,
+  not load-bearing once the bytes are mirrored.
+- `sha256`: full hash of the bytes for verification on ingestion.
 - `bytes`, `content_type`: standard metadata.
 
 Regulation-level (not version-level) because the same image can be
 referenced by multiple versions of the same provision (e.g. the figure
 captured at `amend_add` time is still inline in subsequent
-`amend_strike_sub` versions that don't replace it).
+`amend_strike_sub` versions that don't replace it).  A regulation's
+`assets[]` is the closure of every image its body HTML references.
+
+The on-disk image tree under `data/outputs/laws/images/...` is
+**shared across editions and regulations** — same URL, same file.
+Cross-edition dedup is automatic by URL.  Each edition's `assets[]`
+arrays just point at the shared pool.
 
 ### `versions[].html`
 
-Already accepts arbitrary inline HTML.  Extension is informal: the
-`<img src="…">` attribute now points at the relative `path` from
-`regulations[].assets`, not at an external URL.  CC's renderer should
-allow `<img>` through any HTML sanitizer applied to this field.
+Already accepts arbitrary inline HTML.  Extension is informal: `<img
+src="…">` attributes carry the original e-Laws root-relative URL
+(``/laws/images/...``).  CC's renderer should allow `<img>` through
+any HTML sanitizer applied to this field.
 
 ## CCM responsibilities (out of scope for CC)
 
 CCM owns:
 - Fetching images at extraction time (`https://www.ontario.ca{src}`).
-- Hashing, dedup, and stable path generation.
-- Writing assets into the build artifact at `images/<reg-slug>/<sha-prefix>_<name>`.
-- Emitting the `regulations[].assets` array.
-- Rewriting `<img src>` in `versions[].html` to the relative `path`.
+- Rate-limited, idempotent, content-addressed local mirroring at
+  `data/outputs/<URL-path>` (e.g. `data/outputs/laws/images/...`).
+- Emitting the `regulations[].assets[]` array per amendment regulation.
+- **Not** rewriting `<img src>` — the HTML's `src` attribute already
+  matches the served path.
 
 ## CC responsibilities
 
 CC owns:
-- Accepting and validating the `regulations[].assets` schema in the
+- Accepting and validating the `regulations[].assets[]` schema in the
   edition loader.
-- Copying asset bytes from the build artifact into CC's static asset
-  bucket (S3 or equivalent) at ingestion time.
-- Serving them at the same relative `path` so the inline `<img>`
-  references in `versions[].html` resolve.
-- Allowlisting `<img>` through any HTML sanitization applied to
-  `versions[].html`.
+- Copying asset bytes from the build artifact tree into CC's static
+  asset bucket (S3 or equivalent), preserving the relative path
+  (`laws/images/en/R19088_e_files/image007.gif`).
+- Serving them at host root with the prefix the `<img src>` expects
+  (`/laws/...`).  Either the bucket sits under that prefix on the
+  serving origin, or a `<base href>` declares the asset host.
+- Allowlisting `<img>` (and the `/laws/images/` src prefix) through
+  any HTML sanitization applied to `versions[].html`.
 
 ## Test cases
 
 Once landed:
 1. Loader accepts a fixture edition with `regulations[].assets`
    populated and inline `<img>` references in `versions[].html`.
-2. Validation: rejects an edition where a `<img src>` in
-   `versions[].html` doesn't resolve to a `regulations[].assets`
-   entry.
+2. Validation: every `<img src>` in `versions[].html` whose URL path
+   matches a known prefix (`/laws/images/`) resolves to a
+   `regulations[].assets[]` entry on some regulation in the edition.
 3. Validation: rejects asset entries whose `sha256` doesn't match the
    bytes of the file at `path` in the build artifact.
 4. Display: rendered version body shows the image inline, not as a
    broken link or stripped element.
+5. Display: a host serving the asset bucket at `/laws/...` resolves
+   inline `<img src="/laws/images/...">` without any in-app rewrite.
 
 ## Open questions
 
-1. **Asset path scoping** — regulation-level (`images/<reg-slug>/…`)
-   vs sha-only (`images/<sha-prefix>.<ext>`)?  Sha-only makes dedup
-   trivial across regs but loses provenance hints in the path.
-   Suggest: regulation-level path, with cross-reg dedup tracked via
-   `sha256` field rather than path collision.
+1. **Cross-host serving.**  If CC serves the main app from
+   `app.codechronicle.ca` and the asset bucket from a different host
+   (CDN), the root-relative `<img src="/laws/...">` would resolve
+   against the app host rather than the asset host.  Two fixes:
+   (a) serve the asset bucket from the app host under `/laws/...`,
+   (b) inject `<base href="https://assets.codechronicle.ca/">` into
+   the rendered version page.  Defer until CC's deployment topology
+   is set.
 2. **Refetch policy** — if the upstream URL 404s in 5 years, the
    build artifact still has the bytes; CC's bucket still has them.
    The `original_url` is documentary, not load-bearing.  Confirm CC
