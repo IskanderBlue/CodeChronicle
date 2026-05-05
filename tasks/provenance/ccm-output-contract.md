@@ -175,7 +175,7 @@ Provision bboxes encompass the provision text plus any associated tables.
       "clauses": [],
       "effective_date": "1998-04-06",
       "ineffective_date": "1998-04-06",
-      "transition_provision_id": null,
+      "transition_provision_ref": null,
 
       "title": "Definitions",
       "html": "<p>In this Code,</p><p>...</p>",
@@ -193,7 +193,7 @@ Provision bboxes encompass the provision text plus any associated tables.
       ],
       "effective_date": "1998-04-06",
       "ineffective_date": null,
-      "transition_provision_id": null,
+      "transition_provision_ref": null,
 
       "title": "Definitions",
       "html": "<p>In this Code,</p><p>...amended...</p>",
@@ -230,7 +230,7 @@ windows can filter `v.ineffective_date == v.effective_date`.
       "clauses": [],
       "effective_date": "1998-04-06",
       "ineffective_date": null,
-      "transition_provision_id": null,
+      "transition_provision_ref": null,
 
       "title": "",
       "html": "<p>The OBC applies to both site-built and...</p>",
@@ -335,16 +335,41 @@ collisions, no same-date duplicates.
   is extended to the overlap end. Both versions have overlapping
   date ranges.
 
-### `versions[].transition_provision_id`
+### `versions[].transition_provision_ref`
 
 When this version creates a transition period (the previous version
-continues to apply for some permits), this is the `provision_id` of the
-Division C / Part 12 provision that defines the transition terms.
+continues to apply for some permits), this is a record pinning the
+exact version of the Division C / Part 12 provision that defines the
+transition terms:
 
-CodeChronicle resolves this to a `CodeEditionProvisionVersion` FK during
-ingestion (the current version of the referenced transition provision).
+```json
+{
+  "provision_id": "4.1.2.1.",
+  "division": "C",
+  "version": 0
+}
+```
+
+- `provision_id`: bare provision id (no division prefix).
+- `division`: division string ("" for division-less editions like
+  OBC 1997).
+- `version`: version index of the transition article in force at the
+  linking version's `effective_date`.  CCM commits to this on the
+  producer side (impl-57) so consumers don't have to make the
+  judgment call.
+
+CodeChronicle dereferences this triple directly to a
+`CodeEditionProvisionVersion` row at ingest time and stores the FK on
+the linking version.  Hard error if the triple doesn't resolve — the
+new shape exists to remove ambiguity, so a missing referent is a real
+bug, not a soft case.
 
 Null when no transition applies.
+
+> **Migration note (impl-57, 2026-05-04):** This field was previously
+> named `transition_provision_id` and carried a bare provision id
+> string.  CCM no longer emits the legacy field; CC's ingestor raises
+> on encountering it (re-emit from CCM if you have an old JSON).
 
 ### `versions[].page_images`
 
@@ -476,7 +501,7 @@ NBC), populate `division` with the top-level Division name.
 
 Cross-edition pairs have no introducing gazette clause (the new edition
 is a wholesale re-enactment), so `introduced_by` is null. The UI falls
-back to the new version's `transition_provision_id` (a Division C /
+back to the new version's `transition_provision_ref` (a Division C /
 Part 12 entry on the receiving edition) for the transition narrative.
 
 ### `mapping_type` values

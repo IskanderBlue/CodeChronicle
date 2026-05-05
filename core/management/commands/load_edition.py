@@ -343,46 +343,72 @@ class Command(BaseCommand):
         prov_lookup: dict[tuple[str, str], CodeEditionProvision],
         provisions: list[dict[str, Any]],
     ) -> None:
+        """Resolve ``transition_provision_ref`` records to FK pins on
+        :class:`CodeEditionProvisionVersion`.
+
+        The contract shape (CCM impl-57) is a record carrying the full
+        identity of the transition article version:
+
+        ``{"provision_id": str, "division": str, "version": int}``
+
+        That triple is exactly the key of ``version_lookup`` — a one-shot
+        dereference, no resolution heuristic.  The producer commits to a
+        specific version (the version of the transition article in
+        force at the linking version's ``effective_date``); the
+        consumer just dereferences.
+
+        A ref that fails to resolve is a hard error.  The new shape is
+        explicitly designed to remove the ambiguity that warn-and-skip
+        used to paper over: a missing referent now means a real
+        inconsistency between the edition's provisions and its
+        transition refs, and silently dropping it would let the
+        ``transition_provision`` FK go null where the contract says it
+        should be set.
+        """
+        del prov_lookup  # impl-57: no longer needed; the ref carries division
         versions_to_update: list[CodeEditionProvisionVersion] = []
 
         for prov_data in provisions:
             provision_id = prov_data["provision_id"]
             division = prov_data.get("division", "")
             for ver_data in prov_data.get("versions", []):
-                tp_id = ver_data.get("transition_provision_id")
-                if not tp_id:
+                if "transition_provision_id" in ver_data:
+                    raise CommandError(
+                        "Edition JSON carries the legacy "
+                        "'transition_provision_id' field.  Re-emit from "
+                        "CCM under impl-57 (the field was renamed to "
+                        "'transition_provision_ref' and reshaped to a "
+                        "{provision_id, division, version} record)."
+                    )
+                ref = ver_data.get("transition_provision_ref")
+                if ref is None:
                     continue
                 version_num = ver_data["version"]
                 version = version_lookup.get((provision_id, division, version_num))
-                if not version:
-                    continue
-
-                # Find the current (latest) version of the transition provision
-                tp_prov = prov_lookup.get((tp_id, division))
-                if not tp_prov:
-                    tp_prov = prov_lookup.get((tp_id, ""))
-                if not tp_prov:
-                    for key, candidate in prov_lookup.items():
-                        if key[0] == tp_id:
-                            tp_prov = candidate
-                            break
-                if not tp_prov:
-                    logger.warning(
-                        "Transition provision %s not found for %s v%d",
-                        tp_id, provision_id, version_num,
+                if version is None:
+                    raise ValueError(
+                        f"Linking version not found in version_lookup: "
+                        f"{provision_id} (division={division!r}) v{version_num}.  "
+                        f"This is an ingest-side bug — every version emitted "
+                        f"by CCM should be in the lookup."
                     )
-                    continue
 
-                # Find the latest version of the transition provision
-                tp_version = None
-                for key, ver in version_lookup.items():
-                    if key[0] == tp_prov.provision_id and key[1] == (tp_prov.division or ""):
-                        if tp_version is None or key[2] > tp_version.version:
-                            tp_version = ver
+                tp_pid = ref["provision_id"]
+                tp_div = ref.get("division", "") or ""
+                tp_ver = int(ref["version"])
+                tp_version = version_lookup.get((tp_pid, tp_div, tp_ver))
+                if tp_version is None:
+                    raise ValueError(
+                        f"transition_provision_ref does not resolve: "
+                        f"(provision_id={tp_pid!r}, division={tp_div!r}, "
+                        f"version={tp_ver}) is not present in the edition's "
+                        f"provision-version set.  Linking version: "
+                        f"{provision_id} (division={division!r}) v{version_num}.  "
+                        f"Fix the producer (CCM impl-57)."
+                    )
 
-                if tp_version:
-                    version.transition_provision = tp_version
-                    versions_to_update.append(version)
+                version.transition_provision = tp_version
+                versions_to_update.append(version)
 
         if versions_to_update:
             CodeEditionProvisionVersion.objects.bulk_update(
