@@ -97,6 +97,25 @@ STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 
+# ===================
+# Asset root — CCM-mirrored images
+# ===================
+# Page images (``documents/...``), composited amended-table images
+# (``amended/...``), and e-Laws inline asset bytes (``laws/images/...``)
+# live under this root with paths verbatim matching the URL paths in the
+# CCM output JSON.  Inline ``<img src="/laws/images/...">`` references
+# in version HTML resolve here without rewriting.
+#
+# Development: served by Django via ``core.urls`` under ``/`` (see
+# url conf).  Production: nginx alias ``/`` → ASSET_ROOT for the
+# ``documents/``, ``amended/``, and ``laws/`` prefixes.
+#
+# Override with ``ASSET_ROOT`` env var to point at a checkout of
+# ``CodeChronicleMapping/data/outputs`` directly during local dev — the
+# layout is identical, so no sync step is needed in that mode.
+ASSET_ROOT = Path(os.environ.get("ASSET_ROOT", BASE_DIR / "assets"))
+
+
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

@@ -4,7 +4,7 @@ Claude-based query parser to extract structured search parameters from natural l
 
 import re
 from datetime import date
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import anthropic
 from django.conf import settings
@@ -156,13 +156,17 @@ def parse_user_query(query: str) -> Dict[str, Any]:
 
     try:
         user_message = f"Today's date: {date.today().isoformat()}\n\n{remaining_query}"
+        # The inline dicts are correct at runtime but don't match anthropic's
+        # exact TypedDict param types (e.g. "role" infers str, not the SDK's
+        # Literal). cast(Any) tells both checkers "trust these shapes" without
+        # importing the SDK's param types or pinning model literals.
         response = client.messages.create(
             model=settings.CLAUDE_MODEL,
             max_tokens=1000,
-            tools=[PARSE_QUERY_TOOL],
-            tool_choice={"type": "tool", "name": "parse_building_code_query"},
+            tools=cast(Any, [PARSE_QUERY_TOOL]),
+            tool_choice=cast(Any, {"type": "tool", "name": "parse_building_code_query"}),
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+            messages=cast(Any, [{"role": "user", "content": user_message}]),
         )
     except anthropic.AuthenticationError:
         raise ValueError(
@@ -174,7 +178,9 @@ def parse_user_query(query: str) -> Dict[str, Any]:
     # Extract tool use
     for block in response.content:
         if block.type == "tool_use":
-            params = block.input
+            # tool_use input is JSON typed as ``object`` by the SDK; it is a
+            # dict by construction of our tool schema.
+            params = cast(dict[str, Any], block.input)
 
             # Validate keywords against master list (extra safety)
             keywords = params.get("keywords", [])

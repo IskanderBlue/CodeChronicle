@@ -9,7 +9,7 @@ from django.db import connection, models
 from django.utils import timezone
 
 
-class UserManager(BaseUserManager):
+class UserManager(BaseUserManager["User"]):
     """
     Custom manager for the email-only User model.
     """
@@ -55,7 +55,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Stripe customer ID (managed by dj-stripe, but useful for quick lookup)
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
 
-    objects = UserManager()
+    # Explicit annotation so Pyright (no plugin) resolves UserManager methods
+    # like create_user, rather than falling back to the base Manager.
+    objects: "UserManager" = UserManager()
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -133,6 +135,9 @@ class SearchHistory(models.Model):
     """
     Track user search history for analytics and rate limiting.
     """
+
+    # Auto pk, plugin-only — declared for Pyright.
+    id: int
 
     user = models.ForeignKey(
         User,
@@ -252,6 +257,11 @@ class CodeEdition(models.Model):
     A specific edition/version of a code system.
     """
 
+    # Reverse relations — declared for Pyright (no plugin); the mypy
+    # django-stubs plugin infers these from the related_name on the FK side.
+    regulations: "models.Manager[Regulation]"
+    provisions: "models.Manager[CodeEditionProvision]"
+
     code = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="editions")
     edition_id = models.CharField(max_length=50)
     year = models.IntegerField()
@@ -310,6 +320,10 @@ class ProvinceCode(models.Model):
 
 class Regulation(models.Model):
     """An Ontario regulation — base code enactment or amendment."""
+
+    # Reverse relations (see note on CodeEdition).
+    clauses: "models.Manager[RegulationClause]"
+    assets: "models.Manager[RegulationAsset]"
 
     class Role(models.TextChoices):
         BASE = "base", "Base"
@@ -397,8 +411,51 @@ class RegulationClause(models.Model):
         return f"{self.regulation.reg_id} cl. {self.clause_id}"
 
 
+class RegulationAsset(models.Model):
+    """An inline-image asset referenced from a regulation's clause HTML.
+
+    Mirrors the ``regulations[].assets[]`` registry CCM emits for
+    e-Laws-derived editions.  Stored as a manifest only — the bytes live
+    under the asset root at ``path`` (e.g.
+    ``laws/images/en/R19088_e_files/image007.gif``).  The same relative
+    path is the URL path served at host root, so the inline
+    ``<img src="/laws/images/...">`` references in ``versions[].html``
+    resolve without HTML rewriting.
+    """
+
+    regulation = models.ForeignKey(
+        Regulation, on_delete=models.CASCADE, related_name="assets",
+    )
+    path = models.CharField(max_length=500)
+    original_url = models.CharField(max_length=500, blank=True, default="")
+    sha256 = models.CharField(max_length=64, blank=True, default="")
+    byte_size = models.BigIntegerField(null=True, blank=True)
+    content_type = models.CharField(max_length=100, blank=True, default="")
+
+    class Meta:
+        db_table = "regulation_assets"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["regulation", "path"],
+                name="regulation_asset_path_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["path"]),
+        ]
+
+    def __str__(self):
+        return f"{self.regulation.reg_id} :: {self.path}"
+
+
 class CodeEditionProvision(models.Model):
     """Structural identity of a provision within an edition. No content."""
+
+    # Reverse relations (see note on CodeEdition).
+    versions: "models.Manager[CodeEditionProvisionVersion]"
+    children: "models.Manager[CodeEditionProvision]"
+    # FK id-shadow, plugin-only — declared for Pyright.
+    parent_id: int | None
 
     class Level(models.TextChoices):
         DIVISION = "division", "Division"
@@ -444,27 +501,34 @@ class CodeEditionProvision(models.Model):
 
 
 class CodeEditionProvisionVersion(models.Model):
-    """A frozen snapshot of a provision's content at a point in the amendment chain."""
+    """A frozen snapshot of a provision's content at a point in the amendment chain.
 
-    class Action(models.TextChoices):
-        ORIGINAL = "original", "Original"
-        ADDED = "added", "Added"
-        REVOKE_AND_SUBSTITUTE = "revoke_and_substitute", "Revoke and substitute"
-        AMEND_ADD = "amend_add", "Amend by adding"
-        AMEND_STRIKE_SUB = "amend_strike_sub", "Amend by striking and substituting"
-        REVOKED = "revoked", "Revoked"
-        RENUMBERED = "renumbered", "Renumbered"
+    Version-level kind-of-change is derived, not stored — see
+    ``tasks/provenance/drop-version-action.md``.  A version may aggregate
+    multiple clauses of different actions on the same effective date; any
+    consumer that needs a kind label should project from
+    ``contributing_clauses``.
+    """
+
+    # Reverse relations (see note on CodeEdition).
+    tables: "models.Manager[ProvisionVersionTable]"
+    # FK id-shadow, plugin-only — declared for Pyright.
+    provision_id: int
 
     provision = models.ForeignKey(
         CodeEditionProvision, on_delete=models.CASCADE, related_name="versions",
     )
     version = models.PositiveSmallIntegerField(default=0)
-    clause = models.ForeignKey(
-        RegulationClause, null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="provision_versions",
-    )
-    action = models.CharField(
-        max_length=50, choices=Action.choices, default=Action.ORIGINAL
+    # String annotation (not evaluated at runtime — ManyToManyField is not
+    # subscriptable at runtime, unlike ForeignKey) so mypy learns the target
+    # and through models without breaking Django's model import.
+    contributing_clauses: "models.ManyToManyField[RegulationClause, CodeEditionProvisionVersionClause]" = (
+        models.ManyToManyField(
+            RegulationClause,
+            through="CodeEditionProvisionVersionClause",
+            related_name="contributed_to_versions",
+            blank=True,
+        )
     )
     effective_date = models.DateField()
     ineffective_date = models.DateField(null=True, blank=True)
@@ -489,12 +553,46 @@ class CodeEditionProvisionVersion(models.Model):
         ]
         indexes = [
             models.Index(fields=["provision", "effective_date"]),
-            models.Index(fields=["clause"]),
             models.Index(fields=["effective_date", "ineffective_date"]),
         ]
 
     def __str__(self):
         return f"{self.provision} v{self.version}"
+
+
+class CodeEditionProvisionVersionClause(models.Model):
+    """Through model for ``CodeEditionProvisionVersion.contributing_clauses``.
+
+    The contract orders contributing clauses by
+    ``(regulation.filed_date, clause_id)`` — the order the applicator
+    actually processed them.  ``apply_order`` is the 0-indexed position
+    within that ordering so consumers can reconstruct it without joining
+    against ``Regulation.filed_date``.
+    """
+
+    version = models.ForeignKey(
+        CodeEditionProvisionVersion, on_delete=models.CASCADE,
+    )
+    clause = models.ForeignKey(
+        RegulationClause, on_delete=models.CASCADE,
+    )
+    apply_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "code_edition_provision_version_clauses"
+        ordering = ["apply_order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["version", "clause"],
+                name="version_clause_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["clause"]),
+        ]
+
+    def __str__(self):
+        return f"{self.version} ← {self.clause} (#{self.apply_order})"
 
 
 class ProvisionVersionTable(models.Model):
@@ -533,6 +631,10 @@ class ProvisionMapping(models.Model):
     populated only for intra-edition rows — the version whose
     ``action == "renumbered"`` is the structural origin of the mapping.
     """
+
+    # FK id-shadows, plugin-only — declared for Pyright.
+    old_provision_id: int
+    new_provision_id: int
 
     class MappingType(models.TextChoices):
         RENUMBERED = "renumbered", "Renumbered"

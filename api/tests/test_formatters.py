@@ -1,3 +1,5 @@
+from typing import Any
+
 from api import formatters
 
 
@@ -316,12 +318,14 @@ def test_diff_html_content_preserves_original_whitespace():
     old_html = "<p>the Fire Protection and Prevention Act, 1997,</p>"
     new_html = "<p>the Fire Protection and Prevention Act, 1997,</p>"
     old_diff, new_diff = formatters._diff_html_content(old_html, new_html)
+    assert old_diff is not None
     assert "1997 ," not in old_diff  # no spurious space before comma
     assert "1997," in old_diff
     # "onlydwelling" should stay unseparated if that's the original
     old_html2 = "<p>onlydwelling units</p>"
     new_html2 = "<p>onlydwelling units</p>"
     old_diff2, _ = formatters._diff_html_content(old_html2, new_html2)
+    assert old_diff2 is not None
     assert "onlydwelling" in old_diff2  # no space inserted
 
 
@@ -427,7 +431,7 @@ def test_transition_context_passes_through_formatting(monkeypatch):
 
 
 def test_nest_child_results_under_parent():
-    results = [
+    results: list[dict[str, Any]] = [
         {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024", "title": "Parent",
          "division": "B"},
         {"id": "3.2.1", "parent_id": "3.2", "score": 0.85, "code": "OBC_2024", "title": "Child A",
@@ -451,7 +455,7 @@ def test_nest_child_results_under_parent():
 
 def test_nest_child_results_cross_edition_no_collision():
     """Same section IDs across editions must not collide or drop results."""
-    results = [
+    results: list[dict[str, Any]] = [
         # OBC parent + children
         {"id": "3.2", "parent_id": None, "score": 0.9, "code": "OBC_2024",
          "division": "B", "title": "OBC Parent"},

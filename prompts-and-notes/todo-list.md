@@ -6,7 +6,7 @@
 
 ## eventually
 - settings: should have a clicker ui to select the folder in addition to the text input.
-  - Troublesome; 
+  - Troublesome;
     - codex says no way to do this without triggering user-unfriendly warning; won't work for Firefox anyway.
     - Could do single-file drag-and-drop, but this doesn't store the full path; would have to store file in local IndexedDB, copyright issues.
     - Could use IndexedDB to store the full path, but this would require a custom implementation.
@@ -15,15 +15,15 @@
 - top bar: no longer fits at md even; must swap out at lg? Marginal.
 
 ### complete
-- ~~we want more detail returned from search_results; maybe title too.~~ 
+- ~~we want more detail returned from search_results; maybe title too.~~
 	- done: added page_end, code_display_name via verbose=True
-- ~~need loading indicator when search is running.~~ 
+- ~~need loading indicator when search is running.~~
 	- done: inject spinner into results area on submit
-- ~~"Full text not available for this code in the Free tier" displays if no pdf available even for pro.~~ 
+- ~~"Full text not available for this code in the Free tier" displays if no pdf available even for pro.~~
 	- done: changed to "Full text not available for this code edition."
-- ~~periodically check for style violations.~~ 
+- ~~periodically check for style violations.~~
 	- done: ran ruff check
-- ~~implement/test pdf display.~~ 
+- ~~implement/test pdf display.~~
 	- ~~test with NBC 2025.~~
 	- done: PDF.js inline rendering with expand/collapse, user-specific PDF directory in settings, serve_pdf view
 - ~~search history: shows "{{ result.title }}" rather than the actual title.~~
@@ -43,7 +43,7 @@
 - ~~Use `html` (`notes_html` too for table) if no pdf is available (eg. Ontario before current handbook)~~
 	- done
 - ~~If no page is available (eg. Ontario before current handbook), link to the regulation,~~
-  - done 
+  - done
   - ideally to the specific section or subsection.
     - Not feasible
 - ~~settings: should include links to all of the pdfs we can source.~~

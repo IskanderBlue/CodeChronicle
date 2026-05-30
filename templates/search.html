@@ -248,10 +248,10 @@
             if (!this.viewerResult) return null;
             const p = new URLSearchParams({
                 code: this.viewerResult.code || '',
-                node_id: this.viewerResult.id || '',
+                provision_id: this.viewerResult.id || '',
+                division: this.viewerResult.division || '',
                 query_date: this.queryDate,
                 query_code: this.queryCode,
-                map_code: this.viewerResult.map_code || '',
             });
             return '{% url "core:viewer_edition_nav" %}?' + p.toString();
         },
@@ -271,10 +271,17 @@
             }
         },
         sectionContentUrl() {
-            if (!this.viewerResult || !this.viewerResult.map_code || !this.viewerResult.id) return null;
+            if (!this.viewerResult || !this.viewerResult.code || !this.viewerResult.id) return null;
+            // viewerResult.code is like "OBC_1997"; split into code + edition_id
+            // for the new provenance-aware viewer endpoint.
+            const codeParts = (this.viewerResult.code || '').split('_');
+            if (codeParts.length < 2) return null;
             const p = new URLSearchParams({
-                map_code: this.viewerResult.map_code,
-                node_id: this.viewerResult.id,
+                code: codeParts[0],
+                edition_id: codeParts.slice(1).join('_'),
+                division: this.viewerResult.division || '',
+                provision_id: this.viewerResult.id,
+                query_date: this.queryDate || '',
             });
             return '{% url "core:viewer_section_content" %}?' + p.toString();
         },

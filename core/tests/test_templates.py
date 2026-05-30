@@ -1,4 +1,76 @@
+from datetime import date
+
+import pytest
+from django.template import Context, Template
 from django.template.loader import render_to_string
+
+from core.models import (
+    Code,
+    CodeEdition,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
+)
+
+ELAWS_SAMPLE = (
+    '<p class="Psection-e">2.2.1.1. Objectives</p>'
+    '<p class="subsection-e"><b>(1)</b> The <i>objectives</i> of this Code '
+    'shall be those set out in <i>Table 2.2.1.1.</i></p>'
+    '<p class="equation-e">'
+    '<img src="/laws/images/en/R19088_e_files/image007.gif" '
+    'alt="Image of equation"/></p>'
+)
+
+
+@pytest.fixture
+def elaws_version(db):
+    code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    edition = CodeEdition.objects.create(
+        code=code, edition_id="2012", year=2012,
+        effective_date=date(2012, 1, 1), map_codes=[],
+    )
+    provision = CodeEditionProvision.objects.create(
+        edition=edition,
+        provision_id="2.2.1.1.",
+        level=CodeEditionProvision.Level.ARTICLE,
+        division="Division A",
+    )
+    return CodeEditionProvisionVersion.objects.create(
+        provision=provision,
+        version=0,
+        effective_date=date(2012, 1, 1),
+        title="Objectives",
+        html=ELAWS_SAMPLE,
+    )
+
+
+@pytest.mark.django_db
+def test_version_html_renders_verbatim(elaws_version):
+    """``version.html`` reaches the rendered output unchanged.
+
+    Regression guard against accidental sanitisation/rewriting of
+    trusted e-Laws markup.  If this test ever fails, look for a new
+    template filter, Bleach call, or HTML-mutating function.  See
+    feedback_no_html_sanitisation.md.
+    """
+    template = Template("{{ version.html|safe }}")
+    rendered = template.render(Context({"version": elaws_version}))
+    assert rendered == ELAWS_SAMPLE
+
+
+@pytest.mark.django_db
+def test_provision_content_partial_preserves_html(elaws_version):
+    """The provenance/_provision_content.html partial renders
+    ``version.html`` verbatim alongside its surrounding markup."""
+    template = Template(
+        "{% include 'provenance/_provision_content.html' with version=version %}"
+    )
+    rendered = template.render(Context({"version": elaws_version}))
+    # Distinctive class names and tags must survive.
+    assert 'class="Psection-e"' in rendered
+    assert 'class="equation-e"' in rendered
+    assert '/laws/images/en/R19088_e_files/image007.gif' in rendered
+    # And no attribute reordering / quote rewriting.
+    assert ELAWS_SAMPLE in rendered
 
 
 def test_search_results_partial_renders_html_content():

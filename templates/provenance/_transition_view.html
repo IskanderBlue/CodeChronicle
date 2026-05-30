@@ -1,0 +1,58 @@
+{# Two-version transition view.
+   Context: `versions` (list of 2 in-force CodeEditionProvisionVersion
+   rows for the same provision; later effective_date appears first).
+   Top entry open by default, second collapsed. #}
+<div class="rounded-md border border-amber-300 dark:border-amber-700
+            bg-amber-50/60 dark:bg-amber-900/15 overflow-hidden">
+    <p class="px-3 py-1.5 text-xs uppercase tracking-wide font-semibold
+              text-amber-800 dark:text-amber-200
+              border-b border-amber-300 dark:border-amber-700">
+        Transition active
+    </p>
+
+    {% with versions.0.transition_provision as transition_prov %}
+    {% if transition_prov %}
+    <blockquote class="px-4 py-3 border-l-4 border-amber-400 dark:border-amber-600
+                       bg-white/40 dark:bg-neutral-950/30 italic text-sm
+                       text-neutral-700 dark:text-neutral-300">
+        <div class="font-serif">{{ transition_prov.html|safe }}</div>
+        <footer class="mt-1 not-italic text-xs text-neutral-500">
+            &mdash; {{ transition_prov.provision.provision_id }}
+            {% if transition_prov.provision.division %} ({{ transition_prov.provision.division }}){% endif %}
+        </footer>
+    </blockquote>
+    {% endif %}
+    {% endwith %}
+
+    <div class="divide-y divide-amber-200 dark:divide-amber-800/40"
+         x-data="{ open: 0 }">
+        {% for v in versions %}
+        <div class="px-3 py-2"
+             :class="open === {{ forloop.counter0 }} ? '' : 'opacity-75'">
+            <button type="button"
+                    @click="open = (open === {{ forloop.counter0 }} ? -1 : {{ forloop.counter0 }})"
+                    class="w-full flex justify-between items-center text-left">
+                <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    {% with v.contributing_clauses.all|last as cl %}
+                    {% if cl %}
+                    O. Reg. <span class="font-mono">{{ cl.regulation.reg_id }}</span>
+                    version
+                    {% else %}
+                    Base version (v{{ v.version }})
+                    {% endif %}
+                    {% endwith %}
+                    <span class="text-neutral-500 ml-2 font-mono">
+                        {{ v.effective_date|date:"Y-m-d" }}
+                        {% if v.ineffective_date %}&ndash; {{ v.ineffective_date|date:"Y-m-d" }}{% endif %}
+                    </span>
+                </p>
+                <span class="text-neutral-400 text-xs"
+                      x-text="open === {{ forloop.counter0 }} ? '−' : '+'"></span>
+            </button>
+            <div x-show="open === {{ forloop.counter0 }}" x-collapse>
+                {% include "provenance/_provision_content.html" with version=v %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>

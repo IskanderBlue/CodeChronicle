@@ -30,6 +30,8 @@ def history(request):
     # Fetch full records for the latest occurrence of each query
     searches = list(SearchHistory.objects.filter(id__in=latest_ids).order_by("-timestamp"))
     for s in searches:
-        s.search_count = count_map.get(s.id, 1)
+        # Attach the per-query count as a dynamic display attribute (read by
+        # history.html). Not a model field — setattr keeps that explicit.
+        setattr(s, "search_count", count_map.get(s.id, 1))
 
     return render(request, "history.html", {"history": searches})

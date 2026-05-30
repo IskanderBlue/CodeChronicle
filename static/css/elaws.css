@@ -1,0 +1,111 @@
+/* Style shim for e-Laws-derived HTML class namespace.
+ *
+ * The HTML emitted by Ontario's e-Laws site (and mirrored into our
+ * version content for mid-1997 through 2024 OBC editions) carries
+ * semantic CSS class names but no stylesheet.  Without these rules the
+ * markup collapses to default block flow — readable but flat.  These
+ * declarations give each class a visual treatment that matches the
+ * gazette source.
+ *
+ * Adding a class to bleach's allowlist (core/html_policy.py) requires a
+ * matching rule here; otherwise the class survives sanitisation but
+ * renders identically to plain text.
+ */
+
+/* Structural headings — Part / Section / Subsection / Article / Sentence */
+.Ppart-e {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.Psection-e {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+.Psubsection-e {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+.subsection-e {
+  display: block;
+  margin-top: 0.5rem;
+  margin-left: 1.5rem;
+}
+.Pheading3-e,
+.Pheading2-e,
+.Pheading1-e {
+  font-weight: 700;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+.heading3-e,
+.heading2-e,
+.heading1-e {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+/* Defined-term marking */
+.deftermsubsection-e,
+.defterm-e {
+  font-style: italic;
+}
+
+/* Tables — e-Laws emits Word-style MsoNormalTable */
+.MsoNormalTable {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+}
+.MsoNormalTable td,
+.MsoNormalTable th {
+  border: 1px solid #d4d4d4;
+  padding: 0.4rem 0.6rem;
+  vertical-align: top;
+}
+.table-e {
+  margin: 0;
+  padding: 0;
+}
+
+/* Equation paragraphs carrying inline <img> equation glyphs */
+.equation-e {
+  text-align: center;
+  margin: 0.75rem 0;
+}
+.equation-e img {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Footnotes / notes */
+.footnote-e,
+.note-e {
+  font-size: 0.875rem;
+  color: #525252;
+  margin-top: 0.5rem;
+}
+
+/* Italic block — appears around regulation references in the gazette */
+.italic-e {
+  font-style: italic;
+}
+
+/* Dark-mode tweaks via the existing dark: variant chain */
+@media (prefers-color-scheme: dark) {
+  .MsoNormalTable td,
+  .MsoNormalTable th {
+    border-color: #404040;
+  }
+  .footnote-e,
+  .note-e {
+    color: #a3a3a3;
+  }
+}

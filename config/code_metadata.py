@@ -133,6 +133,15 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
     except Exception:
         return codes
 
+    # Per CCM contract: in-force window is [effective_date, ineffective_date).
+    # superseded_date is the legacy field — ineffective_date is the
+    # authoritative source going forward.  Filter on whichever is populated
+    # so this stays correct during the transitional period.
+    in_force = models.Q(effective_date__lte=search_date) & (
+        models.Q(ineffective_date__isnull=True)
+        | models.Q(ineffective_date__gt=search_date)
+    )
+
     province_map = (
         ProvinceCode.objects.select_related("code")
         .filter(province=province)
@@ -141,8 +150,7 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
     if province_map:
         edition = (
             CodeEdition.objects.filter(code=province_map.code)
-            .filter(effective_date__lte=search_date)
-            .filter(models.Q(superseded_date__isnull=True) | models.Q(superseded_date__gt=search_date))
+            .filter(in_force)
             .order_by("-effective_date")
             .first()
         )
@@ -153,8 +161,7 @@ def get_applicable_codes(province: str, search_date: date) -> List[str]:
     for system in national_systems:
         edition = (
             CodeEdition.objects.filter(code=system)
-            .filter(effective_date__lte=search_date)
-            .filter(models.Q(superseded_date__isnull=True) | models.Q(superseded_date__gt=search_date))
+            .filter(in_force)
             .order_by("-effective_date")
             .first()
         )

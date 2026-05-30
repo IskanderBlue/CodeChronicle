@@ -4,7 +4,7 @@ Format search results for frontend display.
 
 import difflib
 import re
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from config.code_metadata import get_code_display_name
 from core.models import CodeEditionProvision
@@ -84,7 +84,7 @@ def _diff_html_content(
     def _render_side(
         tokens: list[tuple[str, str]],
         words: list[str],
-        opcodes: list[tuple[str, int, int, int, int]],
+        opcodes: Sequence[tuple[str, int, int, int, int]],
         *,
         is_old: bool,
     ) -> str:
@@ -139,6 +139,63 @@ def _code_order_key(value: str) -> Tuple[Any, ...]:
     return tuple(key)
 
 
+def _build_copy_text(
+    *,
+    code_edition: str,
+    division: str,
+    provision_id: str,
+    title: str,
+    version: Any,
+    most_recent_clause: Any,
+    base_regulation: Any,
+    next_version: Any,
+) -> str:
+    """Reference string for the clipboard copy button.
+
+    Per ``tasks/provenance/4-display.md`` §"Copy Button"::
+
+        OBC 1997, Div B, S 3.1.4.7. -- Fire Separations
+        In force: 1998-04-06 (O. Reg. 403/97)
+        Amended by: O. Reg. 22/98, cl. 1.(1) (1998-04-06)
+        Next amendment: O. Reg. 152/99 (1999-04-01) -- not in force at query date
+    """
+    code_display = _build_code_display_name(code_edition).strip() or code_edition
+    div_label = f"Div {division}, " if division else ""
+    header = f"{code_display}, {div_label}S {provision_id} -- {title}".strip()
+
+    lines = [header]
+    if version and version.effective_date:
+        in_force = version.effective_date.isoformat()
+        if base_regulation:
+            lines.append(
+                f"In force: {in_force} (O. Reg. {base_regulation.reg_id})"
+            )
+        else:
+            lines.append(f"In force: {in_force}")
+    if most_recent_clause and most_recent_clause.regulation:
+        reg = most_recent_clause.regulation
+        date_part = (
+            f" ({reg.effective_date.isoformat()})"
+            if getattr(reg, "effective_date", None) else ""
+        )
+        lines.append(
+            f"Amended by: O. Reg. {reg.reg_id}, cl. {most_recent_clause.clause_id}{date_part}"
+        )
+    if next_version and next_version.contributing_clauses.exists():
+        first_clause = next_version.contributing_clauses.all()[0]
+        if first_clause and first_clause.regulation:
+            reg = first_clause.regulation
+            date_part = (
+                f" ({next_version.effective_date.isoformat()})"
+                if next_version.effective_date else ""
+            )
+            lines.append(
+                f"Next amendment: O. Reg. {reg.reg_id}{date_part} "
+                "-- not in force at query date"
+            )
+    return "\n".join(lines)
+
+
 def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
     code_edition = result.get("code_edition", "Unknown")
     provision = result.get("provision")
@@ -151,6 +208,7 @@ def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
     base_regulation = None
     all_versions = []
     appendix_notes = []
+    contributing_clauses: list = []
     if provision:
         # Base regulation: from prefetched edition.regulations
         for reg in provision.edition.regulations.all():
@@ -168,23 +226,53 @@ def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
                 "html": latest.html if latest else "",
             })
 
-    # Next version: first in chain after current
+    if version:
+        contributing_clauses = list(version.contributing_clauses.all())
+
+    # Next-version-not-in-force: orchestration prefetches into
+    # provision.next_versions (to_attr).
     next_version = None
-    if version and all_versions:
+    if provision is not None and hasattr(provision, "next_versions"):
+        nexts = getattr(provision, "next_versions", []) or []
+        next_version = nexts[0] if nexts else None
+    # Fallback: pick the next version from the full chain when the
+    # to_attr prefetch wasn't applied (e.g. test setups not going
+    # through orchestration).
+    if next_version is None and version and all_versions:
         for v in all_versions:
             if v.version > version.version:
                 next_version = v
                 break
 
+    transition_provision_version = (
+        version.transition_provision if version else None
+    )
+
+    most_recent_clause = (
+        contributing_clauses[-1] if contributing_clauses else result.get("clause")
+    )
+
     html_content = result.get("html_content")
     if html_content and appendix_notes:
         html_content = _linkify_appendix_refs(html_content)
+
+    copy_text = _build_copy_text(
+        code_edition=code_edition,
+        division=result.get("division", ""),
+        provision_id=str(result.get("id", "")),
+        title=result.get("title", "No title"),
+        version=version,
+        most_recent_clause=most_recent_clause,
+        base_regulation=base_regulation,
+        next_version=next_version,
+    )
 
     return {
         "id": result.get("id"),
         "title": result.get("title", "No title"),
         "code": code_edition,
         "code_display_name": _build_code_display_name(code_edition),
+        "code_edition": code_edition,
         "parent_id": parent_id,
         "source_date": result.get("source_date"),
         "score": result.get("score", 0),
@@ -195,7 +283,11 @@ def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
         "result_type": None,
         "transition_context": result.get("transition_context"),
         "division": result.get("division", ""),
-        "clause": result.get("clause"),
+        # Single-clause back-compat for existing templates; most_recent_clause
+        # carries the same value via the contributing_clauses[-1] selection.
+        "clause": most_recent_clause,
+        "most_recent_clause": most_recent_clause,
+        "contributing_clauses": contributing_clauses,
         "is_base": result.get("is_base", True),
         "version": version,
         "provision": provision,
@@ -203,6 +295,8 @@ def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
         "next_version": next_version,
         "amendment_chain": all_versions,
         "appendix_notes": appendix_notes,
+        "transition_provision_version": transition_provision_version,
+        "copy_text": copy_text,
     }
 
 

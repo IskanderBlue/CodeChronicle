@@ -1,10 +1,8 @@
 import pytest
-from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from core.models import SearchHistory
+from core.models import SearchHistory, User
 
-User = get_user_model()
 
 @pytest.mark.django_db
 class TestSearchHistory:

@@ -6,12 +6,14 @@ from collections import defaultdict
 from datetime import date
 from typing import Any
 
+from django.db import models
 from django.db.models import Prefetch, Q
 
 from core.models import (
     CodeEditionProvisionVersion,
     ProvinceCode,
     ProvisionMapping,
+    RegulationClause,
 )
 
 from .engine import SEARCH_RESULT_LIMIT, compute_idf, score_versions
@@ -43,22 +45,36 @@ def execute_search(params: dict[str, Any]) -> dict[str, Any]:
         province=province
     ).values_list("code_id", flat=True)
 
+    # Contract: filter out zero-width "as-filed but superseded same day"
+    # emissions (``ineffective_date == effective_date``) — legal in the
+    # JSON, never actually in force.
     in_force_qs = CodeEditionProvisionVersion.objects.filter(
         provision__edition__code_id__in=code_ids,
         effective_date__lte=search_date,
     ).filter(
         Q(ineffective_date__isnull=True) | Q(ineffective_date__gt=search_date)
+    ).exclude(
+        ineffective_date=models.F("effective_date")
     ).select_related(
         "provision__edition__code",
         "provision__parent",
-        "clause__regulation",
+        "transition_provision__provision",
     ).prefetch_related(
         "tables",
+        "contributing_clauses__regulation",
         Prefetch(
             "provision__versions",
             queryset=CodeEditionProvisionVersion.objects
-                .select_related("clause__regulation")
+                .prefetch_related("contributing_clauses__regulation")
                 .order_by("version"),
+        ),
+        # Next-version-not-in-force lookup for the "Next amendment" line.
+        Prefetch(
+            "provision__versions",
+            queryset=CodeEditionProvisionVersion.objects
+                .filter(effective_date__gt=search_date)
+                .order_by("effective_date")[:1],
+            to_attr="next_versions",
         ),
         "provision__appendix_entries__versions",
         "provision__edition__regulations",
@@ -171,11 +187,12 @@ def _merge_provision_mapping_transitions(
     the UI render them distinctly.
 
     For intra-edition pairs the transition prose comes from the gazette
-    clause that triggered the renumber — reachable via
-    ``mapping.introduced_by_version.clause.clause_text``.  For
-    cross-edition pairs no such clause exists; we fall back to the new
-    version's ``transition_provision`` (a Division C / Part 12 entry on
-    the receiving edition).
+    clause that triggered the renumber — found among the
+    ``introduced_by_version``'s ``contributing_clauses`` as the one
+    whose action is ``renumber``.  For cross-edition pairs no such
+    clause exists; we fall back to the new version's
+    ``transition_provision`` (a Division C / Part 12 entry on the
+    receiving edition).
     """
     # Build lookup: provision PK -> result (only ungrouped results)
     ungrouped = [r for r in results if not r.get("transition_context")]
@@ -193,7 +210,9 @@ def _merge_provision_mapping_transitions(
     ).select_related(
         "old_provision__edition",
         "new_provision__edition",
-        "introduced_by_version__clause",
+        "introduced_by_version",
+    ).prefetch_related(
+        "introduced_by_version__contributing_clauses__regulation",
     )
 
     if not mappings:
@@ -222,9 +241,16 @@ def _merge_provision_mapping_transitions(
 
         transition_text = ""
         if same_edition and mapping.introduced_by_version is not None:
-            clause = mapping.introduced_by_version.clause
-            if clause is not None:
-                transition_text = clause.clause_text
+            # The contract pins introduced_by to the new-id version whose
+            # contributing clauses include the renumber gazette directive.
+            # Find that clause among the version's contributing clauses.
+            renumber_clause = (
+                mapping.introduced_by_version.contributing_clauses
+                .filter(action=RegulationClause.Action.RENUMBER)
+                .first()
+            )
+            if renumber_clause is not None:
+                transition_text = renumber_clause.clause_text
         else:
             new_version = new_result.get("version")
             if new_version and hasattr(new_version, "transition_provision"):
@@ -255,7 +281,7 @@ def _merge_provision_mapping_transitions(
 def _version_num(result: dict[str, Any]) -> int:
     """Extract version number from a result dict."""
     version = result.get("version")
-    if hasattr(version, "version"):
+    if version is not None and hasattr(version, "version"):
         return version.version
     return 0
 
@@ -280,5 +306,3 @@ def _unique_edition_names(results: list[dict[str, Any]]) -> list[str]:
             seen.add(code_edition)
             names.append(code_edition)
     return names
-
-

@@ -2,12 +2,10 @@ from datetime import date
 from unittest.mock import patch
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.test import Client
 
-from core.models import Code, CodeEdition
+from core.models import Code, CodeEdition, User
 
-User = get_user_model()
 
 @pytest.mark.django_db
 class TestApiEndpoints:

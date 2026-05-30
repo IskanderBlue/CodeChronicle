@@ -26,7 +26,7 @@ def _render_markdown(content: Optional[str]) -> Optional[str]:
 
 
 def _coerce_float(value: object) -> Optional[float]:
-    if value is None:
+    if not isinstance(value, (int, float, str)):
         return None
     try:
         return float(value)
@@ -51,7 +51,7 @@ def _extract_span_bounds(entry: dict) -> tuple[Optional[float], Optional[float]]
 def _find_code_name_for_map_code(map_code: str) -> Optional[str]:
     edition = (
         CodeEdition.objects.filter(map_codes__contains=[map_code])
-        .select_related("system")
+        .select_related("code")
         .order_by("-effective_date")
         .first()
     )
@@ -104,13 +104,13 @@ def _populate_provision_transitions() -> int:
         new_edition = record["new_edition"]
         edition = (
             CodeEdition.objects.filter(edition_id=new_edition.split("_", 1)[-1])
-            .select_related("system")
+            .select_related("code")
             .first()
         )
         if not edition:
             # Try matching by code_name property
             edition = None
-            for candidate in CodeEdition.objects.select_related("system").all():
+            for candidate in CodeEdition.objects.select_related("code").all():
                 if candidate.code_name == new_edition:
                     edition = candidate
                     break

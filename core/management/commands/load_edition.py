@@ -14,10 +14,12 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    CodeEditionProvisionVersionClause,
     ProvinceCode,
     ProvisionMapping,
     ProvisionVersionTable,
     Regulation,
+    RegulationAsset,
     RegulationClause,
 )
 
@@ -39,17 +41,59 @@ def _require_date(value: str | None, field: str) -> date:
 class Command(BaseCommand):
     help = "Load a CCM consolidated edition JSON into provenance models."
 
+    #: Default location of CCM's consolidated edition JSON output, mirroring
+    #: load_maps/sync_images.  A bare ``load_edition`` loads DEFAULT_FILE from
+    #: here.
+    DEFAULT_SOURCE_DIR = Path("..") / "CodeChronicleMapping" / "data" / "outputs"
+    #: The only edition currently in scope to load (OBC 2012).
+    DEFAULT_FILE = "OBC_2012.json"
+
     def add_arguments(self, parser) -> None:
         parser.add_argument(
             "--source",
-            required=True,
-            help="Path to consolidated edition JSON file.",
+            default=str(self.DEFAULT_SOURCE_DIR),
+            help=(
+                "Path to a consolidated edition JSON file, or a directory "
+                "containing one (in which case --file is appended).  "
+                f"Defaults to {self.DEFAULT_SOURCE_DIR}."
+            ),
+        )
+        parser.add_argument(
+            "--file",
+            default=self.DEFAULT_FILE,
+            help=(
+                "Edition JSON filename to load when --source is a directory.  "
+                f"Defaults to {self.DEFAULT_FILE}."
+            ),
+        )
+        parser.add_argument(
+            "--allow-incomplete-chain",
+            action="store_true",
+            help=(
+                "Permit ingest of an edition whose JSON has "
+                "amendment_chain_complete=false.  Off by default — the "
+                "contract is explicit that incomplete chains are out-of-spec."
+            ),
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
         source_path = Path(options["source"]).expanduser().resolve()
+        # When --source names a directory (the default), append --file so a
+        # bare `load_edition` resolves to DEFAULT_SOURCE_DIR / DEFAULT_FILE.
+        if source_path.is_dir():
+            source_path = source_path / options["file"]
         if not source_path.exists():
             raise CommandError(f"Source file not found: {source_path}")
+
+        # Sanity guard: snapshots/ holds CCM's raw e-Laws scrapes whose
+        # shape matches the consolidated file but whose content is
+        # intermediate.  Ingesting them would silently double-load.
+        if "snapshots" in source_path.parts:
+            raise CommandError(
+                f"Refusing to ingest a path under snapshots/: {source_path}.  "
+                f"snapshots/ contains CCM's raw e-Laws intermediate files; "
+                f"consolidated edition JSON lives at the data/outputs/ root."
+            )
 
         try:
             data = json.loads(source_path.read_text(encoding="utf-8"))
@@ -68,29 +112,44 @@ class Command(BaseCommand):
                 "(see CCM impl-19 / CC provision-mapping-rename)."
             )
 
+        # Sanity guard: contract §"What CodeChronicle Does NOT Expect" —
+        # "Editions with incomplete amendment chains" are out-of-spec.
+        if not data.get("amendment_chain_complete", False) and not options["allow_incomplete_chain"]:
+            raise CommandError(
+                "Edition JSON has amendment_chain_complete=False.  "
+                "Pass --allow-incomplete-chain to ingest anyway."
+            )
+
         with transaction.atomic():
             code, edition = self._load_edition(data)
             reg_lookup = self._load_regulations(edition, data.get("regulations", []))
             clause_lookup = self._load_clauses(reg_lookup, data.get("regulations", []))
+            asset_count = self._load_assets(reg_lookup, data.get("regulations", []))
             prov_lookup = self._load_provisions(edition, data.get("provisions", []))
-            version_lookup = self._load_versions(
-                prov_lookup, clause_lookup, data.get("provisions", [])
+            version_lookup = self._load_versions(prov_lookup, data.get("provisions", []))
+            clause_link_count = self._load_version_clause_links(
+                version_lookup, clause_lookup, reg_lookup, data.get("provisions", []),
             )
             table_count = self._load_tables(version_lookup, data.get("provisions", []))
-            self._resolve_transition_provisions(version_lookup, prov_lookup, data.get("provisions", []))
+            self._resolve_transition_provisions(
+                version_lookup, prov_lookup, data.get("provisions", []),
+            )
             self._update_version_counts(prov_lookup)
             mapping_count = self._load_provision_mappings(
                 code, version_lookup, data.get("provision_mappings", []),
             )
 
         logger.info(
-            "Loaded %s %s: %d regulations, %d clauses, %d provisions, %d versions, %d tables, %d mappings",
+            "Loaded %s %s: %d regulations, %d clauses, %d assets, %d provisions, "
+            "%d versions, %d version-clause links, %d tables, %d mappings",
             code_str,
             edition_str,
             len(reg_lookup),
             len(clause_lookup),
+            asset_count,
             len(prov_lookup),
             len(version_lookup),
+            clause_link_count,
             table_count,
             mapping_count,
         )
@@ -122,7 +181,10 @@ class Command(BaseCommand):
                 defaults={"code": code},
             )
 
-        # Clear existing provenance data for idempotency
+        # Clear existing provenance data for idempotency.  CASCADE on
+        # ProvisionMapping.{old,new}_provision cleans up dangling mappings
+        # (including cross-edition ones touching this edition) automatically.
+        # CASCADE on RegulationAsset.regulation cleans up assets too.
         edition.provisions.all().delete()
         edition.regulations.all().delete()
 
@@ -140,7 +202,9 @@ class Command(BaseCommand):
                 edition=edition,
                 role=reg_data.get("role", Regulation.Role.AMENDMENT),
                 filed_date=_parse_date(reg_data.get("filed_date")),
-                effective_date=_require_date(reg_data.get("effective_date"), f"{reg_id}.effective_date"),
+                effective_date=_require_date(
+                    reg_data.get("effective_date"), f"{reg_id}.effective_date",
+                ),
                 source_pdf=reg_data.get("source_pdf", ""),
                 source_pages=reg_data.get("source_pages"),
             )
@@ -161,37 +225,103 @@ class Command(BaseCommand):
         reg_lookup: dict[str, Regulation],
         regulations: list[dict[str, Any]],
     ) -> dict[tuple[str, str], RegulationClause]:
-        clause_lookup: dict[tuple[str, str], RegulationClause] = {}
-        clauses_to_create: list[RegulationClause] = []
+        """Build RegulationClause rows from each regulation's clauses[].
+
+        Meta-amendment back-pointer stubs (clauses carrying only
+        ``clause_id`` + ``amended_by``, no ``action``/``target_*``) and
+        full clauses for the same ``(regulation, clause_id)`` are merged
+        into one row to satisfy the unique constraint.  The full clause
+        wins on the populated fields; ``amended_by`` from the stub is
+        preserved when the full clause lacks it.
+        """
+        merged: dict[tuple[str, str], dict[str, Any]] = {}
 
         for reg_data in regulations:
             reg_id = reg_data["reg_id"]
-            regulation = reg_lookup[reg_id]
             for cl_data in reg_data.get("clauses", []):
                 clause_id = cl_data["clause_id"]
-                clause = RegulationClause(
-                    regulation=regulation,
-                    clause_id=clause_id,
-                    parent_clause=cl_data.get("parent_clause", ""),
-                    action=cl_data.get("action", ""),
-                    target_level=cl_data.get("target_level", ""),
-                    target_id=cl_data.get("target_id", ""),
-                    target_reg=cl_data.get("target_reg", ""),
-                    clause_text=cl_data.get("clause_text", ""),
-                    strike_text=cl_data.get("strike_text"),
-                    sub_text=cl_data.get("sub_text"),
-                    amended_by=cl_data.get("amended_by"),
-                    page=cl_data.get("page"),
-                    bbox=cl_data.get("bbox"),
-                    overlay=cl_data.get("overlay"),
-                )
-                clauses_to_create.append(clause)
-                clause_lookup[(reg_id, clause_id)] = clause
+                key = (reg_id, clause_id)
+                existing = merged.get(key)
+                if existing is None:
+                    merged[key] = dict(cl_data)
+                    continue
+                # Merge: prefer non-empty fields from whichever entry has them.
+                for field, value in cl_data.items():
+                    cur = existing.get(field)
+                    if cur in (None, "", []) and value not in (None, "", []):
+                        existing[field] = value
+                # amended_by is a list — concatenate if both have it.
+                stub_ab = cl_data.get("amended_by")
+                full_ab = existing.get("amended_by")
+                if stub_ab and full_ab and stub_ab is not full_ab:
+                    seen = {json.dumps(e, sort_keys=True) for e in full_ab}
+                    for entry in stub_ab:
+                        if json.dumps(entry, sort_keys=True) not in seen:
+                            full_ab.append(entry)
+                    existing["amended_by"] = full_ab
+
+        clause_lookup: dict[tuple[str, str], RegulationClause] = {}
+        clauses_to_create: list[RegulationClause] = []
+        for (reg_id, clause_id), cl_data in merged.items():
+            clause = RegulationClause(
+                regulation=reg_lookup[reg_id],
+                clause_id=clause_id,
+                parent_clause=cl_data.get("parent_clause", ""),
+                action=cl_data.get("action", ""),
+                target_level=cl_data.get("target_level", ""),
+                target_id=cl_data.get("target_id", ""),
+                target_reg=cl_data.get("target_reg", ""),
+                clause_text=cl_data.get("clause_text", ""),
+                strike_text=cl_data.get("strike_text"),
+                sub_text=cl_data.get("sub_text"),
+                amended_by=cl_data.get("amended_by"),
+                page=cl_data.get("page"),
+                bbox=cl_data.get("bbox"),
+                overlay=cl_data.get("overlay"),
+            )
+            clauses_to_create.append(clause)
+            clause_lookup[(reg_id, clause_id)] = clause
 
         if clauses_to_create:
             RegulationClause.objects.bulk_create(clauses_to_create)
 
         return clause_lookup
+
+    def _load_assets(
+        self,
+        reg_lookup: dict[str, Regulation],
+        regulations: list[dict[str, Any]],
+    ) -> int:
+        """Persist ``regulations[].assets[]`` manifest entries.
+
+        The bytes themselves are mirrored by ``sync_images`` — this step
+        only writes the manifest so the FK ``regulation.assets`` is
+        populated for ingest-time verification and for later
+        serving/auditing.
+        """
+        assets_to_create: list[RegulationAsset] = []
+        for reg_data in regulations:
+            reg_id = reg_data["reg_id"]
+            regulation = reg_lookup.get(reg_id)
+            if regulation is None:
+                continue
+            for asset_data in reg_data.get("assets", []) or []:
+                path = asset_data.get("path")
+                if not path:
+                    continue
+                assets_to_create.append(RegulationAsset(
+                    regulation=regulation,
+                    path=path,
+                    original_url=asset_data.get("original_url", ""),
+                    sha256=asset_data.get("sha256", ""),
+                    byte_size=asset_data.get("bytes"),
+                    content_type=asset_data.get("content_type", ""),
+                ))
+
+        if assets_to_create:
+            RegulationAsset.objects.bulk_create(assets_to_create)
+
+        return len(assets_to_create)
 
     def _load_provisions(
         self,
@@ -240,7 +370,6 @@ class Command(BaseCommand):
                 if not appendix_target:
                     appendix_target = prov_lookup.get((appendix_of_id, ""))
                 if not appendix_target:
-                    # Search all divisions
                     for key, candidate in prov_lookup.items():
                         if key[0] == appendix_of_id:
                             appendix_target = candidate
@@ -262,7 +391,6 @@ class Command(BaseCommand):
     def _load_versions(
         self,
         prov_lookup: dict[tuple[str, str], CodeEditionProvision],
-        clause_lookup: dict[tuple[str, str], RegulationClause],
         provisions: list[dict[str, Any]],
     ) -> dict[tuple[str, str, int], CodeEditionProvisionVersion]:
         version_lookup: dict[tuple[str, str, int], CodeEditionProvisionVersion] = {}
@@ -275,19 +403,9 @@ class Command(BaseCommand):
 
             for ver_data in prov_data.get("versions", []):
                 version_num = ver_data["version"]
-
-                # Resolve clause FK
-                clause = None
-                reg_id = ver_data.get("regulation")
-                clause_id = ver_data.get("clause_id")
-                if reg_id and clause_id:
-                    clause = clause_lookup.get((reg_id, clause_id))
-
                 version = CodeEditionProvisionVersion(
                     provision=provision,
                     version=version_num,
-                    clause=clause,
-                    action=ver_data.get("action", CodeEditionProvisionVersion.Action.ORIGINAL),
                     effective_date=_require_date(
                         ver_data.get("effective_date"),
                         f"{provision_id} v{version_num}.effective_date",
@@ -305,6 +423,68 @@ class Command(BaseCommand):
             CodeEditionProvisionVersion.objects.bulk_create(versions_to_create)
 
         return version_lookup
+
+    def _load_version_clause_links(
+        self,
+        version_lookup: dict[tuple[str, str, int], CodeEditionProvisionVersion],
+        clause_lookup: dict[tuple[str, str], RegulationClause],
+        reg_lookup: dict[str, Regulation],
+        provisions: list[dict[str, Any]],
+    ) -> int:
+        """Populate ``CodeEditionProvisionVersionClause`` from
+        ``versions[].clauses[]``.
+
+        Contract: clauses are listed in application order, which is
+        ``(regulation.filed_date, clause_id)``.  CCM commits to this
+        ordering on the producer side, but we re-sort defensively so
+        ``apply_order`` is a stable projection of the contract rule
+        rather than a snapshot of however the producer happened to emit.
+        """
+        through_rows: list[CodeEditionProvisionVersionClause] = []
+
+        for prov_data in provisions:
+            provision_id = prov_data["provision_id"]
+            division = prov_data.get("division", "")
+            for ver_data in prov_data.get("versions", []):
+                version_num = ver_data["version"]
+                version = version_lookup.get((provision_id, division, version_num))
+                if version is None:
+                    continue
+
+                refs: list[tuple[str, str]] = []
+                for cl_ref in ver_data.get("clauses", []) or []:
+                    reg_id = cl_ref.get("regulation")
+                    clause_id = cl_ref.get("clause_id")
+                    if not reg_id or not clause_id:
+                        continue
+                    refs.append((reg_id, clause_id))
+
+                def _sort_key(ref: tuple[str, str]) -> tuple[date, str]:
+                    reg_id, clause_id = ref
+                    reg = reg_lookup.get(reg_id)
+                    filed = reg.filed_date if reg and reg.filed_date else date.min
+                    return (filed, clause_id)
+
+                refs.sort(key=_sort_key)
+
+                for apply_order, ref in enumerate(refs):
+                    clause = clause_lookup.get(ref)
+                    if clause is None:
+                        logger.warning(
+                            "Version %s/%s v%d references missing clause %s/%s",
+                            provision_id, division, version_num, ref[0], ref[1],
+                        )
+                        continue
+                    through_rows.append(CodeEditionProvisionVersionClause(
+                        version=version,
+                        clause=clause,
+                        apply_order=apply_order,
+                    ))
+
+        if through_rows:
+            CodeEditionProvisionVersionClause.objects.bulk_create(through_rows)
+
+        return len(through_rows)
 
     def _load_tables(
         self,
@@ -343,27 +523,11 @@ class Command(BaseCommand):
         prov_lookup: dict[tuple[str, str], CodeEditionProvision],
         provisions: list[dict[str, Any]],
     ) -> None:
-        """Resolve ``transition_provision_ref`` records to FK pins on
-        :class:`CodeEditionProvisionVersion`.
+        """Resolve ``transition_provision_ref`` records to FK pins.
 
-        The contract shape (CCM impl-57) is a record carrying the full
-        identity of the transition article version:
-
-        ``{"provision_id": str, "division": str, "version": int}``
-
-        That triple is exactly the key of ``version_lookup`` — a one-shot
-        dereference, no resolution heuristic.  The producer commits to a
-        specific version (the version of the transition article in
-        force at the linking version's ``effective_date``); the
-        consumer just dereferences.
-
-        A ref that fails to resolve is a hard error.  The new shape is
-        explicitly designed to remove the ambiguity that warn-and-skip
-        used to paper over: a missing referent now means a real
-        inconsistency between the edition's provisions and its
-        transition refs, and silently dropping it would let the
-        ``transition_provision`` FK go null where the contract says it
-        should be set.
+        Contract shape (CCM impl-57):
+        ``{"provision_id": str, "division": str, "version": int}``.
+        Hard error on the legacy ``transition_provision_id`` string.
         """
         del prov_lookup  # impl-57: no longer needed; the ref carries division
         versions_to_update: list[CodeEditionProvisionVersion] = []
@@ -388,9 +552,7 @@ class Command(BaseCommand):
                 if version is None:
                     raise ValueError(
                         f"Linking version not found in version_lookup: "
-                        f"{provision_id} (division={division!r}) v{version_num}.  "
-                        f"This is an ingest-side bug — every version emitted "
-                        f"by CCM should be in the lookup."
+                        f"{provision_id} (division={division!r}) v{version_num}."
                     )
 
                 tp_pid = ref["provision_id"]
@@ -421,20 +583,6 @@ class Command(BaseCommand):
         version_lookup: dict[tuple[str, str, int], CodeEditionProvisionVersion],
         provision_mappings: list[dict[str, Any]],
     ) -> int:
-        """Load the unified provision_mappings[] array.
-
-        Each entry links an old ``CodeEditionProvision`` to a new one.
-        The two endpoints may share an edition (intra-edition renumber
-        triggered by a gazette amendment) or differ (cross-edition
-        identity change produced by CCM's matcher).
-
-        For intra-edition entries CCM emits an ``introduced_by``
-        sub-dict identifying the ``CodeEditionProvisionVersion`` whose
-        ``action == "renumbered"`` produced the mapping.  We resolve it
-        through ``version_lookup`` (already keyed by ``(provision_id,
-        division, version_num)``) and assign the FK.  Cross-edition
-        entries omit ``introduced_by`` and leave the FK null.
-        """
         mappings_to_create: list[ProvisionMapping] = []
 
         for mapping_data in provision_mappings:
@@ -482,17 +630,6 @@ class Command(BaseCommand):
                         old_provision_id, new_provision_id,
                         intro_provision_id, intro_division, intro_version_num,
                     )
-                elif introduced_by_version.action != (
-                    CodeEditionProvisionVersion.Action.RENUMBERED
-                ):
-                    logger.warning(
-                        "Mapping %s -> %s: introduced_by points at "
-                        "%s/v%d with action=%r (expected 'renumbered'); "
-                        "storing FK anyway",
-                        old_provision_id, new_provision_id,
-                        intro_provision_id, intro_version_num,
-                        introduced_by_version.action,
-                    )
 
             mappings_to_create.append(ProvisionMapping(
                 old_provision=old_provision,
@@ -513,7 +650,6 @@ class Command(BaseCommand):
         self,
         prov_lookup: dict[tuple[str, str], CodeEditionProvision],
     ) -> None:
-        # Count versions per provision from DB
         from django.db.models import Count
 
         counts = (

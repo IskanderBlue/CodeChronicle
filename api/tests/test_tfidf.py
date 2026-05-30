@@ -30,13 +30,13 @@ def edition_with_provisions(db):
         edition=edition, provision_id="3.1.8.5.", level="article",
     )
     CodeEditionProvisionVersion.objects.create(
-        provision=prov_a, version=0, action="original",
+        provision=prov_a, version=0,
         effective_date=date(2024, 1, 1),
         title="General Building",
         keyword_counts={"fire": 1, "building": 10},
     )
     CodeEditionProvisionVersion.objects.create(
-        provision=prov_b, version=0, action="original",
+        provision=prov_b, version=0,
         effective_date=date(2024, 1, 1),
         title="Fire Sprinkler Systems",
         keyword_counts={"fire": 8, "sprinkler": 3},
@@ -64,7 +64,9 @@ def test_tfidf_ranks_rare_repeated_term_higher(edition_with_provisions):
     edition = edition_with_provisions
     qs = CodeEditionProvisionVersion.objects.filter(
         provision__edition=edition,
-    ).select_related("provision__edition__code", "clause__regulation")
+    ).select_related("provision__edition__code").prefetch_related(
+        "contributing_clauses__regulation",
+    )
 
     idf_map = compute_idf(qs)
     results = score_versions("fire sprinkler", qs, idf_map)
@@ -82,7 +84,9 @@ def test_tfidf_works_with_single_provision(edition_with_provisions):
 
     qs = CodeEditionProvisionVersion.objects.filter(
         provision__edition=edition,
-    ).select_related("provision__edition__code", "clause__regulation")
+    ).select_related("provision__edition__code").prefetch_related(
+        "contributing_clauses__regulation",
+    )
 
     idf_map = compute_idf(qs)
     results = score_versions("sprinkler", qs, idf_map)

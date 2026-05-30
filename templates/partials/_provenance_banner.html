@@ -38,17 +38,19 @@
                 </button>
                 <div x-show="showChain" x-cloak class="mt-1.5 space-y-1 pl-2 border-l border-neutral-300 dark:border-neutral-600 accordion-content">
                     {% for entry in result.amendment_chain %}
-                    {% if not forloop.first and entry.clause %}
+                    {% with entry_clause=entry.contributing_clauses.all|last %}
+                    {% if not forloop.first and entry_clause %}
                     <p class="text-[11px] text-neutral-500 dark:text-neutral-400"
                         x-show="showChain"
                         x-transition:enter="transition ease-out"
                         x-transition:enter-start="opacity-0 translate-y-1"
                         x-transition:enter-end="opacity-100 translate-y-0"
                         style="transition-delay: {{ forloop.counter0 }}00ms">
-                        <span class="font-ref">O. Reg. {{ entry.clause.regulation.reg_id }}</span>, cl. <span class="font-ref">{{ entry.clause.clause_id }}</span>
+                        <span class="font-ref">O. Reg. {{ entry_clause.regulation.reg_id }}</span>, cl. <span class="font-ref">{{ entry_clause.clause_id }}</span>
                         <span class="text-neutral-400 dark:text-neutral-500">&middot; <span class="font-ref">{{ entry.effective_date|date:"Y-m-d" }}</span></span>
                     </p>
                     {% endif %}
+                    {% endwith %}
                     {% endfor %}
                 </div>
             </div>
@@ -56,25 +58,26 @@
 
             {# Next version proof line #}
             {% if result.next_version %}
+            {% with next_clause=result.next_version.contributing_clauses.all|last %}
             <p class="text-neutral-400 dark:text-neutral-500 italic">
-                Next: <span class="font-ref">O. Reg. {{ result.next_version.clause.regulation.reg_id }}</span>
+                Next:
+                {% if next_clause %}
+                <span class="font-ref">O. Reg. {{ next_clause.regulation.reg_id }}</span>
+                {% endif %}
                 (not in force until <span class="font-ref">{{ result.next_version.effective_date|date:"Y-m-d" }}</span>)
             </p>
+            {% endwith %}
             {% endif %}
         </div>
 
-        {# Copy reference button #}
+        {# Copy reference button — copy_text is built server-side in the
+           formatter (see api.formatters._build_copy_text) so JS doesn't
+           need to know the provenance shape. #}
         <button type="button" title="Copy structured reference"
             class="inline-flex items-center p-1.5 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 cursor-pointer shrink-0 relative"
+            data-copy-text="{{ result.copy_text }}"
             @click.stop="
-                let ref = '{{ result.code_display_name|escapejs }}';
-                {% if result.division %}ref += ', {{ result.division|escapejs }}';{% endif %}
-                ref += ', S {{ result.id|escapejs }} -- {{ result.title|escapejs }}';
-                {% if result.version %}ref += '\nIn force: {{ result.version.effective_date|date:"Y-m-d"|escapejs }}';{% endif %}
-                {% if result.base_regulation %}ref += ' (O. Reg. {{ result.base_regulation.reg_id|escapejs }})';{% endif %}
-                {% if result.clause %}ref += '\nAmended by: O. Reg. {{ result.clause.regulation.reg_id|escapejs }}, cl. {{ result.clause.clause_id|escapejs }}';{% endif %}
-                {% if result.next_version %}ref += '\nNext: O. Reg. {{ result.next_version.clause.regulation.reg_id|escapejs }} (not in force until {{ result.next_version.effective_date|date:"Y-m-d"|escapejs }})';{% endif %}
-                navigator.clipboard.writeText(ref);
+                navigator.clipboard.writeText($el.dataset.copyText);
                 copied = true;
                 setTimeout(() => copied = false, 1500);
             ">

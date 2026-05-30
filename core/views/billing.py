@@ -48,6 +48,8 @@ def create_checkout_session(request):
                 + "?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=request.build_absolute_uri(reverse("core:stripe_cancel")),
         )
+        if checkout_session.url is None:
+            raise RuntimeError("Stripe checkout session returned no redirect URL")
         return redirect(checkout_session.url, code=303)
     except Exception as e:
         logger.error("Stripe checkout error: %s", e)
@@ -75,7 +77,7 @@ def stripe_success(request):
                 session.customer == request.user.stripe_customer_id
                 or str(session.client_reference_id) == str(request.user.id)
             )
-            if verified:
+            if verified and isinstance(session.customer, str):
                 _sync_customer_after_checkout(request.user, session.customer)
         except Exception as e:
             logger.warning("stripe_success sync error: %s", e)
@@ -158,7 +160,7 @@ def _sync_subscription_status(user):
         stripe_customer = stripe.Customer.retrieve(user.stripe_customer_id)
         customer = Customer.sync_from_stripe_data(stripe_customer)
 
-        if not customer.subscriber:
+        if customer is not None and not customer.subscriber:
             customer.subscriber = user
             customer.save(update_fields=["subscriber"])
 

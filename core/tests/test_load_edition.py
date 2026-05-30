@@ -13,6 +13,7 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    CodeEditionProvisionVersionClause,
     ProvisionVersionTable,
     Regulation,
     RegulationClause,
@@ -111,17 +112,17 @@ class TestLoadEdition:
 
         v0 = versions[0]
         assert v0.version == 0
-        assert v0.action == CodeEditionProvisionVersion.Action.ORIGINAL
-        assert v0.clause is None
+        assert v0.contributing_clauses.count() == 0
         assert v0.effective_date == date(1998, 4, 6)
         assert v0.ineffective_date == date(1998, 4, 6)
         assert "Alternative measure" in v0.html
 
         v1 = versions[1]
         assert v1.version == 1
-        assert v1.action == CodeEditionProvisionVersion.Action.REVOKE_AND_SUBSTITUTE
-        assert v1.clause is not None
-        assert v1.clause.clause_id == "1.(1)"
+        assert v1.contributing_clauses.count() == 1
+        first_clause = v1.contributing_clauses.first()
+        assert first_clause is not None
+        assert first_clause.clause_id == "1.(1)"
         assert v1.ineffective_date is None
         assert "other than Part 8" in v1.html
 
@@ -132,6 +133,7 @@ class TestLoadEdition:
         assert tables.count() == 1
 
         tbl = tables.first()
+        assert tbl is not None
         assert tbl.table_id == "Table-3.1.4.7."
         assert tbl.caption == "Minimum Fire-Resistance Rating for Fire Separations"
         assert isinstance(tbl.images, list)
@@ -208,3 +210,142 @@ class TestLoadEdition:
         bad_file.write_text("not json", encoding="utf-8")
         with pytest.raises(CommandError, match="Invalid JSON"):
             call_command("load_edition", "--source", str(bad_file))
+
+    def test_refuses_snapshots_path(self, edition_json: Path, tmp_path: Path) -> None:
+        snapshots_dir = tmp_path / "snapshots"
+        snapshots_dir.mkdir()
+        snap = snapshots_dir / "OBC_1997_elaws.json"
+        snap.write_text(edition_json.read_text(encoding="utf-8"), encoding="utf-8")
+        with pytest.raises(CommandError, match="snapshots"):
+            call_command("load_edition", "--source", str(snap))
+
+    def test_refuses_incomplete_chain(self, edition_json: Path, tmp_path: Path) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        data["amendment_chain_complete"] = False
+        incomplete = tmp_path / "OBC_1997_incomplete.json"
+        incomplete.write_text(json.dumps(data), encoding="utf-8")
+        with pytest.raises(CommandError, match="amendment_chain_complete"):
+            call_command("load_edition", "--source", str(incomplete))
+
+    def test_allow_incomplete_chain_flag(self, edition_json: Path, tmp_path: Path) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        data["amendment_chain_complete"] = False
+        incomplete = tmp_path / "OBC_1997_incomplete.json"
+        incomplete.write_text(json.dumps(data), encoding="utf-8")
+        call_command(
+            "load_edition", "--source", str(incomplete), "--allow-incomplete-chain",
+        )
+        assert CodeEdition.objects.get(edition_id="1997").amendment_chain_complete is False
+
+    def test_loads_regulation_assets(self, edition_json: Path, tmp_path: Path) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        # Inject assets onto the amending regulation per the
+        # inline-html-image-assets contract addendum.
+        for reg in data["regulations"]:
+            if reg["reg_id"] == "22/98":
+                reg["assets"] = [
+                    {
+                        "path": "laws/images/en/R98022_e_files/image001.gif",
+                        "original_url": "https://www.ontario.ca/laws/images/en/R98022_e_files/image001.gif",
+                        "sha256": "a" * 64,
+                        "bytes": 1234,
+                        "content_type": "image/gif",
+                    }
+                ]
+        with_assets = tmp_path / "OBC_1997_with_assets.json"
+        with_assets.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(with_assets))
+
+        amender = Regulation.objects.get(reg_id="22/98")
+        assets = list(amender.assets.all())
+        assert len(assets) == 1
+        a = assets[0]
+        assert a.path == "laws/images/en/R98022_e_files/image001.gif"
+        assert a.sha256 == "a" * 64
+        assert a.byte_size == 1234
+        assert a.content_type == "image/gif"
+
+    def test_merges_meta_amendment_stub_with_full_clause(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """A back-pointer stub and a full clause for the same
+        ``(regulation, clause_id)`` collapse to one row."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        # Pick an existing clause and inject a duplicate stub carrying
+        # only amended_by — exercises the loader's merge path.
+        for reg in data["regulations"]:
+            if reg["reg_id"] == "22/98":
+                reg["clauses"].append({
+                    "clause_id": "1.(1)",
+                    "amended_by": [
+                        {"reg_id": "999/99", "clause_id": "5", "action": "revoke"}
+                    ],
+                })
+        with_stub = tmp_path / "OBC_1997_with_stub.json"
+        with_stub.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(with_stub))
+
+        # One row, not two — full clause's payload survives, stub's
+        # amended_by is grafted on.
+        rows = RegulationClause.objects.filter(
+            regulation__reg_id="22/98", clause_id="1.(1)",
+        )
+        assert rows.count() == 1
+        merged = rows.first()
+        assert merged is not None
+        assert merged.action == RegulationClause.Action.REVOKE_AND_SUBSTITUTE  # from full
+        assert merged.amended_by  # from stub
+        assert merged.amended_by[0]["reg_id"] == "999/99"
+
+    def test_contributing_clause_order_by_filed_date(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """Two contributing clauses on the same version sort by
+        (regulation.filed_date, clause_id) into ``apply_order``."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        # Add a second amending regulation filed AFTER 22/98 and have it
+        # also contribute to the 1.1.3.2. v1 version.
+        data["regulations"].append({
+            "reg_id": "99/99",
+            "role": "amendment",
+            "amends": "403/97",
+            "filed_date": "1999-06-01",
+            "effective_date": "1998-04-06",
+            "source_pdf": "ont_reg_1999.pdf",
+            "source_pages": [1, 5],
+            "clauses": [{
+                "clause_id": "2",
+                "parent_clause": "2",
+                "action": "amend_add",
+                "target_level": "article",
+                "target_id": "1.1.3.2.",
+                "clause_text": "Add nothing useful.",
+            }],
+        })
+        for prov in data["provisions"]:
+            if prov["provision_id"] == "1.1.3.2.":
+                for ver in prov["versions"]:
+                    if ver["version"] == 1:
+                        ver["clauses"] = [
+                            {"regulation": "99/99", "clause_id": "2"},
+                            {"regulation": "22/98", "clause_id": "1.(1)"},
+                        ]
+        ordered = tmp_path / "OBC_1997_ordered.json"
+        ordered.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(ordered))
+
+        v1 = CodeEditionProvisionVersion.objects.get(
+            provision__provision_id="1.1.3.2.", version=1,
+        )
+        links = list(
+            CodeEditionProvisionVersionClause.objects
+            .filter(version=v1)
+            .order_by("apply_order")
+        )
+        assert len(links) == 2
+        # 22/98 was filed 1998-01-27; 99/99 was filed 1999-06-01.
+        # 22/98 must come first regardless of JSON emission order.
+        assert links[0].clause.regulation.reg_id == "22/98"
+        assert links[0].apply_order == 0
+        assert links[1].clause.regulation.reg_id == "99/99"
+        assert links[1].apply_order == 1

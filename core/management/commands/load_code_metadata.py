@@ -18,6 +18,14 @@ def _parse_date(value: str | None) -> date | None:
     return date.fromisoformat(value)
 
 
+def _require_date(value: str | None, field: str) -> date:
+    """Parse a mandatory date; error rather than write None to a NOT NULL column."""
+    parsed = _parse_date(value)
+    if parsed is None:
+        raise CommandError(f"Missing required date field: {field}")
+    return parsed
+
+
 class Command(BaseCommand):
     help = "Load code metadata into the database from a metadata JSON/YAML file."
 
@@ -34,7 +42,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options) -> None:
-        source_path = Path(options.get("source")).expanduser()
+        source_path = Path(options["source"]).expanduser()
         reset = options.get("reset", False)
 
         metadata_payload = self._load_payload(source_path)
@@ -88,7 +96,9 @@ class Command(BaseCommand):
                     defaults={
                         "year": edition["year"],
                         "map_codes": edition.get("map_codes", []),
-                        "effective_date": _parse_date(edition["effective_date"]),
+                        "effective_date": _require_date(
+                            edition["effective_date"], f"{code_key}.effective_date"
+                        ),
                         "superseded_date": _parse_date(edition.get("superseded_date")),
                         "pdf_files": edition.get("pdf_files"),
                         "download_url": download_url,
@@ -114,7 +124,9 @@ class Command(BaseCommand):
                     defaults={
                         "year": edition["year"],
                         "map_codes": edition.get("map_codes", []),
-                        "effective_date": _parse_date(edition["effective_date"]),
+                        "effective_date": _require_date(
+                            edition["effective_date"], f"{code_key}.effective_date"
+                        ),
                         "superseded_date": _parse_date(edition.get("superseded_date")),
                         "pdf_files": edition.get("pdf_files"),
                         "download_url": download_url,

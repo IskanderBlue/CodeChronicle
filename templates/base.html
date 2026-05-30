@@ -77,6 +77,13 @@
 
     <!-- KaTeX (math rendering for Surya OCR output) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
+
+    <!-- e-Laws class namespace shim — styles the markup CCM mirrors
+         verbatim from Ontario's e-Laws site (Psection-e, subsection-e,
+         MsoNormalTable, equation-e, etc.).  See core/html_policy notes
+         in tasks/provenance/impl-display-migration.md §7. -->
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/elaws.css' %}">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
             onload="renderMathInElement(document.body, {delimiters:[{left:'<math>',right:'</math>',display:false}]});"></script>

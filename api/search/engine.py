@@ -16,6 +16,11 @@ from core.models import CodeEditionProvisionVersion
 SEARCH_RESULT_LIMIT = 10
 
 
+# Declared as Any so both the real module (try) and the None fallback
+# (except) are assignable — the optional-import pattern without per-line
+# ignores.  Call sites are guarded by FUZZY_AVAILABLE.
+fuzz: Any
+process: Any
 try:
     from rapidfuzz import fuzz, process
 
@@ -37,7 +42,7 @@ def _expand_query_with_synonyms(query_terms: set[str]) -> set[str]:
 def _fuzzy_match_score(query_term: str, target_terms: set[str], threshold: int = 80) -> float:
     if not FUZZY_AVAILABLE or not target_terms:
         return 0.0
-    best_score = 0
+    best_score = 0.0
     for target in target_terms:
         ratio = fuzz.ratio(query_term, target)
         if ratio > best_score:
@@ -115,7 +120,7 @@ def score_versions(
             for term in expanded_terms:
                 criteria |= Q(keyword_counts__has_key=term)
     if has_refs:
-        for ref in provision_references:
+        for ref in provision_references or []:
             criteria |= Q(provision__provision_id__icontains=ref)
 
     candidates = versions_qs.filter(criteria)
@@ -136,7 +141,7 @@ def score_versions(
         # Provision reference match (highest priority)
         if has_refs:
             pid_lower = provision_id.lower()
-            for ref in provision_references:
+            for ref in provision_references or []:
                 if ref.lower() in pid_lower:
                     ref_score = 2.5 if pid_lower.endswith(ref.lower()) else 2.0
                     if ref_score > score:
@@ -186,7 +191,11 @@ def score_versions(
                 "html_content": version.html,
                 "page_images": version.page_images,
                 "tables": list(version.tables.all()),
-                "clause": version.clause,
+                # Templates show "amended by O. Reg. X cl. Y" using a
+                # single clause.  After the M2M migration the most
+                # recent amending clause is the last contributing clause
+                # in apply order; that's the one users want to see.
+                "clause": version.contributing_clauses.all().last(),
                 "is_base": version.version == 0,
             })
 
