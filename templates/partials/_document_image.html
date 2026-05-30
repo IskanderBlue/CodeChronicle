@@ -16,14 +16,14 @@
         <img src="{{ img_entry.image }}" alt="{{ alt_text }} (full page)"
             class="w-full fade-in-image" loading="lazy" style="opacity: 0.5;">
         {% for bbox in img_entry.bboxes %}
-        <div class="absolute border border-amber-600/40 bg-amber-500/[0.08] pointer-events-none rounded-sm"
+        <div class="absolute border border-secondary/50 bg-secondary/10 pointer-events-none"
             style="left: {{ bbox.l }}%; top: {{ bbox.t }}%; width: {{ bbox.r }}%; height: {{ bbox.b }}%;">
         </div>
         {% endfor %}
     </div>
     <div class="flex justify-end mt-0.5">
         <button type="button" @click.stop="fullPage = !fullPage"
-            class="text-[11px] text-primary-600 dark:text-primary-400 hover:text-primary-500 font-medium">
+            class="font-mono text-[10px] uppercase tracking-[0.06em] text-secondary hover:text-secondary-2 font-medium">
             <span x-show="!fullPage">View full page</span>
             <span x-show="fullPage" x-cloak>View focused</span>
         </button>

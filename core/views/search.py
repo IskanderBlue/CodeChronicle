@@ -9,7 +9,7 @@ from django.http import HttpRequest
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
 
-from api.formatters import _code_order_key
+from api.formatters import _code_order_key, highlight_terms
 from config.code_metadata import (
     get_code_display_name,
     get_download_url,
@@ -304,6 +304,7 @@ def viewer_section_content(request: HttpRequest):
     division = _query_value(request, "division")
     provision_id = _query_value(request, "provision_id")
     query_date = _parse_query_date(_query_value(request, "query_date")) or date.today()
+    match_terms = [t for t in _query_value(request, "keywords").split(",") if t.strip()]
 
     empty_ctx = {
         "sections": [],
@@ -347,6 +348,14 @@ def viewer_section_content(request: HttpRequest):
         frontier = [c.pk for c in children]
 
     versions = _active_versions(all_provisions, query_date)
+
+    # Highlight the parsed query keywords in each in-force version body
+    # (parity with the results-card highlight in api.formatters). Mutates the
+    # in-memory html field only — these instances are never saved.
+    if match_terms:
+        for v in versions:
+            if v.html:
+                v.html = highlight_terms(v.html, match_terms)
 
     # Group versions by provision pk.
     by_provision: dict[int, list[CodeEditionProvisionVersion]] = {}
@@ -449,5 +458,7 @@ def search_results(request):
             "success": True,
             "results": result["results"],
             "meta": {"applicable_codes": result["applicable_codes"]},
+            "query_date": result.get("parsed_params", {}).get("date"),
+            "keywords": result.get("parsed_params", {}).get("keywords", []),
         },
     )

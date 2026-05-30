@@ -4,8 +4,10 @@ Format search results for frontend display.
 
 import difflib
 import re
+from datetime import date
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
+from api.band import compute_band_geometry, parse_iso_date
 from config.code_metadata import get_code_display_name
 from core.models import CodeEditionProvision
 
@@ -27,10 +29,43 @@ def _linkify_appendix_refs(html: str) -> str:
             f'(<a href="#" @click.prevent="'
             f"$dispatch('expand-appendix'); "
             f'document.getElementById(\'appendix-{ref_id}\')?.scrollIntoView({{behavior: \'smooth\'}})"'
-            f' class="text-primary-600 dark:text-primary-400 hover:underline">'
+            f' class="text-secondary hover:text-secondary-2 hover:underline">'
             f'See Note {ref_id}</a>)'
         )
     return _APPENDIX_REF_RE.sub(_replace, html)
+
+
+def highlight_terms(html: str, terms: Iterable[str]) -> str:
+    """Wrap occurrences of query ``terms`` in provision HTML with ``<mark>``.
+
+    Phrase-aware and case-insensitive. Only the text *between* tags is
+    processed (via the same tag split used for diffing), so tags and their
+    attributes are never corrupted. Longer terms match first, so
+    "fire-resistance rating" wins over a bare "rating". ``\\w`` lookarounds
+    give word boundaries that respect hyphens inside a term.
+
+    The emitted ``mark.match-highlight`` class is styled by a role-variable
+    CSS rule in base.html (paper-yellow in light, amber in dark).
+    """
+    cleaned = sorted(
+        {t.strip() for t in terms if t and t.strip()},
+        key=len,
+        reverse=True,
+    )
+    if not html or not cleaned:
+        return html
+    pattern = re.compile(
+        r"(?<!\w)(" + "|".join(re.escape(t) for t in cleaned) + r")(?!\w)",
+        re.IGNORECASE,
+    )
+    parts = _HTML_TAG_RE.split(html)
+    out: list[str] = []
+    for part in parts:
+        if _HTML_TAG_RE.fullmatch(part):
+            out.append(part)  # tag — leave untouched
+        else:
+            out.append(pattern.sub(r'<mark class="match-highlight">\1</mark>', part))
+    return "".join(out)
 
 
 def _tokenize_html_for_diff(html: str) -> list[tuple[str, str]]:
@@ -196,7 +231,11 @@ def _build_copy_text(
     return "\n".join(lines)
 
 
-def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
+def _format_single_result(
+    result: Dict[str, Any],
+    query_date: date | None = None,
+    terms: Iterable[str] | None = None,
+) -> Dict[str, Any]:
     code_edition = result.get("code_edition", "Unknown")
     provision = result.get("provision")
     version = result.get("version")
@@ -252,9 +291,26 @@ def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
         contributing_clauses[-1] if contributing_clauses else result.get("clause")
     )
 
+    # IN FORCE band rail geometry. The "until" edge is the version's own
+    # ineffective date, falling back to the next version's effective date;
+    # None means open-ended (still current). Geometry is None when there's
+    # no effective date to anchor on.
+    until_date = None
+    if version is not None:
+        until_date = getattr(version, "ineffective_date", None)
+        if until_date is None and next_version is not None:
+            until_date = next_version.effective_date
+    band = compute_band_geometry(
+        version.effective_date if version else None,
+        until_date,
+        query_date,
+    )
+
     html_content = result.get("html_content")
     if html_content and appendix_notes:
         html_content = _linkify_appendix_refs(html_content)
+    if html_content and terms:
+        html_content = highlight_terms(html_content, terms)
 
     copy_text = _build_copy_text(
         code_edition=code_edition,
@@ -297,6 +353,7 @@ def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
         "appendix_notes": appendix_notes,
         "transition_provision_version": transition_provision_version,
         "copy_text": copy_text,
+        "band": band,
     }
 
 
@@ -635,9 +692,22 @@ def _nest_child_results(
     return [r for r in results if _nest_result_key(r) not in absorbed_child_keys]
 
 
-def format_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Transform raw search results into a format suitable for the frontend."""
-    formatted = [_format_single_result(result) for result in results]
+def format_search_results(
+    results: List[Dict[str, Any]],
+    query_date: date | str | None = None,
+    terms: Iterable[str] | None = None,
+) -> List[Dict[str, Any]]:
+    """Transform raw search results into a format suitable for the frontend.
+
+    ``query_date`` (a ``date`` or ISO string) drives the IN FORCE band's
+    query tick + coverage; omit it and the band still renders its date span.
+    ``terms`` (parsed query keywords) are highlighted in the provision body;
+    omit or pass empty to skip highlighting.
+    """
+    parsed_query_date = parse_iso_date(query_date)
+    formatted = [
+        _format_single_result(result, parsed_query_date, terms) for result in results
+    ]
     formatted.sort(key=lambda item: item.get("score", 0), reverse=True)
     grouped = group_formatted_results(formatted)
     merged = merge_transition_compare_results(grouped)

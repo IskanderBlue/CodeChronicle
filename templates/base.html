@@ -20,6 +20,66 @@
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 
+    <!-- ── Design theme tokens (semantic roles) ──────────────────────────
+         Colors are named by ROLE, never by hue, so one class themes
+         correctly in both light (A0) and dark (A2T+).  The hex lives here
+         once; `.dark` flips it.  Stored as space-separated RGB channels so
+         Tailwind opacity modifiers (e.g. bg-secondary/20) keep working.
+           secondary = the authoritative system answer   (oxblood → teal)
+           highlight = what the USER brought to the query (ink/ruled → amber)
+         This block is OUTSIDE the debug branch on purpose: both the dev CDN
+         build and the prod built CSS emit `var(--…)` refs that resolve here. -->
+    <style>
+      :root {
+        --ink: 26 23 20;                    /* primary text */
+        --ink-2: 59 52 45;                  /* secondary text, body */
+        --ink-3: 107 98 89;                 /* tertiary text, mono labels */
+        --surface: 251 248 241;             /* page background (paper) */
+        --surface-2: 243 238 226;           /* masthead, panels (paper-2) */
+        --panel: 255 255 255;               /* raised paper: citation header, selected card */
+        --rule: 205 196 182;                /* primary hairline */
+        --rule-2: 227 221 208;              /* secondary hairline */
+        --secondary: 122 31 43;             /* system answer (oxblood) */
+        --secondary-2: 90 18 27;            /* darker accent (oxblood-2) */
+        --secondary-soft: 251 232 234;      /* IN FORCE band fill */
+        --secondary-contrast: 251 248 241;  /* text on accent fill (paper) */
+        --highlight: 26 23 20;              /* user input: ink (shown in a ruled box) */
+        --highlight-soft: #f4ecd1;          /* matched-term underlay (paper-yellow) */
+      }
+      .dark {
+        --ink: 230 232 236;
+        --ink-2: 170 176 184;
+        --ink-3: 107 114 123;
+        --surface: 13 14 16;                /* bg */
+        --surface-2: 21 23 26;              /* bg-2 */
+        --panel: 28 31 35;                  /* panel */
+        --rule: 42 46 52;
+        --rule-2: 31 34 40;
+        --secondary: 61 211 196;            /* teal — system answer */
+        --secondary-2: 31 157 146;          /* teal-2 */
+        --secondary-soft: 13 36 34;         /* teal-soft band fill */
+        --secondary-contrast: 13 14 16;     /* text on accent fill (bg) */
+        --highlight: 245 198 74;            /* amber — user input */
+        --highlight-soft: rgba(245, 198, 74, 0.18);
+      }
+      /* Matched query terms in provision body (wrapped server-side by
+         api.formatters.highlight_terms). The `highlight` role = "what the
+         user brought to the query": light = paper-yellow underlay, no border;
+         dark = amber-soft underlay + amber underline. box-decoration-break
+         keeps the highlight clean across line wraps. Hand-written (not a
+         Tailwind utility) so it survives the prod CSS purge. */
+      mark.match-highlight {
+        background: var(--highlight-soft);
+        color: inherit;
+        padding: 1px 2px;
+        -webkit-box-decoration-break: clone;
+        box-decoration-break: clone;
+      }
+      .dark mark.match-highlight {
+        border-bottom: 1px solid rgb(var(--highlight));
+      }
+    </style>
+
     {% if debug %}
     <!-- Tailwind CSS (CDN for local dev) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -29,12 +89,53 @@
             theme: {
                 extend: {
                     colors: {
+                        // ── Legacy palette ──
+                        // Kept during the incremental redesign so the ~538
+                        // existing `*-<shade>` usages keep their colours.
+                        // Remove once every template is migrated to the
+                        // role tokens below.
                         primary: tailwind.colors.teal,
                         accent: tailwind.colors.yellow,
                         neutral: tailwind.colors.slate,
                         danger: tailwind.colors.red,
                         success: tailwind.colors.green,
-                    }
+                        // ── Design role tokens ──
+                        // Resolve against the CSS vars defined in the <style>
+                        // block above; `.dark` flips light → dark.
+                        ink: {
+                            DEFAULT: 'rgb(var(--ink) / <alpha-value>)',
+                            2: 'rgb(var(--ink-2) / <alpha-value>)',
+                            3: 'rgb(var(--ink-3) / <alpha-value>)',
+                        },
+                        surface: {
+                            DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
+                            2: 'rgb(var(--surface-2) / <alpha-value>)',
+                        },
+                        panel: 'rgb(var(--panel) / <alpha-value>)',
+                        rule: {
+                            DEFAULT: 'rgb(var(--rule) / <alpha-value>)',
+                            2: 'rgb(var(--rule-2) / <alpha-value>)',
+                        },
+                        secondary: {
+                            DEFAULT: 'rgb(var(--secondary) / <alpha-value>)',
+                            2: 'rgb(var(--secondary-2) / <alpha-value>)',
+                            soft: 'rgb(var(--secondary-soft) / <alpha-value>)',
+                            contrast: 'rgb(var(--secondary-contrast) / <alpha-value>)',
+                        },
+                        highlight: {
+                            DEFAULT: 'rgb(var(--highlight) / <alpha-value>)',
+                            soft: 'var(--highlight-soft)',
+                        },
+                    },
+                    fontFamily: {
+                        serif: ['"Source Serif 4"', 'Literata', 'Georgia', 'serif'],
+                        sans: ['"Inter Tight"', 'system-ui', '-apple-system', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+                    },
+                    // Global square edges — the no-radius aesthetic IS the
+                    // authority signal. `rounded` now = 0; stray `rounded-md`
+                    // / `rounded-xl` are stripped per-template during re-skin.
+                    borderRadius: { DEFAULT: '0' },
                 }
             }
         }
@@ -51,7 +152,7 @@
         .provision-content { font-family: 'Literata', Georgia, serif; line-height: 1.7; }
         .provision-content em { font-style: italic; }
         /* Paper-like container */
-        .paper-container { background: #fefdfb; border: 1px solid #e8e5e0; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+        .paper-container { background: #fefdfb; border: 1px solid #e8e5e0; }
         .dark .paper-container { background: #1a1a1e; border-color: #2a2a2e; box-shadow: none; }
         /* Table container */
         .table-container { background: #f5f7fa; border: 1px solid #dde1e8; }
@@ -70,10 +171,15 @@
     <link href="{% static 'css/tailwind.css' %}" rel="stylesheet">
     {% endif %}
 
-    <!-- Fonts: Literata (legal content), JetBrains Mono (references) -->
+    <!-- Fonts
+         Source Serif 4 — provision body, headings, dates (legal content)
+         Inter Tight    — UI chrome, nav, buttons (sans)
+         JetBrains Mono — citations, IDs, dates, metadata labels (mono)
+         Literata is kept as a serif fallback; it is interchangeable with
+         Source Serif 4 at body size (see design handoff README). -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=Inter+Tight:wght@400;500;600;700&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
     <!-- KaTeX (math rendering for Surya OCR output) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
@@ -91,169 +197,126 @@
     {% block extra_head %}{% endblock %}
 </head>
 
-<body class="bg-neutral-200 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 flex flex-col min-h-screen">
-    <nav class="bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700"
-        x-data="{ open: false }">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <!-- Brand and Desktop Nav -->
-                <div class="flex">
-                    <div class="flex-shrink-0 flex items-center">
-                        <a href="{% url 'core:home' %}"
-                            class="text-2xl font-bold text-primary-600 dark:text-primary-400">CodeChronicle</a>
-                    </div>
-                    <div class="hidden md:ml-6 md:flex md:space-x-8">
-                        <a href="{% url 'core:home' %}"
-                            class="{% if request.resolver_match.url_name == 'home' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            Search
-                        </a>
-                        {% if not user.is_authenticated or not user.has_active_subscription %}
-                        <a href="{% url 'core:pricing' %}"
-                            class="{% if request.resolver_match.url_name == 'pricing' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            Pricing
-                        </a>
-                        {% endif %}
-                        {% if user.is_authenticated %}
-                        <a href="{% url 'core:history' %}"
-                            class="{% if request.resolver_match.url_name == 'history' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            History
-                        </a>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <!-- Desktop Auth Links -->
-                <div class="hidden md:ml-6 md:flex md:items-stretch md:space-x-4">
-                    {% if user.is_authenticated %}
-                    <div class="flex items-center">
-                        <span class="text-sm text-neutral-500 dark:text-neutral-400 truncate max-w-[200px]"
-                            title="{{ user.email }}">
-                            {{ user.email }}
-                        </span>
-                    </div>
-                    {% if user.is_staff %}
-                    <a href="/admin/"
-                        class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {% if request.path == '/admin/' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %}">Admin</a>
-                    {% endif %}
-                    <a href="{% url 'core:user_settings' %}"
-                        class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {% if request.resolver_match.url_name == 'user_settings' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %}">
-                        <svg class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        Settings
-                    </a>
-                    {% else %}
-                    <a href="{% url 'account_login' %}"
-                        class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {% if request.resolver_match.url_name == 'account_login' %}border-primary-500 text-neutral-900 dark:text-white{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %}">Login</a>
-                    <div class="flex items-center">
-                        <a href="{% url 'account_signup' %}"
-                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
-                            Sign up
-                        </a>
-                    </div>
-                    {% endif %}
-                    <!-- Dark Mode Toggle -->
-                    <div class="flex items-center mr-2">
-                        <button @click="darkMode = !darkMode" type="button"
-                            class="p-2 rounded-md text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
-                            <span class="sr-only">Toggle dark mode</span>
-                            <svg x-show="!darkMode" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                            </svg>
-                            <svg x-show="darkMode" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M12 3v1m0 16v1m9-9h-1M4 9H3m3.343-5.657l-.707.707m12.728 12.728l-.707.707M6.343 17.657l-.707-.707M17.657 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                            </svg>
-                        </button>
-                    </div>
-
-                </div>
-
-                <!-- Mobile menu button -->
-                <div class="-mr-2 flex items-center md:hidden space-x-2">
-                    <!-- Dark Mode Toggle (Mobile) -->
-                    <button @click="darkMode = !darkMode" type="button"
-                        class="p-2 rounded-md text-neutral-400 hover:text-neutral-500 dark:hover:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500">
-                        <svg x-show="!darkMode" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                        </svg>
-                        <svg x-show="darkMode" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M12 3v1m0 16v1m9-9h-1M4 9H3m3.343-5.657l-.707.707m12.728 12.728l-.707.707M6.343 17.657l-.707-.707M17.657 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                        </svg>
-                    </button>
-                    <button @click="open = !open" type="button"
-                        class="inline-flex items-center justify-center p-2 rounded-md text-neutral-400 hover:text-neutral-500 dark:hover:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500">
-                        <span class="sr-only">Open main menu</span>
-                        <svg x-show="!open" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M4 6h16M4 12h16M4 18h16" />
-                        </svg>
-                        <svg x-show="open" x-cloak class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
+<body class="bg-surface text-ink font-sans flex flex-col min-h-screen">
+    <header class="bg-surface-2 border-b border-rule" x-data="{ open: false }">
+        <!-- Top bar: volume / edition / dated stamp (masthead affectation) -->
+        <div class="hidden sm:flex items-center justify-between px-8 py-2 border-b border-rule-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+            <span>VOL. XXVI &middot; NO. 117</span>
+            <span class="uppercase">Forensic Edition</span>
+            {% now "D · j M Y · H:i" as masthead_stamp %}
+            <span>{{ masthead_stamp|upper }}</span>
         </div>
 
-        <!-- Mobile Menu -->
-        <div x-show="open" x-cloak class="md:hidden">
-            <div class="pt-2 pb-3 space-y-1 border-t border-neutral-100 dark:border-neutral-700">
+        <!-- Nameplate + navigation -->
+        <div class="flex items-baseline justify-between gap-4 px-4 sm:px-8 pt-4 pb-3">
+            <div class="flex items-baseline gap-[18px] min-w-0">
                 <a href="{% url 'core:home' %}"
-                    class="{% if request.resolver_match.url_name == 'home' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Search</a>
+                    class="font-serif text-3xl sm:text-[44px] font-bold tracking-[-0.02em] leading-none text-ink whitespace-nowrap">Code<span
+                        class="italic font-medium">Chronicle</span></a>
+                <span class="hidden lg:block border-l border-rule pl-[18px] font-serif italic text-sm text-ink-2">
+                    The reference of record for in-force building code provisions
+                </span>
+            </div>
+
+            <!-- Desktop nav -->
+            <nav class="hidden md:flex items-center gap-6 font-sans text-[13px] font-medium uppercase tracking-[0.08em]">
+                <a href="{% url 'core:home' %}"
+                    class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'home' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Search</a>
                 {% if not user.is_authenticated or not user.has_active_subscription %}
                 <a href="{% url 'core:pricing' %}"
-                    class="{% if request.resolver_match.url_name == 'pricing' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Pricing</a>
+                    class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'pricing' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Pricing</a>
                 {% endif %}
                 {% if user.is_authenticated %}
                 <a href="{% url 'core:history' %}"
-                    class="{% if request.resolver_match.url_name == 'history' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">History</a>
+                    class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'history' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">History</a>
+                {% if user.is_staff %}
+                <a href="/admin/"
+                    class="pb-1 border-b-2 {% if request.path == '/admin/' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Admin</a>
                 {% endif %}
-            </div>
-            <div class="pt-4 pb-3 border-t border-neutral-200 dark:border-neutral-700">
-                {% if user.is_authenticated %}
-                <div class="flex items-center px-4">
-                    <div class="flex-shrink-0">
-                        <div
-                            class="h-10 w-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-700 dark:text-primary-400 font-bold">
-                            {{ user.email|first|upper }}
-                        </div>
-                    </div>
-                    <div class="ml-3">
-                        <div
-                            class="text-base font-medium text-neutral-800 dark:text-neutral-200 truncate max-w-[200px]">
-                            {{ user.email }}
-                        </div>
-                    </div>
-                </div>
-                <div class="mt-3 space-y-1">
-                    {% if user.is_staff %}
-                    <a href="/admin/"
-                        class="{% if request.path == '/admin/' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Admin</a>
-                    {% endif %}
-                    <a href="{% url 'core:user_settings' %}"
-                        class="{% if request.resolver_match.url_name == 'user_settings' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Settings</a>
-                </div>
+                <a href="{% url 'core:user_settings' %}"
+                    class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'user_settings' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Account</a>
+                <span class="font-mono text-[11px] normal-case tracking-normal text-ink-3 truncate max-w-[160px]"
+                    title="{{ user.email }}">{{ user.email }}</span>
                 {% else %}
-                <div class="mt-3 space-y-1">
-                    <a href="{% url 'account_login' %}"
-                        class="{% if request.resolver_match.url_name == 'account_login' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Login</a>
-                    <a href="{% url 'account_signup' %}"
-                        class="{% if request.resolver_match.url_name == 'account_signup' %}border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400{% else %}border-transparent text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-200{% endif %} block pl-3 pr-4 py-2 border-l-4 text-base font-medium">Sign
-                        up</a>
-                </div>
+                <a href="{% url 'account_login' %}"
+                    class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'account_login' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Login</a>
+                <a href="{% url 'account_signup' %}"
+                    class="bg-secondary text-secondary-contrast px-4 py-2 font-semibold tracking-[0.1em] hover:bg-secondary-2">Sign up</a>
                 {% endif %}
+                <!-- Dark mode toggle -->
+                <button @click="darkMode = !darkMode" type="button"
+                    class="text-ink-3 hover:text-ink focus:outline-none">
+                    <span class="sr-only">Toggle dark mode</span>
+                    <svg x-show="!darkMode" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                    <svg x-show="darkMode" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 3v1m0 16v1m9-9h-1M4 9H3m3.343-5.657l-.707.707m12.728 12.728l-.707.707M6.343 17.657l-.707-.707M17.657 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                </button>
+            </nav>
+
+            <!-- Mobile menu buttons -->
+            <div class="flex items-center gap-2 md:hidden">
+                <button @click="darkMode = !darkMode" type="button"
+                    class="p-2 text-ink-3 hover:text-ink focus:outline-none">
+                    <span class="sr-only">Toggle dark mode</span>
+                    <svg x-show="!darkMode" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                    <svg x-show="darkMode" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 3v1m0 16v1m9-9h-1M4 9H3m3.343-5.657l-.707.707m12.728 12.728l-.707.707M6.343 17.657l-.707-.707M17.657 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                </button>
+                <button @click="open = !open" type="button"
+                    class="p-2 text-ink-3 hover:text-ink focus:outline-none">
+                    <span class="sr-only">Open main menu</span>
+                    <svg x-show="!open" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                    <svg x-show="open" x-cloak class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
             </div>
         </div>
-    </nav>
+
+        <!-- Mobile menu -->
+        <div x-show="open" x-cloak class="md:hidden border-t border-rule-2 font-sans">
+            <div class="py-2">
+                <a href="{% url 'core:home' %}"
+                    class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium {% if request.resolver_match.url_name == 'home' %}border-secondary text-ink bg-surface{% else %}border-transparent text-ink-3 hover:text-ink hover:bg-surface{% endif %}">Search</a>
+                {% if not user.is_authenticated or not user.has_active_subscription %}
+                <a href="{% url 'core:pricing' %}"
+                    class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium {% if request.resolver_match.url_name == 'pricing' %}border-secondary text-ink bg-surface{% else %}border-transparent text-ink-3 hover:text-ink hover:bg-surface{% endif %}">Pricing</a>
+                {% endif %}
+                {% if user.is_authenticated %}
+                <a href="{% url 'core:history' %}"
+                    class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium {% if request.resolver_match.url_name == 'history' %}border-secondary text-ink bg-surface{% else %}border-transparent text-ink-3 hover:text-ink hover:bg-surface{% endif %}">History</a>
+                {% if user.is_staff %}
+                <a href="/admin/"
+                    class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium {% if request.path == '/admin/' %}border-secondary text-ink bg-surface{% else %}border-transparent text-ink-3 hover:text-ink hover:bg-surface{% endif %}">Admin</a>
+                {% endif %}
+                <a href="{% url 'core:user_settings' %}"
+                    class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium {% if request.resolver_match.url_name == 'user_settings' %}border-secondary text-ink bg-surface{% else %}border-transparent text-ink-3 hover:text-ink hover:bg-surface{% endif %}">Account</a>
+                {% else %}
+                <a href="{% url 'account_login' %}"
+                    class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium {% if request.resolver_match.url_name == 'account_login' %}border-secondary text-ink bg-surface{% else %}border-transparent text-ink-3 hover:text-ink hover:bg-surface{% endif %}">Login</a>
+                <a href="{% url 'account_signup' %}"
+                    class="block pl-3 pr-4 py-2 border-l-4 border-transparent text-base font-medium text-secondary">Sign up</a>
+                {% endif %}
+            </div>
+            {% if user.is_authenticated %}
+            <div class="border-t border-rule-2 px-4 py-3 font-mono text-[11px] text-ink-3 truncate" title="{{ user.email }}">
+                {{ user.email }}
+            </div>
+            {% endif %}
+        </div>
+    </header>
 
     {% if messages %}
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
@@ -272,18 +335,17 @@
         </div>
     </main>
 
-    <footer class="bg-neutral-100 dark:bg-neutral-800 border-t border-neutral-200 dark:border-neutral-700 mt-auto">
-        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-col items-center space-y-2">
-                <div class="flex items-center space-x-4 text-sm text-neutral-500 dark:text-neutral-400">
-                    <a href="{% url 'core:terms_of_service' %}" class="hover:text-neutral-700 dark:hover:text-neutral-200 hover:underline">Terms of Service</a>
-                    <span>&middot;</span>
-                    <a href="{% url 'core:privacy_policy' %}" class="hover:text-neutral-700 dark:hover:text-neutral-200 hover:underline">Privacy Policy</a>
-                </div>
-                <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                    Disclaimer: This tool provides references only. Verify with official documents before use.
-                </p>
-            </div>
+    <!-- Footer: 3px double rule is a publishing convention — it does heavy
+         lifting for the "of record" feeling, so keep it. -->
+    <footer class="mt-auto border-t-[3px] border-double border-rule bg-surface-2">
+        <div class="flex flex-col gap-2 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+            <span>CodeChronicle &middot; Established MMXXIV</span>
+            <span class="sm:text-center">Not legal advice &middot; Citation-grade reference &middot; Verify against official consolidation</span>
+            <span class="flex items-center gap-3">
+                <a href="{% url 'core:terms_of_service' %}" class="hover:text-ink hover:underline">Terms</a>
+                <span class="text-rule">&middot;</span>
+                <a href="{% url 'core:privacy_policy' %}" class="hover:text-ink hover:underline">Privacy</a>
+            </span>
         </div>
     </footer>
 

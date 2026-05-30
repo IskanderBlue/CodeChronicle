@@ -1,88 +1,124 @@
-{# Provenance banner: in-force date, regulation, amendment chain, next version, copy button #}
-<div class="mt-3 rounded-md {% if result.clause %}border-l-2 border-amended{% else %}border-l-2 border-primary-400 dark:border-primary-600{% endif %} bg-neutral-50/70 dark:bg-neutral-900/40 px-3 py-2.5 text-xs"
-    x-data="{ copied: false, showChain: false }">
-    <div class="flex items-start justify-between gap-2">
-        <div class="space-y-1 text-neutral-600 dark:text-neutral-400">
-            {# In-force date + base regulation #}
+{% comment %} ── IN FORCE band ──
+   The hero/brand element. Data (effective/ineffective dates, base reg,
+   amendment chain, next version, copy_text) comes from api.formatters.
+   The query-date tick + "✓ COVERED" verification cell use `result.band`
+   (rail geometry precomputed in api.band from the parsed query date) and
+   the `query_date` context var threaded through from run_search.
+   NB: multi-line {# #} comments leak as literal text (tokenizer isn't
+   re.DOTALL) — use {% comment %} for anything spanning lines.
+{% endcomment %}
+<div class="mt-3 border border-secondary bg-secondary-soft" x-data="{ copied: false, showChain: false }">
+    <div class="flex flex-wrap items-stretch">
+        {# Label cell — solid accent fill #}
+        <div class="flex items-center bg-secondary px-3.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-secondary-contrast">
+            {% if result.clause %}In force &middot; amended{% else %}In force{% endif %}
+        </div>
+
+        {# FROM ─ rail ─ UNTIL ─ DURATION #}
+        <div class="flex flex-1 flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2">
             {% if result.version %}
-            <p>
-                <span class="font-semibold text-neutral-700 dark:text-neutral-300">In force</span>
-                <span class="font-ref">{{ result.version.effective_date|date:"Y-m-d" }}</span>
-                {% if result.base_regulation %}
-                <span class="text-neutral-500 dark:text-neutral-500">&middot;</span>
-                <span class="font-ref">O. Reg. {{ result.base_regulation.reg_id }}</span>
+            <div class="shrink-0">
+                <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">From</div>
+                <div class="font-serif text-[18px] font-semibold leading-tight text-ink">{{ result.version.effective_date|date:"j F Y" }}</div>
+            </div>
+
+            {% comment %} Timeline rail: in-force span (accent) + query-date tick
+               (highlight). Positions are precomputed server-side in api.band. {% endcomment %}
+            {% if result.band %}
+            <div class="relative order-last mt-1 h-1.5 w-full self-center bg-rule-2 sm:order-none sm:mt-0 sm:min-w-[100px] sm:flex-1">
+                <div class="absolute inset-y-0 bg-secondary" style="left: {{ result.band.span_left_pct }}%; width: {{ result.band.span_width_pct }}%;"></div>
+                {% if result.band.tick_pct is not None %}
+                <div class="absolute -top-1 h-3.5 w-0.5 bg-highlight" style="left: {{ result.band.tick_pct }}%;" title="Query date {{ query_date }}"></div>
                 {% endif %}
-            </p>
-            {% endif %}
-
-            {# Amendment info (if amended) #}
-            {% if result.clause %}
-            <p>
-                <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Amended</span>
-                <span class="font-ref">O. Reg. {{ result.clause.regulation.reg_id }}</span>, cl. <span class="font-ref">{{ result.clause.clause_id }}</span>
-                <span class="text-neutral-500 dark:text-neutral-500">&middot; effective <span class="font-ref">{{ result.clause.regulation.effective_date|date:"Y-m-d" }}</span></span>
-            </p>
-            {% elif result.is_base %}
-            <p class="text-neutral-500 dark:text-neutral-500">
-                Original &mdash; base regulation
-            </p>
-            {% endif %}
-
-            {# Amendment chain (staggered reveal) #}
-            {% if result.amendment_chain and result.amendment_chain|length > 1 %}
-            <div>
-                <button type="button" @click.stop="showChain = !showChain"
-                    class="text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500 cursor-pointer">
-                    <span x-show="!showChain">{{ result.amendment_chain|length|add:"-1" }} earlier amendment{{ result.amendment_chain|length|add:"-1"|pluralize }}</span>
-                    <span x-show="showChain" x-cloak>Hide amendment chain</span>
-                </button>
-                <div x-show="showChain" x-cloak class="mt-1.5 space-y-1 pl-2 border-l border-neutral-300 dark:border-neutral-600 accordion-content">
-                    {% for entry in result.amendment_chain %}
-                    {% with entry_clause=entry.contributing_clauses.all|last %}
-                    {% if not forloop.first and entry_clause %}
-                    <p class="text-[11px] text-neutral-500 dark:text-neutral-400"
-                        x-show="showChain"
-                        x-transition:enter="transition ease-out"
-                        x-transition:enter-start="opacity-0 translate-y-1"
-                        x-transition:enter-end="opacity-100 translate-y-0"
-                        style="transition-delay: {{ forloop.counter0 }}00ms">
-                        <span class="font-ref">O. Reg. {{ entry_clause.regulation.reg_id }}</span>, cl. <span class="font-ref">{{ entry_clause.clause_id }}</span>
-                        <span class="text-neutral-400 dark:text-neutral-500">&middot; <span class="font-ref">{{ entry.effective_date|date:"Y-m-d" }}</span></span>
-                    </p>
-                    {% endif %}
-                    {% endwith %}
-                    {% endfor %}
-                </div>
             </div>
             {% endif %}
 
-            {# Next version proof line #}
-            {% if result.next_version %}
-            {% with next_clause=result.next_version.contributing_clauses.all|last %}
-            <p class="text-neutral-400 dark:text-neutral-500 italic">
-                Next:
-                {% if next_clause %}
-                <span class="font-ref">O. Reg. {{ next_clause.regulation.reg_id }}</span>
-                {% endif %}
-                (not in force until <span class="font-ref">{{ result.next_version.effective_date|date:"Y-m-d" }}</span>)
-            </p>
-            {% endwith %}
+            <div class="shrink-0">
+                <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">Until</div>
+                <div class="font-serif text-[18px] font-semibold leading-tight text-ink">
+                    {% if result.version.ineffective_date %}{{ result.version.ineffective_date|date:"j F Y" }}{% elif result.next_version %}{{ result.next_version.effective_date|date:"j F Y" }}{% else %}Current{% endif %}
+                </div>
+            </div>
+            {% if result.version.ineffective_date %}
+            <div class="shrink-0">
+                <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">Dur.</div>
+                <div class="font-mono text-[14px] font-semibold leading-tight text-ink">{{ result.version.effective_date|timesince:result.version.ineffective_date }}</div>
+            </div>
+            {% endif %}
             {% endif %}
         </div>
 
-        {# Copy reference button — copy_text is built server-side in the
-           formatter (see api.formatters._build_copy_text) so JS doesn't
-           need to know the provenance shape. #}
+        {# Verification cell — only when a query date was parsed #}
+        {% if result.band and result.band.covered is not None %}
+        <div class="flex shrink-0 items-center border-l border-secondary/40 px-3 py-2 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.06em] {% if result.band.covered %}text-secondary{% else %}text-danger-500{% endif %}">
+            {% if result.band.covered %}&#10003; Covers {{ query_date }}{% else %}&#10007; Not in force {{ query_date }}{% endif %}
+        </div>
+        {% endif %}
+
+        {% comment %} Copy reference button — copy_text is built server-side in the
+           formatter (api.formatters._build_copy_text) so JS doesn't need
+           to know the provenance shape. {% endcomment %}
         <button type="button" title="Copy structured reference"
-            class="inline-flex items-center p-1.5 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 cursor-pointer shrink-0 relative"
+            class="relative flex shrink-0 items-center border-l border-secondary/40 px-3 text-ink-3 hover:text-secondary"
             data-copy-text="{{ result.copy_text }}"
             @click.stop="
                 navigator.clipboard.writeText($el.dataset.copyText);
                 copied = true;
                 setTimeout(() => copied = false, 1500);
             ">
-            <svg x-show="!copied" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-            <svg x-show="copied" x-cloak class="h-3.5 w-3.5 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            <svg x-show="!copied" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            <svg x-show="copied" x-cloak class="h-4 w-4 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
         </button>
+    </div>
+
+    {# Provenance metadata row: base reg, amendment, chain, next version #}
+    <div class="space-y-1 border-t border-secondary/40 px-4 py-2 font-mono text-[11px] text-ink-2">
+        {% if result.base_regulation %}
+        <p><span class="text-ink-3">Base &middot;</span> O. Reg. {{ result.base_regulation.reg_id }}</p>
+        {% endif %}
+
+        {% if result.clause %}
+        <p>
+            <span class="text-ink-3">Amended &middot;</span> O. Reg. {{ result.clause.regulation.reg_id }}, cl. {{ result.clause.clause_id }}
+            &middot; effective {{ result.clause.regulation.effective_date|date:"Y-m-d" }}
+        </p>
+        {% elif result.is_base %}
+        <p class="text-ink-3">Original &mdash; base regulation</p>
+        {% endif %}
+
+        {% if result.amendment_chain and result.amendment_chain|length > 1 %}
+        <div>
+            <button type="button" @click.stop="showChain = !showChain"
+                class="cursor-pointer font-sans text-[11px] font-medium text-secondary hover:text-secondary-2">
+                <span x-show="!showChain">{{ result.amendment_chain|length|add:"-1" }} earlier amendment{{ result.amendment_chain|length|add:"-1"|pluralize }}</span>
+                <span x-show="showChain" x-cloak>Hide amendment chain</span>
+            </button>
+            <div x-show="showChain" x-cloak class="mt-1.5 space-y-1 border-l border-rule pl-2 accordion-content">
+                {% for entry in result.amendment_chain %}
+                {% with entry_clause=entry.contributing_clauses.all.last %}
+                {% if not forloop.first and entry_clause %}
+                <p class="text-[11px] text-ink-3"
+                    x-show="showChain"
+                    x-transition:enter="transition ease-out"
+                    x-transition:enter-start="opacity-0 translate-y-1"
+                    x-transition:enter-end="opacity-100 translate-y-0"
+                    style="transition-delay: {{ forloop.counter0 }}00ms">
+                    O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}
+                    &middot; {{ entry.effective_date|date:"Y-m-d" }}
+                </p>
+                {% endif %}
+                {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if result.next_version %}
+        {% with next_clause=result.next_version.contributing_clauses.all.last %}
+        <p class="italic text-ink-3">
+            Next: {% if next_clause %}O. Reg. {{ next_clause.regulation.reg_id }} {% endif %}(not in force until {{ result.next_version.effective_date|date:"Y-m-d" }})
+        </p>
+        {% endwith %}
+        {% endif %}
     </div>
 </div>

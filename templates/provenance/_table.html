@@ -1,15 +1,14 @@
-{# Single ProvisionVersionTable.
+{% comment %} Single ProvisionVersionTable.
    Renders HTML form when present (CCM's preferred form for elaws-sourced
    versions); falls back to images otherwise.  Notes are suppressed when
    the HTML form is populated — by contract CCM emits notes="" in that
    case to avoid double-rendering.
 
-   Context: `table` (ProvisionVersionTable). #}
-<figure class="rounded-md border border-neutral-200 dark:border-neutral-700 bg-blue-50/30 dark:bg-blue-950/10 overflow-hidden">
+   Context: `table` (ProvisionVersionTable). {% endcomment %}
+<figure class="border border-rule bg-surface-2 overflow-hidden">
     {% if table.caption %}
-    <figcaption class="px-3 py-1.5 text-xs uppercase tracking-wide font-semibold
-                       text-neutral-600 dark:text-neutral-300
-                       border-b border-neutral-200 dark:border-neutral-700">
+    <figcaption class="px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] font-semibold
+                       text-ink-3 border-b border-rule">
         {{ table.caption }}
     </figcaption>
     {% endif %}
@@ -19,19 +18,19 @@
             {{ table.html|safe }}
         </div>
         {% elif table.images %}
-        <div class="rounded-md overflow-y-auto table-container max-w-none provision-table-html"
+        <div class="overflow-y-auto table-container max-w-none provision-table-html"
              style="max-height: 500px;">
             {% for entry in table.images %}
             {% include "partials/_document_image.html" with image=entry %}
             {% endfor %}
         </div>
         {% else %}
-        <p class="text-sm text-neutral-400 italic">Table content not available.</p>
+        <p class="font-serif text-sm italic text-ink-3">Table content not available.</p>
         {% endif %}
 
         {% if table.notes and not table.html %}
-        <div class="mt-2 pt-2 border-t border-neutral-200 dark:border-neutral-700
-                    text-xs text-neutral-600 dark:text-neutral-400 whitespace-pre-line">
+        <div class="mt-2 pt-2 border-t border-rule
+                    text-xs text-ink-3 whitespace-pre-line">
             {{ table.notes }}
         </div>
         {% endif %}

@@ -378,7 +378,9 @@ def test_provenance_banner_shows_base_regulation():
     )
 
     assert "In force" in html
-    assert "1998-04-06" in html
+    # IN FORCE band renders the effective date in the design's serif
+    # "j F Y" form (not ISO); see api.band / _provenance_banner.html.
+    assert "6 April 1998" in html
     assert "403/97" in html
     assert "Original" in html
     assert "base regulation" in html

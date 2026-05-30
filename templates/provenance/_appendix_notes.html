@@ -1,8 +1,8 @@
-{# Collapsible appendix-notes block.
+{% comment %} Collapsible appendix-notes block.
    Context: `notes` (list of dicts shaped by formatters._format_single_result:
    `{id, title, html}`).  The notes' `id` matches the anchor IDs generated
    by `_linkify_appendix_refs()` so "(See Note A-X.X.X.X.(N))" links
-   inside provision HTML scroll the user to the right note. #}
+   inside provision HTML scroll the user to the right note. {% endcomment %}
 {% if notes %}
 <div class="mt-3 rounded-md border border-neutral-200 dark:border-neutral-700"
      x-data="{ open: false }"

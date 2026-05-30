@@ -1,7 +1,7 @@
-{# Provenance header for a single in-force provision version.
+{% comment %} Provenance header for a single in-force provision version.
    Context: result (formatter dict) with `version`, `most_recent_clause`,
    `contributing_clauses`, `next_version`, `base_regulation`,
-   `code_display_name`, `division`, `id`, `title`, `copy_text`. #}
+   `code_display_name`, `division`, `id`, `title`, `copy_text`. {% endcomment %}
 {% load static %}
 <div class="rounded-md border-l-2
             {% if result.most_recent_clause %}border-amended{% else %}border-primary-400 dark:border-primary-600{% endif %}

@@ -1,6 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4 entrypoint for the production CLI build.
+   `@config` loads the legacy-style JS config (content globs + theme.extend
+   with the legacy palette AND the design role tokens). Dev uses the CDN
+   build configured inline in base.html; this file feeds the prod build
+   (.github/workflows/publish.yml: tailwindcss -i input.css -o tailwind.css). */
+@import "tailwindcss";
+@config "../../tailwind.config.js";
 
 [x-cloak] { display: none !important; }
 .htmx-indicator { display: none; }

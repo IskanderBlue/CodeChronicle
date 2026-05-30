@@ -57,8 +57,14 @@ def run_search(
                 "results": [],
             }
 
-        # Step 3: Format results for display
-        formatted = format_search_results(search_data["results"])
+        # Step 3: Format results for display. The parsed/overridden query
+        # date drives the IN FORCE band's query tick + coverage; the parsed
+        # keywords are highlighted in the provision body.
+        formatted = format_search_results(
+            search_data["results"],
+            query_date=params.get("date"),
+            terms=params.get("keywords"),
+        )
         logger.info("search service payload: %d results", len(formatted))
 
         # Step 4: Record search history (non-fatal)
