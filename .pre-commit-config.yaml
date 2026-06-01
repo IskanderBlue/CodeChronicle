@@ -30,18 +30,18 @@ repos:
         args: [--fix]
 
   # ---- Types (mypy + django-stubs plugin, project venv) ----------------
-  # Runs from the active environment (language: system) so it sees the
-  # django-stubs plugin, the project's deps, and DATABASE_URL — none of
-  # which exist in pre-commit's isolated per-hook virtualenvs.
-  # REQUIRES the project venv to be active when committing (as do all
-  # project commands — see CLAUDE.md); `python -m mypy` then resolves to
-  # the venv's mypy. pass_filenames: false because the plugin needs the
-  # whole app's model graph, not just the staged files.
+  # language: system so mypy sees the django-stubs plugin, the project's deps,
+  # and DATABASE_URL — none of which exist in pre-commit's isolated per-hook
+  # virtualenvs.  scripts/run_mypy.py re-dispatches to venv/'s python (falling
+  # back to the current interpreter) so the hook works even when the venv isn't
+  # active — e.g. the Windows App-execution-alias shim shadowing PATH.
+  # pass_filenames: false because the plugin needs the whole app's model graph,
+  # not just the staged files.
   - repo: local
     hooks:
       - id: mypy
         name: mypy (django-stubs plugin)
-        entry: python -m mypy
+        entry: python scripts/run_mypy.py
         language: system
         types: [python]
         pass_filenames: false
