@@ -287,9 +287,14 @@ def _format_single_result(
         version.transition_provision if version else None
     )
 
+    # The representative "amended by" clause is the last one applied to this
+    # version, ordered by the through model's apply_order (see
+    # CodeEditionProvisionVersion.last_contributing_clause). Using that
+    # property keeps the header, amendment chain, and next-version rows
+    # consistent — a plain contributing_clauses[-1] is non-deterministic.
     most_recent_clause = (
-        contributing_clauses[-1] if contributing_clauses else result.get("clause")
-    )
+        version.last_contributing_clause if version else None
+    ) or result.get("clause")
 
     # IN FORCE band rail geometry. The "until" edge is the version's own
     # ineffective date, falling back to the next version's effective date;

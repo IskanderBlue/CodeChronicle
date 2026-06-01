@@ -74,12 +74,15 @@
     {# Provenance metadata row: base reg, amendment, chain, next version #}
     <div class="space-y-1 border-t border-secondary/40 px-4 py-2 font-mono text-[11px] text-ink-2">
         {% if result.base_regulation %}
-        <p><span class="text-ink-3">Base &middot;</span> O. Reg. {{ result.base_regulation.reg_id }}</p>
+        <p class="flex items-baseline justify-between gap-2 {% if result.version.pk == result.amendment_chain.0.pk %}rounded bg-secondary-soft px-1.5 py-0.5 font-semibold text-ink ring-1 ring-secondary/40{% endif %}">
+            <span><span class="text-ink-3">Base &middot;</span> {% if result.base_regulation.pk %}<a href="{% url 'core:regulation_detail' result.base_regulation.pk %}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ result.base_regulation.reg_id }}</a>{% else %}O. Reg. {{ result.base_regulation.reg_id }}{% endif %}{% if result.version.pk == result.amendment_chain.0.pk %}<span class="ml-1 font-mono text-[9px] uppercase tracking-[0.08em] text-secondary">&larr; current</span>{% endif %}</span>
+            {% if result.amendment_chain.0 and result.version.pk != result.amendment_chain.0.pk and result.division %}<a href="{% url 'core:provision_permalink' result.code_edition result.division result.id result.amendment_chain.0.version %}" @click.stop class="shrink-0 font-mono text-[10px] text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ result.amendment_chain.0.version }} &rarr;</a>{% endif %}
+        </p>
         {% endif %}
 
         {% if result.clause %}
         <p>
-            <span class="text-ink-3">Amended &middot;</span> O. Reg. {{ result.clause.regulation.reg_id }}, cl. {{ result.clause.clause_id }}
+            <span class="text-ink-3">Amended &middot;</span> {% if result.clause.regulation.pk %}<a href="{% url 'core:regulation_detail' result.clause.regulation.pk %}#clause-{{ result.clause.pk }}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ result.clause.regulation.reg_id }}, cl. {{ result.clause.clause_id }}</a>{% else %}O. Reg. {{ result.clause.regulation.reg_id }}, cl. {{ result.clause.clause_id }}{% endif %}
             &middot; effective {{ result.clause.regulation.effective_date|date:"Y-m-d" }}
         </p>
         {% elif result.is_base %}
@@ -95,17 +98,31 @@
             </button>
             <div x-show="showChain" x-cloak class="mt-1.5 space-y-1 border-l border-rule pl-2 accordion-content">
                 {% for entry in result.amendment_chain %}
-                {% with entry_clause=entry.contributing_clauses.all.last %}
+                {% with entry_clause=entry.last_contributing_clause %}
                 {% if not forloop.first and entry_clause %}
-                <p class="text-[11px] text-ink-3"
+                {% if entry.pk == result.version.pk %}
+                <p class="rounded bg-secondary-soft px-1.5 py-0.5 text-[11px] font-semibold text-ink ring-1 ring-secondary/40"
                     x-show="showChain"
                     x-transition:enter="transition ease-out"
                     x-transition:enter-start="opacity-0 translate-y-1"
                     x-transition:enter-end="opacity-100 translate-y-0"
                     style="transition-delay: {{ forloop.counter0 }}00ms">
-                    O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}
+                    {% if entry_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}{% endif %}
                     &middot; {{ entry.effective_date|date:"Y-m-d" }}
+                    <span class="ml-1 font-mono text-[9px] uppercase tracking-[0.08em] text-secondary">&larr; current</span>
                 </p>
+                {% else %}
+                <p class="flex items-baseline justify-between gap-2 text-[11px] text-ink-3"
+                    x-show="showChain"
+                    x-transition:enter="transition ease-out"
+                    x-transition:enter-start="opacity-0 translate-y-1"
+                    x-transition:enter-end="opacity-100 translate-y-0"
+                    style="transition-delay: {{ forloop.counter0 }}00ms">
+                    <span>{% if entry_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}{% endif %}
+                    &middot; {{ entry.effective_date|date:"Y-m-d" }}</span>
+                    {% if result.division %}<a href="{% url 'core:provision_permalink' result.code_edition result.division result.id entry.version %}" @click.stop class="shrink-0 font-mono text-[10px] text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ entry.version }} &rarr;</a>{% endif %}
+                </p>
+                {% endif %}
                 {% endif %}
                 {% endwith %}
                 {% endfor %}
@@ -114,9 +131,10 @@
         {% endif %}
 
         {% if result.next_version %}
-        {% with next_clause=result.next_version.contributing_clauses.all.last %}
-        <p class="italic text-ink-3">
-            Next: {% if next_clause %}O. Reg. {{ next_clause.regulation.reg_id }} {% endif %}(not in force until {{ result.next_version.effective_date|date:"Y-m-d" }})
+        {% with next_clause=result.next_version.last_contributing_clause %}
+        <p class="flex items-baseline justify-between gap-2 italic text-ink-3">
+            <span>Next: {% if next_clause %}{% if next_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' next_clause.regulation.pk %}#clause-{{ next_clause.pk }}" @click.stop class="not-italic text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</a> {% else %}O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }} {% endif %}{% endif %}(not in force until {{ result.next_version.effective_date|date:"Y-m-d" }})</span>
+            {% if result.division %}<a href="{% url 'core:provision_permalink' result.code_edition result.division result.id result.next_version.version %}" @click.stop class="shrink-0 font-mono text-[10px] not-italic text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ result.next_version.version }} &rarr;</a>{% endif %}
         </p>
         {% endwith %}
         {% endif %}

@@ -63,6 +63,7 @@ effective date then filing date.
       "action": "revoke_and_substitute",
       "target_level": "article",
       "target_id": "1.1.3.2.",
+      "target_division": "B",
       "clause_text": "The definitions of 'Alternative measure'...",
       "strike_text": null,
       "sub_text": null,
@@ -99,6 +100,29 @@ effective date then filing date.
 `table` is a valid target level for clauses because gazette directives
 target tables directly. The clause resolves to the parent provision for
 versioning — CodeChronicle handles this during ingestion.
+
+### `clauses[].target_division` (optional)
+
+The division the target provision lives in, as a **bare letter** — `"A"`,
+`"B"`, or `"C"` for OBC 2006+/NBC — matching the `provisions[].division`
+format exactly. The same bare `target_id` (e.g. `1.1.3.2.`) can exist in
+more than one division, so this is what pins the clause to the correct
+provision without CodeChronicle having to recover it heuristically from the
+through-model link at read time.
+
+Empty string (the default) means **no single target division**: either a
+division-less edition (OBC 1997) or a meta-amendment whose target is itself
+a clause rather than a divisioned provision. Back-compatible — pre-existing
+JSONs without the key ingest as `""`.
+
+```json
+{
+  "clause_id": "1.(1)",
+  "target_level": "article",
+  "target_id": "1.1.3.2.",
+  "target_division": "B"
+}
+```
 
 ### `clauses[].clause_text`
 
@@ -165,7 +189,7 @@ Provision bboxes encompass the provision text plus any associated tables.
 {
   "provision_id": "1.1.3.2.",
   "level": "article",
-  "division": "Division A",
+  "division": "A",
   "parent_id": "1.1.3.",
   "appendix_of_id": null,
 
@@ -220,7 +244,7 @@ windows can filter `v.ineffective_date == v.effective_date`.
 {
   "provision_id": "A-1.1.3.2.(1)",
   "level": "sentence",
-  "division": "Division A",
+  "division": "A",
   "parent_id": "A-1.1.3.2.",
   "appendix_of_id": "1.1.3.2.",
 
@@ -488,10 +512,10 @@ NBC), populate `division` with the top-level Division name.
 ```json
 {
   "old_provision_id": "9.10.18.6.",
-  "old_division": "Part 9",
+  "old_division": "",
   "old_edition": "1997",
   "new_provision_id": "9.10.18.6.",
-  "new_division": "Division B",
+  "new_division": "B",
   "new_edition": "2006",
   "mapping_type": "renumbered",
   "introduced_by": null,

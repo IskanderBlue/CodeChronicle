@@ -67,6 +67,7 @@ class TestLoadEdition:
         assert cl.action == RegulationClause.Action.REVOKE_AND_SUBSTITUTE
         assert cl.target_level == RegulationClause.TargetLevel.ARTICLE
         assert cl.target_id == "1.1.3.2."
+        assert cl.target_division == "B"
 
         cl2 = RegulationClause.objects.get(clause_id="15.(1)")
         assert cl2.strike_text == "institutional occupancies"

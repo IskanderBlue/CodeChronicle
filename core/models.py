@@ -2,6 +2,8 @@
 Core models for CodeChronicle.
 """
 
+from typing import TYPE_CHECKING
+
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
@@ -356,6 +358,18 @@ class Regulation(models.Model):
 class RegulationClause(models.Model):
     """A single amendment directive within a regulation."""
 
+    # Reverse relations (see note on CodeEdition).  The M2M back-accessor of
+    # CodeEditionProvisionVersion.contributing_clauses (related_name).
+    contributed_to_versions: "models.Manager[CodeEditionProvisionVersion]"
+
+    if TYPE_CHECKING:
+        # Choice-field display methods Django generates at class creation.
+        # The mypy plugin synthesises these; plain Pyright (editor) can't see
+        # them, so declare the ones we call.  Guarded by TYPE_CHECKING so the
+        # real generated methods are used at runtime.
+        def get_action_display(self) -> str: ...
+        def get_target_level_display(self) -> str: ...
+
     class Action(models.TextChoices):
         REVOKE_AND_SUBSTITUTE = "revoke_and_substitute", "Revoke and substitute"
         AMEND_ADD = "amend_add", "Amend by adding"
@@ -385,6 +399,17 @@ class RegulationClause(models.Model):
         max_length=50, choices=TargetLevel.choices, blank=True, default=""
     )
     target_id = models.CharField(max_length=200, blank=True, default="")
+    target_division = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text=(
+            "Division the target provision lives in, as a bare letter "
+            "('A'/'B'/'C') matching CodeEditionProvision.division. Empty for "
+            "division-less editions (OBC 1997) or clauses with no single "
+            "division (meta-amendments)."
+        ),
+    )
     target_reg = models.CharField(max_length=50, blank=True, default="")
     clause_text = models.TextField(blank=True, default="")
     strike_text = models.TextField(null=True, blank=True)
@@ -457,6 +482,12 @@ class CodeEditionProvision(models.Model):
     # FK id-shadow, plugin-only — declared for Pyright.
     parent_id: int | None
 
+    if TYPE_CHECKING:
+        # Choice-field display method (see RegulationClause): synthesised by
+        # the mypy plugin, invisible to plain Pyright — declared so the call
+        # in views.regulation._clause_targets type-checks under both.
+        def get_level_display(self) -> str: ...
+
     class Level(models.TextChoices):
         DIVISION = "division", "Division"
         PART = "part", "Part"
@@ -512,6 +543,9 @@ class CodeEditionProvisionVersion(models.Model):
 
     # Reverse relations (see note on CodeEdition).
     tables: "models.Manager[ProvisionVersionTable]"
+    codeeditionprovisionversionclause_set: (
+        "models.Manager[CodeEditionProvisionVersionClause]"
+    )
     # FK id-shadow, plugin-only — declared for Pyright.
     provision_id: int
 
@@ -558,6 +592,25 @@ class CodeEditionProvisionVersion(models.Model):
 
     def __str__(self):
         return f"{self.provision} v{self.version}"
+
+    @property
+    def last_contributing_clause(self) -> "RegulationClause | None":
+        """The final clause applied to produce this version, in apply order.
+
+        ``contributing_clauses.all()`` orders by ``RegulationClause``'s
+        (empty) ``Meta.ordering`` and so is non-deterministic — ``[-1]`` and
+        ``.last()`` can disagree across queries (Postgres heap order vs.
+        ``ORDER BY pk``).  The canonical order lives on the through model
+        ``CodeEditionProvisionVersionClause.apply_order``; ``.last()`` against
+        its reverse set (apply_order DESC) yields the last-applied clause
+        consistently for the header, amendment chain, and next-version rows.
+        """
+        last = (
+            self.codeeditionprovisionversionclause_set
+            .select_related("clause__regulation")
+            .last()
+        )
+        return last.clause if last else None
 
 
 class CodeEditionProvisionVersionClause(models.Model):

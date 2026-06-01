@@ -10,7 +10,7 @@ from .billing import (
 )
 from .history import history
 from .pages import pricing, privacy_policy, terms_of_service, user_settings
-from .regulation import edition_chain, regulation_detail
+from .regulation import edition_chain, provision_permalink, regulation_detail
 from .search import (
     home,
     search_results,
@@ -27,6 +27,7 @@ __all__ = [
     "home",
     "pricing",
     "privacy_policy",
+    "provision_permalink",
     "regulation_detail",
     "search_results",
     "stripe_cancel",

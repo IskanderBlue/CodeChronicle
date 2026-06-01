@@ -36,6 +36,82 @@
   margin-top: 0.5rem;
   margin-left: 1.5rem;
 }
+
+/* Numbered hierarchy — progressive indent mirroring ontario.ca/e-Laws.
+ * The HTML is flat (each level is a sibling <p>), so the nesting is
+ * conveyed entirely by a left margin that steps in 1.5rem per level,
+ * anchored to .subsection-e (the (1)/(2) sentence) above:
+ *   (1) sentence      subsection-e    1.5rem
+ *     (a) clause       clause-e        3.0rem
+ *       (i) subclause   subclause-e     4.5rem
+ *         (A) sub-sub    subsubclause-e  6.0rem
+ * paragraph-e / subpara-e are rare alternants that sit at clause /
+ * subclause depth respectively. */
+/* `S`-prefixed siblings (Ssubsection-e, Sclause-e, …) are e-Laws'
+ * "spaced / first-in-group" variants: same indent depth as the base
+ * class, just extra space above.  `subection-e` is an upstream typo of
+ * subsection-e in one source provision — aliased so it doesn't render
+ * flat. */
+.subection-e {
+  display: block;
+  margin-top: 0.5rem;
+  margin-left: 1.5rem;
+}
+.Ssubsection-e {
+  display: block;
+  margin-top: 0.85rem;
+  margin-left: 1.5rem;
+}
+.clause-e,
+.paragraph-e {
+  display: block;
+  margin-top: 0.25rem;
+  margin-left: 3rem;
+}
+.Sclause-e {
+  display: block;
+  margin-top: 0.6rem;
+  margin-left: 3rem;
+}
+.subclause-e,
+.subpara-e {
+  display: block;
+  margin-top: 0.25rem;
+  margin-left: 4.5rem;
+}
+.subsubclause-e {
+  display: block;
+  margin-top: 0.25rem;
+  margin-left: 6rem;
+}
+
+/* Body paragraph explicitly flagged "no indent" — pin it flush so it
+ * never inherits a stray left margin. */
+.paranoindt-e {
+  display: block;
+  margin-top: 0.5rem;
+  margin-left: 0;
+}
+
+/* Definition lists carry their own clause variants at the same depths.
+ * firstdef-e / Sdefinition-e are the first/spaced entries in a list. */
+.definition-e,
+.firstdef-e,
+.Sdefinition-e {
+  display: block;
+  margin-top: 0.5rem;
+  margin-left: 1.5rem;
+}
+.defclause-e {
+  display: block;
+  margin-top: 0.25rem;
+  margin-left: 3rem;
+}
+.defsubclause-e {
+  display: block;
+  margin-top: 0.25rem;
+  margin-left: 4.5rem;
+}
 .Pheading3-e,
 .Pheading2-e,
 .Pheading1-e {
@@ -73,14 +149,59 @@
   padding: 0;
 }
 
-/* Equation paragraphs carrying inline <img> equation glyphs */
+/* Equation paragraphs carrying inline <img> equation glyphs.
+ * .equation-e is centred; the equationindN-e variants are left-indented
+ * continuation lines stepping in with the clause hierarchy. */
 .equation-e {
   text-align: center;
   margin: 0.75rem 0;
 }
-.equation-e img {
+.equationind1-e {
+  display: block;
+  margin: 0.5rem 0 0.5rem 3rem;
+}
+.equationind2-e {
+  display: block;
+  margin: 0.5rem 0 0.5rem 4.5rem;
+}
+.equationind3-e {
+  display: block;
+  margin: 0.5rem 0 0.5rem 6rem;
+}
+.equation-e img,
+.equationind1-e img,
+.equationind2-e img,
+.equationind3-e img {
   display: inline-block;
   vertical-align: middle;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Headnote — a label introducing table notes ("Notes to Table …:"). */
+.headnote-e {
+  font-weight: 600;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Act / Form titles — centred headings in the e-Laws source. */
+.act-e,
+.form-e {
+  text-align: center;
+  font-weight: 600;
+  margin: 0.75rem 0;
+}
+
+/* Scanned figures — a paragraph wrapping a single <img>. Centre it and
+ * keep it responsive (source markup is occasionally malformed, so scope
+ * the reset to the image only). */
+.scanned-e {
+  text-align: center;
+  margin: 0.75rem 0;
+}
+.scanned-e img {
+  display: inline-block;
   max-width: 100%;
   height: auto;
 }

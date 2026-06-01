@@ -270,6 +270,7 @@ class Command(BaseCommand):
                 action=cl_data.get("action", ""),
                 target_level=cl_data.get("target_level", ""),
                 target_id=cl_data.get("target_id", ""),
+                target_division=cl_data.get("target_division", ""),
                 target_reg=cl_data.get("target_reg", ""),
                 clause_text=cl_data.get("clause_text", ""),
                 strike_text=cl_data.get("strike_text"),

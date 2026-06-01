@@ -195,7 +195,7 @@ def score_versions(
                 # single clause.  After the M2M migration the most
                 # recent amending clause is the last contributing clause
                 # in apply order; that's the one users want to see.
-                "clause": version.contributing_clauses.all().last(),
+                "clause": version.last_contributing_clause,
                 "is_base": version.version == 0,
             })
 

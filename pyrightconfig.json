@@ -4,5 +4,10 @@
   "pythonVersion": "3.12",
   "typeCheckingMode": "basic",
   "include": ["api", "core", "config", "code_chronicle"],
-  "exclude": ["**/migrations", "venv", "**/__pycache__"]
+  "exclude": ["**/migrations", "venv", "**/__pycache__"],
+  "//": "extraPaths puts the venv's site-packages on the import search path directly, so django-stubs resolves even for a language server that never picked up the venv interpreter (venvPath/venv alone are not always honored). Both OS layouts listed; Pyright ignores the one that doesn't exist.",
+  "extraPaths": [
+    "venv/Lib/site-packages",
+    "venv/lib/python3.12/site-packages"
+  ]
 }

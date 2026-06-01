@@ -5,14 +5,21 @@
    case to avoid double-rendering.
 
    Context: `table` (ProvisionVersionTable). {% endcomment %}
-<figure class="border border-rule bg-surface-2 overflow-hidden">
-    {% if table.caption %}
-    <figcaption class="px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.08em] font-semibold
-                       text-ink-3 border-b border-rule">
-        {{ table.caption }}
+<figure class="border border-rule bg-surface-2 overflow-hidden" x-data="{ open: false }">
+    <figcaption class="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 cursor-pointer select-none"
+                :class="{ 'border-b border-rule': open }"
+                role="button" tabindex="0" :aria-expanded="open"
+                @click="open = !open" @keydown.enter="open = !open" @keydown.space.prevent="open = !open">
+        <span class="shrink-0 text-[10px] text-ink-3" x-text="open ? '▾' : '▸'"></span>
+        {% if table.table_id %}
+        <span class="shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.08em]
+                     text-secondary bg-secondary-soft px-1.5 py-0.5">Table {{ table.table_id|cut:"Table-" }}</span>
+        {% endif %}
+        {% if table.caption %}
+        <span class="font-mono text-[10px] uppercase tracking-[0.08em] font-semibold text-ink-3">{{ table.caption }}</span>
+        {% endif %}
     </figcaption>
-    {% endif %}
-    <div class="p-3">
+    <div class="p-3" x-show="open" x-cloak>
         {% if table.html %}
         <div class="provision-table-html prose dark:prose-invert max-w-none">
             {{ table.html|safe }}

@@ -24,5 +24,10 @@ urlpatterns = [
     path("stripe/cancel/", views.stripe_cancel, name="stripe_cancel"),
     path("stripe/portal/", views.create_customer_portal_session, name="stripe_portal"),
     path("regulation/<int:pk>/", views.regulation_detail, name="regulation_detail"),
+    path(
+        "provision/<str:code_edition>/<str:division>/<str:provision_id>/v<int:version>/",
+        views.provision_permalink,
+        name="provision_permalink",
+    ),
     path("edition/<int:pk>/chain/", views.edition_chain, name="edition_chain"),
 ]

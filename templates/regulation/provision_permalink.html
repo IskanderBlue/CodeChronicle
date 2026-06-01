@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ provision_id }} — {{ code_display_name }} — CodeChronicle{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl px-4 py-8 sm:px-8">
+    {% comment %} Breadcrumb: edition / division / provision.  No query date
+       here, so the provision is shown at the linked version and the in-force
+       / coverage chrome is intentionally omitted. {% endcomment %}
+    <div class="mb-6 border-b border-rule pb-4">
+        <p class="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3">
+            {{ code_display_name }}
+            {% if division %}<span class="text-rule">›</span> Division {{ division }}{% endif %}
+        </p>
+        <h1 class="mt-2 font-serif text-[28px] leading-tight text-ink">
+            <span class="font-mono font-semibold">{{ provision_id }}</span>
+        </h1>
+        <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">
+            Version {{ version_number }}{% if effective_date %} — in force {{ effective_date|date:"j F Y" }}{% endif %}
+        </p>
+
+        {% comment %} Sibling pager: previous / next provision under the same
+           parent, as each reads on the pinned date. {% endcomment %}
+        {% if nav_prev or nav_next %}
+        <nav class="mt-3 flex items-center justify-between gap-4 text-[13px]">
+            <span>
+                {% if nav_prev %}<a href="{{ nav_prev.url }}" class="text-secondary hover:underline">&larr; <span class="font-mono font-semibold">{{ nav_prev.provision_id }}</span></a>{% endif %}
+            </span>
+            <span class="text-right">
+                {% if nav_next %}<a href="{{ nav_next.url }}" class="text-secondary hover:underline"><span class="font-mono font-semibold">{{ nav_next.provision_id }}</span> &rarr;</a>{% endif %}
+            </span>
+        </nav>
+        {% endif %}
+
+        {% if nav_up %}
+        <nav class="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[13px]">
+            <span class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Within</span>
+            {% for item in nav_up %}{% include "regulation/_permalink_nav_item.html" with item=item %}{% endfor %}
+        </nav>
+        {% endif %}
+
+        {% comment %} Subprovisions sit directly under the parent link so the
+           whole hierarchy (up + down) reads as one block above the content. {% endcomment %}
+        {% if nav_down %}
+        <nav class="mt-3">
+            <p class="mb-1 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">Subprovisions</p>
+            <ul class="space-y-1 text-[13px]">
+                {% for item in nav_down %}
+                <li class="flex flex-wrap items-baseline gap-x-2">
+                    {% include "regulation/_permalink_nav_item.html" with item=item %}
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+
+    {% comment %} Amendment-chain / in-force banner — the same provenance band
+       shown in search results, above the content.  No query date here, so the
+       partial omits its query-date rail and coverage cell. {% endcomment %}
+    {% if provenance %}
+    {% include "partials/_provenance_banner.html" with result=provenance %}
+    {% endif %}
+
+    <div class="mt-3 border border-rule">
+        {% include "partials/_viewer_section_content.html" %}
+    </div>
+</div>
+{% endblock %}
