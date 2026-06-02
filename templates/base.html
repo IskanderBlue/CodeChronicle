@@ -89,70 +89,13 @@
       }
     </style>
 
-    {% if debug %}
-    <!-- Tailwind CSS (CDN for local dev) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        // ── Legacy palette ──
-                        // Kept during the incremental redesign so the ~538
-                        // existing `*-<shade>` usages keep their colours.
-                        // Remove once every template is migrated to the
-                        // role tokens below.
-                        primary: tailwind.colors.teal,
-                        accent: tailwind.colors.yellow,
-                        neutral: tailwind.colors.slate,
-                        danger: tailwind.colors.red,
-                        success: tailwind.colors.green,
-                        // ── Design role tokens ──
-                        // Resolve against the CSS vars defined in the <style>
-                        // block above; `.dark` flips light → dark.
-                        ink: {
-                            DEFAULT: 'rgb(var(--ink) / <alpha-value>)',
-                            2: 'rgb(var(--ink-2) / <alpha-value>)',
-                            3: 'rgb(var(--ink-3) / <alpha-value>)',
-                        },
-                        surface: {
-                            DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
-                            2: 'rgb(var(--surface-2) / <alpha-value>)',
-                        },
-                        panel: 'rgb(var(--panel) / <alpha-value>)',
-                        rule: {
-                            DEFAULT: 'rgb(var(--rule) / <alpha-value>)',
-                            2: 'rgb(var(--rule-2) / <alpha-value>)',
-                        },
-                        secondary: {
-                            DEFAULT: 'rgb(var(--secondary) / <alpha-value>)',
-                            2: 'rgb(var(--secondary-2) / <alpha-value>)',
-                            soft: 'rgb(var(--secondary-soft) / <alpha-value>)',
-                            contrast: 'rgb(var(--secondary-contrast) / <alpha-value>)',
-                        },
-                        highlight: {
-                            DEFAULT: 'rgb(var(--highlight) / <alpha-value>)',
-                            soft: 'var(--highlight-soft)',
-                        },
-                        // Legal-redline functional colours (deletions / additions).
-                        // Use only on amendment redlines + action tags.
-                        strike: 'rgb(var(--strike) / <alpha-value>)',
-                        insert: 'rgb(var(--insert) / <alpha-value>)',
-                    },
-                    fontFamily: {
-                        serif: ['"Source Serif 4"', 'Literata', 'Georgia', 'serif'],
-                        sans: ['"Inter Tight"', 'system-ui', '-apple-system', 'sans-serif'],
-                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-                    },
-                    // Global square edges — the no-radius aesthetic IS the
-                    // authority signal. `rounded` now = 0; stray `rounded-md`
-                    // / `rounded-xl` are stripped per-template during re-skin.
-                    borderRadius: { DEFAULT: '0' },
-                }
-            }
-        }
-    </script>
+    {% comment %} Hand-written CSS that is NOT Tailwind utilities — component
+       classes, x-cloak, and htmx + diff helpers. Kept inline and always-present
+       (like the token block above) so it exists in every build: the Tailwind CLI
+       would otherwise purge these (they aren't utilities), and x-cloak must apply
+       before Alpine boots to avoid a flash of un-cloaked content. The colour role
+       tokens that were configured inline for the old v3 CDN now live solely in
+       tailwind.config.js — single source of truth for the v4 CLI build. {% endcomment %}
     <style>
         [x-cloak] { display: none !important; }
         .htmx-indicator { display: none; }
@@ -178,11 +121,16 @@
         .fade-in-image { animation: fadeIn 300ms ease-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
-    {% else %}
-    <!-- Tailwind CSS (pre-built for production) -->
+
+    {% comment %} Tailwind utilities — the CLI-built stylesheet, used in BOTH dev
+       and prod (Tailwind v4.3.0, the same standalone binary + tailwind.config.js
+       + input.css, so dev and prod can no longer skew). Dev must build it first:
+       download the v4.3.0 standalone CLI once, then run it in watch mode —
+         .\tailwindcss.exe -i static/css/input.css -o static/css/tailwind.css --watch
+       The output is gitignored; until it's built, dev pages render with the inline
+       CSS above but no Tailwind utilities. See CLAUDE.md → "Frontend CSS". {% endcomment %}
     {% load static %}
     <link href="{% static 'css/tailwind.css' %}" rel="stylesheet">
-    {% endif %}
 
     <!-- Fonts
          Source Serif 4 — provision body, headings, dates (legal content)

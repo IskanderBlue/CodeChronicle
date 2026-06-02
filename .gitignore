@@ -79,8 +79,13 @@ secrets/
 .agents/
 .tmp/
 
-# Compiled Tailwind (built in CI)
+# Compiled Tailwind (built in CI / local watch)
 static/css/tailwind.css
+
+# Tailwind standalone CLI binary (downloaded once for local dev; see base.html)
+tailwindcss.exe
+tailwindcss-*-x64
+tailwindcss-*-x64.exe
 
 # artifact
 nul

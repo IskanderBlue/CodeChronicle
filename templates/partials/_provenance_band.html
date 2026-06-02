@@ -9,7 +9,7 @@
    NB: multi-line {# #} comments leak as literal text (tokenizer isn't
    re.DOTALL) — use {% comment %} for anything spanning lines.
 {% endcomment %}
-<div class="border border-secondary bg-secondary-soft" x-data="{ copied: false }">
+<div class="@container border border-secondary bg-secondary-soft" x-data="{ copied: false }">
     <div class="flex flex-wrap items-stretch">
         {# Label cell — solid accent fill #}
         <div class="flex items-center bg-secondary px-3.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-secondary-contrast">
@@ -25,9 +25,13 @@
             </div>
 
             {% comment %} Timeline rail: in-force span (accent) + query-date tick
-               (highlight). Positions are precomputed server-side in api.band. {% endcomment %}
+               (highlight). Positions are precomputed server-side in api.band.
+               Container-query (not viewport): shown only when the band's own box
+               is wide (@xl ≈ 36rem); below that it's hidden so the narrow
+               side-by-side compare panes get a compact date band instead of a
+               flex-1 rail that wraps asymmetrically between the two versions. {% endcomment %}
             {% if result.band %}
-            <div class="relative order-last mt-1 h-1.5 w-full self-center bg-rule-2 sm:order-none sm:mt-0 sm:min-w-[100px] sm:flex-1">
+            <div class="relative hidden h-1.5 self-center bg-rule-2 @xl:block @xl:min-w-[100px] @xl:flex-1">
                 <div class="absolute inset-y-0 bg-secondary" style="left: {{ result.band.span_left_pct }}%; width: {{ result.band.span_width_pct }}%;"></div>
                 {% if result.band.tick_pct is not None %}
                 <div class="absolute -top-1 h-3.5 w-0.5 bg-highlight" style="left: {{ result.band.tick_pct }}%;" title="Query date {{ query_date }}"></div>
@@ -41,8 +45,11 @@
                     {% if result.version.ineffective_date %}{{ result.version.ineffective_date|date:"j F Y" }}{% elif result.next_version %}{{ result.next_version.effective_date|date:"j F Y" }}{% else %}Current{% endif %}
                 </div>
             </div>
+            {% comment %} Duration: hidden in the compact (narrow-container) band —
+               it's derivable from From/Until, and its varying width ("4 years" vs
+               "1 year") was the other driver of asymmetric wrap between panes. {% endcomment %}
             {% if result.version.ineffective_date %}
-            <div class="shrink-0">
+            <div class="hidden shrink-0 @xl:block">
                 <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">Dur.</div>
                 <div class="font-mono text-[14px] font-semibold leading-tight text-ink">{{ result.version.effective_date|timesince:result.version.ineffective_date }}</div>
             </div>

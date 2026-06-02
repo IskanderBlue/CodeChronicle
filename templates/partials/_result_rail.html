@@ -7,4 +7,26 @@
 {% if result.group_type != 'parent_children' and result.result_type != 'transition_compare' %}
 {% include "partials/_provenance_rail.html" with result=result %}
 {% include "partials/_result_justification.html" with result=result %}
+{% elif result.result_type == 'transition_compare' %}
+{% comment %} Transition compare has two in-force versions, each a complete
+   formatted result with its own provenance chain. The middle column shows their
+   in-force bands + bodies; the chain/metadata sits here, one labelled rail per
+   version (primary "in force", the other "previous"), then the shared
+   justification. {% endcomment %}
+<div class="space-y-3">
+    {% for version in result.versions %}
+    {% comment %} The previous version's chain appears only while compare is
+       expanded, so the rail mirrors the center column (which shows the previous
+       pane on the same `comparePrevious` state). The in-force chain is always
+       shown. {% endcomment %}
+    <div{% if not version.transition_context.is_primary %} x-show="comparePrevious" x-cloak{% endif %}>
+        <p class="mb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+            {{ version.clause.regulation.reg_id|default:version.code_display_name }}
+            <span class="text-secondary">&middot; {% if version.transition_context.is_primary %}in force{% else %}previous{% endif %}</span>
+        </p>
+        {% include "partials/_provenance_rail.html" with result=version collapsible_chain=True %}
+    </div>
+    {% endfor %}
+    {% include "partials/_result_justification.html" with result=result %}
+</div>
 {% endif %}

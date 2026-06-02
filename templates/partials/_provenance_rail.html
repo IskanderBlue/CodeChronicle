@@ -28,11 +28,20 @@
         {% endif %}
 
         {% if result.amendment_chain and result.amendment_chain|length > 1 %}
-        {% comment %} Amendment chain — always shown (the rail has room now; no toggle).
-           The pinned version is highlighted; earlier ones link to their own pinned
-           view. forloop.first is the base entry, rendered by the Base row above. {% endcomment %}
-        <div>
-            <div class="space-y-1 border-l border-rule pl-2">
+        {% comment %} Amendment chain. In the paired-versions UI (collapsible_chain)
+           two chains stack in one rail, so it collapses behind a toggle to stay
+           readable; standard results pass no flag and render it open. The pinned
+           version is highlighted; earlier ones link to their own pinned view.
+           forloop.first is the base entry, rendered by the Base row above. {% endcomment %}
+        <div{% if collapsible_chain %} x-data="{ chainOpen: false }"{% endif %}>
+            {% if collapsible_chain %}
+            <button type="button" @click.stop="chainOpen = !chainOpen"
+                class="flex w-full items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3 hover:text-ink">
+                <span class="text-[10px]" x-text="chainOpen ? '&#9662;' : '&#9656;'"></span>
+                Amendment chain ({{ result.amendment_chain|length|add:"-1" }})
+            </button>
+            {% endif %}
+            <div class="space-y-1 border-l border-rule pl-2{% if collapsible_chain %} mt-1{% endif %}"{% if collapsible_chain %} x-show="chainOpen" x-cloak{% endif %}>
                 {% for entry in result.amendment_chain %}
                 {% with entry_clause=entry.last_contributing_clause %}
                 {% if not forloop.first and entry_clause %}

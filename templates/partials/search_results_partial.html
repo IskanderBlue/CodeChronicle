@@ -19,7 +19,7 @@ sectionContentUrl() in search.html.
     </span>
 </div>
 
-<div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}_{{ results.0.division|escapejs }}"{% else %}null{% endif %}, open(key, result) { this.activeResult = key; window.ccRecordView && window.ccRecordView(result); } }' data-results-accordion>
+<div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}_{{ results.0.division|escapejs }}"{% else %}null{% endif %}, comparePrevious: false, open(key, result) { this.activeResult = key; this.comparePrevious = false; window.ccRecordView && window.ccRecordView(result); } }' data-results-accordion>
 
 {% comment %} ───── Mobile / tablet: inline accordion (today's behaviour, unchanged) ─────
    Rows expand in place. Hidden at `lg` where the master-detail grid takes over.
@@ -61,8 +61,10 @@ sectionContentUrl() in search.html.
    the vertical provenance metadata + justification (standard results only —
    grouped/transition keep their metadata inline in the middle). {% endcomment %}
 <div class="hidden lg:grid lg:grid-cols-[20rem_minmax(0,1fr)_19rem] lg:gap-6 lg:items-start">
-    {# Col 1 — results list (sticky, scrolls independently) #}
-    <div class="border-t border-rule lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+    {% comment %} Col 1 — results list (sticky, scrolls independently). Collapses
+       while a transition compare is expanded so the two version panes get its
+       width. {% endcomment %}
+    <div x-show="!comparePrevious" class="border-t border-rule lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
     {% for result in results %}
         <div role="button" tabindex="0"
             class="border-b border-rule border-l-[3px] px-4 py-3 cursor-pointer transition-colors"
@@ -75,8 +77,10 @@ sectionContentUrl() in search.html.
     {% endfor %}
     </div>
 
-    {# Col 2 — selected provision body (citation header + in-force band + content) #}
-    <div class="min-w-0">
+    {% comment %} Col 2 — selected provision body (citation header + in-force band
+       + content). Spans cols 1–2 (incl. the intervening gap) while compare is
+       expanded, so the side-by-side panes fill the freed list-column width. {% endcomment %}
+    <div class="min-w-0" :style="comparePrevious ? 'grid-column: 1 / span 2' : ''">
     {% for result in results %}
         <div x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'" x-cloak class="min-w-0">
             <div class="bg-panel border border-rule px-5 py-5">

@@ -349,9 +349,159 @@ def test_transition_compare_card_renders_transition_text():
 
     assert "Transition provision" in html
     assert "as it read on 2023-12-31" in html
-    assert "showPrevious" in html  # stacked accordion toggle
+    assert "showPrevious" in html  # mobile stacked accordion toggle
     assert "In force" in html
     assert "(previous)" in html
+    # Desktop focus-compare wiring: the list column collapses and the center
+    # column spans both tracks while `comparePrevious` is set.
+    assert "comparePrevious: false" in html  # root accordion state
+    assert 'x-show="!comparePrevious"' in html  # results list collapses
+    assert "grid-column: 1 / span 2" in html  # center spans list+center width
+
+
+def test_transition_compare_renders_per_version_band_and_provenance():
+    """Regression: a transition card has two in-force windows, so its in-force
+    band + provenance must render *per version* — not once from the composite
+    (which carries no ``version``/``band``, leaving both blank). Guards the
+    bug where only the primary version's editor's note showed."""
+
+    class MockBaseReg:
+        pk = None  # falsy → plain text, no url reversal
+        reg_id = "350/06"
+
+    class MockVersion:
+        pk = 5
+        version = 0
+        effective_date = date(2012, 1, 1)
+        ineffective_date = date(2014, 1, 1)
+
+    class MockVersionNew:
+        pk = 6
+        version = 0
+        effective_date = date(2014, 1, 1)
+        ineffective_date = None
+
+    def _version_dict(*, code, edition_name, is_primary, version_obj, eff_label):
+        return {
+            "id": "1.4.1.2.",
+            "title": "Defined Terms",
+            "code": code,
+            "code_edition": code,
+            "code_display_name": edition_name,
+            "division": "A",
+            "html_content": f"<p>{eff_label} body</p>",
+            "version": version_obj,
+            "band": None,  # geometry absent is fine; the From/Until dates come from .version
+            "base_regulation": MockBaseReg(),
+            "amendment_chain": [version_obj],
+            "next_version": None,
+            "clause": None,
+            "copy_text": f"{edition_name} ref",
+            "transition_context": {"is_primary": is_primary},
+        }
+
+    card = {
+        "id": "1.4.1.2.",
+        "title": "Defined Terms",
+        "code": "OBC_2012",
+        "code_display_name": "Ontario Building Code 2012",
+        "result_type": "transition_compare",
+        "transition_context": {"is_primary": True, "pair_key": "overlap:1.4.1.2.:A"},
+        "has_renderable_content": True,
+        "versions": [
+            _version_dict(code="OBC_2006", edition_name="Ontario Building Code 2006",
+                          is_primary=False, version_obj=MockVersion(), eff_label="old"),
+            _version_dict(code="OBC_2012", edition_name="Ontario Building Code 2012",
+                          is_primary=True, version_obj=MockVersionNew(), eff_label="new"),
+        ],
+    }
+
+    # ── Mobile / stacked (metadata_in_rail unset): band + provenance inline ──
+    html = render_to_string(
+        "partials/_result_expanded.html",
+        {"result": card, "query_date": "2013-06-01"},
+    )
+    # In-force band renders per version — both From dates present, not blank.
+    assert "1 January 2012" in html  # old version's effective date
+    assert "1 January 2014" in html  # new version's effective date (and old's "until")
+    # Provenance rail renders per version (two boxes), base reg surfaced.
+    assert html.count("Provenance") == 2
+    assert "350/06" in html
+    # The in-force band is a container (@container) and drops the rail + duration
+    # below @xl, so the two narrow compare panes get a compact, equal-width band
+    # instead of wrapping asymmetrically (the "fatter band" bug).
+    assert "@container" in html
+    assert "hidden shrink-0 @xl:block" in html  # Dur. cell gated on container width
+    # Body owns its diff/expand x-data (shared_expand=False). Guards the bug where
+    # shared_expand=True left showDiff undefined and Alpine hid both content divs
+    # at runtime, so neither version showed its text.
+    assert "showDiff: true" in html
+    assert "old body" in html and "new body" in html
+
+    # ── Master-detail (metadata_in_rail=True): chain/metadata moves to the rail ──
+    middle = render_to_string(
+        "partials/_result_expanded.html",
+        {"result": card, "query_date": "2013-06-01", "metadata_in_rail": True},
+    )
+    rail = render_to_string("partials/_result_rail.html", {"result": card})
+    # Middle keeps the in-force band + bodies, but NOT the provenance rail/justification.
+    assert "1 January 2012" in middle and "old body" in middle and "new body" in middle
+    assert "Provenance" not in middle
+    assert "Why this result" not in middle
+    # Desktop is a side-by-side focus-compare driven by the root `comparePrevious`:
+    # a toggle button, the previous pane gated on that state, and an inline grid
+    # container that splits the (widened) center into two panes.
+    assert "Compare with previous version" in middle
+    assert 'x-show="comparePrevious"' in middle
+    assert "display:grid; grid-template-columns:1fr 1fr" in middle
+    # The right rail carries one provenance box per version plus the justification;
+    # the previous version's chain is gated on the same compare state.
+    assert rail.count("Provenance") == 2
+    assert "350/06" in rail
+    assert "Why this result" in rail
+    assert 'x-show="comparePrevious"' in rail
+
+
+def test_amendment_chain_collapses_only_in_paired_ui():
+    """The amendment chain collapses behind a toggle in the paired-versions UI
+    (collapsible_chain) so two stacked chains stay readable, but standard results
+    keep it open. The count label excludes the base entry (forloop.first)."""
+
+    class _Reg:
+        pk = None  # falsy → plain text, no url reversal
+        reg_id = "100/12"
+
+    class _Clause:
+        pk = 2
+        regulation = _Reg()
+        clause_id = "1."
+
+    class _Entry:
+        def __init__(self, version, pk):
+            self.version = version
+            self.pk = pk
+            self.effective_date = date(2013, 1, 1)
+            self.last_contributing_clause = _Clause()
+
+    base = _Entry(0, 10)
+    amended = _Entry(1, 11)
+    result = {
+        "id": "1.4.1.2.",
+        "division": "A",
+        "code_edition": "OBC_2012",
+        "base_regulation": type("R", (), {"pk": None, "reg_id": "350/06"})(),
+        "version": amended,
+        "amendment_chain": [base, amended],
+        "next_version": None,
+    }
+
+    open_rail = render_to_string("partials/_provenance_rail.html", {"result": result})
+    collapsed = render_to_string(
+        "partials/_provenance_rail.html", {"result": result, "collapsible_chain": True}
+    )
+    assert "chainOpen" not in open_rail  # standard result: chain always open
+    assert "chainOpen" in collapsed  # paired UI: chain collapsible
+    assert "Amendment chain (1)" in collapsed  # count excludes the base entry
 
 
 def test_provenance_banner_shows_amendment_info():

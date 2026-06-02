@@ -11,10 +11,10 @@
    `query_date` flows in from the caller for the band's timeline tick.
 {% endcomment %}
 
-{# Banner: standard/grouped render it per-result inside _result_body; transition-compare shows it once here. #}
-{% if result.result_type == 'transition_compare' %}
-{% include "partials/_provenance_banner.html" with result=result %}
-{% endif %}
+{% comment %} Banner: standard/grouped render it per-result inside _result_body.
+   Transition-compare has no single in-force window — it pairs two versions, each
+   with its own band + provenance — so the banner is rendered per version inside
+   the versions loop below, NOT once here from the (version-less) composite. {% endcomment %}
 
 {# Grouped children: each accordions open to its full content like a top-level result; one open at a time, top match default; context children are labels. #}
 {% if result.group_type == 'parent_children' %}
@@ -96,17 +96,66 @@
 </div>
 {% endif %}
 
+{% comment %} Each version is a complete formatted result carrying its own
+   in-force band + provenance (api.formatters._format_single_result). Layout
+   forks by surface: the desktop master-detail (metadata_in_rail) enters a
+   side-by-side focus-compare — expanding "previous" collapses the results list
+   (root `comparePrevious`) so the two panes share the list+center width, primary
+   right / previous left. The mobile/stacked surface keeps a downward toggle.
+   This branch only renders at lg, so inline `display:grid` is breakpoint-safe. {% endcomment %}
+{% if metadata_in_rail %}
+<div class="mt-4">
+    <div :style="comparePrevious ? 'display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start;' : ''">
+        {% for version in result.versions %}
+        {% if version.transition_context.is_primary %}
+        <div class="border border-secondary">
+            <div class="flex items-center justify-between gap-3 bg-secondary px-4 py-2">
+                <p class="font-mono text-sm font-semibold text-secondary-contrast">
+                    {{ version.clause.regulation.reg_id|default:version.code_display_name }} version
+                </p>
+                <span class="border border-secondary-contrast/40 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary-contrast">In force</span>
+            </div>
+            <div class="space-y-3 p-4">
+                {% include "partials/_transition_version_body.html" with version=version metadata_in_rail=metadata_in_rail query_date=query_date %}
+            </div>
+        </div>
+        {% else %}
+        {# Previous version: hidden until compare is entered; then the left pane. #}
+        <div x-show="comparePrevious" x-cloak class="border border-rule bg-surface-2">
+            <div class="flex items-center justify-between gap-3 border-b border-rule px-4 py-2">
+                <p class="font-mono text-sm font-semibold text-ink-2">
+                    {{ version.clause.regulation.reg_id|default:version.code_display_name }} version
+                </p>
+                <span class="border border-rule px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3">Previous</span>
+            </div>
+            <div class="space-y-3 p-4">
+                {% include "partials/_transition_version_body.html" with version=version metadata_in_rail=metadata_in_rail query_date=query_date %}
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    <button type="button" @click.stop="comparePrevious = !comparePrevious"
+        class="mt-2 inline-flex items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary hover:text-secondary-2">
+        <span class="text-[10px]" x-text="comparePrevious ? '&#9666;' : '&#9656;'"></span>
+        <span x-text="comparePrevious ? 'Hide previous version' : 'Compare with previous version'"></span>
+    </button>
+</div>
+{% else %}
+{# Mobile / stacked: downward "previous" toggle, provenance inline. #}
 <div class="mt-4 space-y-3" x-data="{ showPrevious: false }">
     {% for version in result.versions %}
     {% if version.transition_context.is_primary %}
-    <div class="border border-secondary bg-secondary-soft p-4">
-        <div class="flex items-start justify-between gap-3">
-            <p class="font-mono text-sm font-semibold text-ink">
+    <div class="border border-secondary">
+        <div class="flex items-center justify-between gap-3 bg-secondary px-4 py-2">
+            <p class="font-mono text-sm font-semibold text-secondary-contrast">
                 {{ version.clause.regulation.reg_id|default:version.code_display_name }} version
             </p>
-            <span class="border border-secondary px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary">In force</span>
+            <span class="border border-secondary-contrast/40 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary-contrast">In force</span>
         </div>
-        {% include "partials/_result_document_block.html" with result=version shared_expand=True %}
+        <div class="space-y-3 p-4">
+            {% include "partials/_transition_version_body.html" with version=version metadata_in_rail=metadata_in_rail query_date=query_date %}
+        </div>
     </div>
     {% else %}
     <div>
@@ -115,13 +164,14 @@
             <span x-text="showPrevious ? '&#9662;' : '&#9656;'" class="text-[10px] mr-1"></span>
             {{ version.clause.regulation.reg_id|default:version.code_display_name }} version (previous)
         </button>
-        <div x-show="showPrevious" x-cloak class="mt-1 border border-rule bg-surface-2 p-4 accordion-content">
-            {% include "partials/_result_document_block.html" with result=version shared_expand=True %}
+        <div x-show="showPrevious" x-cloak class="mt-1 space-y-3 border border-rule bg-surface-2 p-4 accordion-content">
+            {% include "partials/_transition_version_body.html" with version=version metadata_in_rail=metadata_in_rail query_date=query_date %}
         </div>
     </div>
     {% endif %}
     {% endfor %}
 </div>
+{% endif %}
 {% elif result.group_type == 'parent_children' %}
 {# Grouped: children render as the accordion above; the group has no body of its own. #}
 {% else %}
@@ -129,7 +179,10 @@
 {% include "partials/_result_body.html" with result=result metadata_in_rail=metadata_in_rail %}
 {% endif %}
 
-{# Card-level justification only for transition-compare; standard/grouped render "Why this result" inside _result_body (or the rail). #}
-{% if result.result_type == 'transition_compare' %}
+{% comment %} Card-level justification for transition-compare. Inline only when
+   stacked (mobile); in master-detail it moves to the right rail with the
+   per-version provenance — see _result_rail.html. Standard/grouped render
+   "Why this result" inside _result_body (or the rail). {% endcomment %}
+{% if result.result_type == 'transition_compare' and not metadata_in_rail %}
 {% include "partials/_result_justification.html" with result=result %}
 {% endif %}
