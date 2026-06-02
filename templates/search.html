@@ -289,26 +289,14 @@
         recordLinkClick(surface) {
             // Engagement beacon for links that leave the app (external source,
             // PDF download) — no server round-trip of their own to capture.
-            // keepalive lets the POST survive the new-tab navigation; failures
-            // are swallowed so a tracking hiccup never blocks the click.
-            try {
-                const sid = parseInt(document.getElementById('cc-search-id')?.dataset.searchId || '', 10);
-                fetch('/api/event', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    keepalive: true,
-                    body: JSON.stringify({
-                        event_type: 'result_link_click',
-                        search_id: Number.isInteger(sid) ? sid : null,
-                        context: {
-                            surface: surface,
-                            code: this.viewerResult ? (this.viewerResult.code || '') : '',
-                            provision_id: this.viewerResult ? (this.viewerResult.id || '') : '',
-                        },
-                    }),
-                }).catch(() => {});
-            } catch (e) { /* never fatal */ }
+            window.ccPostEvent && window.ccPostEvent({
+                event_type: 'result_link_click',
+                context: {
+                    surface: surface,
+                    code: this.viewerResult ? (this.viewerResult.code || '') : '',
+                    provision_id: this.viewerResult ? (this.viewerResult.id || '') : '',
+                },
+            });
         }
     }"
     x-init="window.addEventListener('popstate', () => { if (viewerOpen) closeViewer(); })"
@@ -466,6 +454,68 @@
         if (!data) return;
         callback(data);
     }
+
+    // Engagement beacon — single poster shared by the viewer component and the
+    // results list. Auto-attaches the originating search id (stashed in
+    // #cc-search-id by the results partial) unless the caller set one. Failures
+    // are swallowed so tracking never blocks an interaction.
+    window.ccPostEvent = function (body) {
+        try {
+            if (!('search_id' in body)) {
+                const sid = parseInt(document.getElementById('cc-search-id')?.dataset.searchId || '', 10);
+                body.search_id = Number.isInteger(sid) ? sid : null;
+            }
+            fetch('/api/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                keepalive: true,
+                body: JSON.stringify(body),
+            }).catch(() => {});
+        } catch (e) { /* never fatal */ }
+    };
+
+    // Fired when a result row (or grouped child) is expanded in the list — the
+    // inline accordion has no server round-trip of its own, so this is the only
+    // capture point for "user opened this provision in the results".
+    window.ccRecordView = function (result) {
+        window.ccPostEvent({
+            event_type: 'provision_version_view',
+            object_type: 'CodeEditionProvision',
+            context: {
+                surface: 'results_expand',
+                code: (result && result.code) || '',
+                provision_id: (result && result.provision_id) || '',
+                division: (result && result.division) || '',
+            },
+        });
+    };
+
+    // Permalink / regulation links inside results navigate to server-rendered
+    // pages that already record the view server-side — we only need to tag them
+    // with the originating search id so that capture attributes back to it.
+    // Done as a post-render pass (not in the template) so all current and future
+    // result links get it without touching every link site individually.
+    function decorateResultLinks() {
+        const sid = parseInt(document.getElementById('cc-search-id')?.dataset.searchId || '', 10);
+        if (!Number.isInteger(sid)) return;
+        const area = document.getElementById('results-area');
+        if (!area) return;
+        area.querySelectorAll('a[href^="/provision/"], a[href^="/regulation/"]').forEach(function (a) {
+            try {
+                const url = new URL(a.getAttribute('href'), window.location.origin);
+                if (!url.searchParams.has('search_id')) {
+                    url.searchParams.set('search_id', String(sid));
+                    a.setAttribute('href', url.pathname + url.search + url.hash);
+                }
+            } catch (e) { /* leave the href untouched */ }
+        });
+    }
+    document.body.addEventListener('htmx:afterSettle', function (e) {
+        if (e.target && e.target.closest && e.target.closest('#results-area')) {
+            decorateResultLinks();
+        }
+    });
 
     // PDF-download beacon: the link lives in a JS-cloned <template>, so it's
     // outside Alpine's reactive DOM — catch it by delegation and route through

@@ -19,18 +19,18 @@ sectionContentUrl() in search.html.
     </span>
 </div>
 
-<div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}"{% else %}null{% endif %} }' class="border-t border-rule" data-results-accordion>
+<div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}"{% else %}null{% endif %}, open(key, result) { this.activeResult = key; window.ccRecordView && window.ccRecordView(result); } }' class="border-t border-rule" data-results-accordion>
 {% for result in results %}
 <div
     class="border-b border-rule border-l-[3px] transition-colors"
-    :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? 'border-l-secondary bg-panel' : 'border-l-transparent hover:border-l-secondary/50'">
+    :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? 'border-l-secondary' : 'border-l-transparent hover:border-l-secondary/50'">
     {# Header toggles the accordion. Collapsed: click anywhere to expand. Expanded: collapse on whitespace only; text blocks stop propagation so they stay selectable. #}
     {# -- Collapsed: compact one-liner -- #}
     <div class="px-4 py-3 sm:px-5 cursor-pointer" role="button" tabindex="0"
         x-show="activeResult !== '{{ result.code|escapejs }}_{{ result.id|escapejs }}'"
-        @click="activeResult = '{{ result.code|escapejs }}_{{ result.id|escapejs }}'"
-        @keydown.enter="activeResult = '{{ result.code|escapejs }}_{{ result.id|escapejs }}'"
-        @keydown.space.prevent="activeResult = '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
+        @click="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+        @keydown.enter="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+        @keydown.space.prevent="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})">
         <div class="flex items-baseline gap-2">
             <span class="shrink-0 font-mono text-[12px] font-semibold text-ink">{% if result.division %}{{ result.division }} &middot; {% endif %}{{ result.id }}</span>
             <span class="truncate font-serif text-sm text-ink">{{ result.title }}</span>
@@ -44,7 +44,9 @@ sectionContentUrl() in search.html.
         </div>
     </div>
     {# -- Expanded: full header -- #}
-    <div class="px-4 py-5 sm:p-6 cursor-pointer" role="button" tabindex="0"
+    {% comment %} White `panel` band only on the citation header (edition + § + title); the body
+       below stays on warm `surface`, matching the reporter design's raised-header treatment. {% endcomment %}
+    <div class="bg-panel border-b border-rule px-4 py-5 sm:p-6 cursor-pointer" role="button" tabindex="0"
         x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'" x-cloak
         @click="activeResult = null"
         @keydown.enter="activeResult = null"
@@ -101,7 +103,7 @@ sectionContentUrl() in search.html.
         </div>
         {% endif %}
         <div class="mt-3 border border-rule bg-surface-2 p-3"
-            x-data="{ activeChild: '{{ result.top_scoring_child_id|escapejs }}' }">
+            x-data="{ activeChild: '{{ result.top_scoring_child_id|escapejs }}', toggleChild(id, result) { const opening = this.activeChild !== id; this.activeChild = opening ? id : null; if (opening) { window.ccRecordView && window.ccRecordView(result); } } }">
             <div class="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">
                 <p class="font-semibold">Matching children</p>
                 <p>Top match {{ result.active_child.id }}</p>
@@ -113,9 +115,9 @@ sectionContentUrl() in search.html.
                     :class="activeChild === '{{ child.id|escapejs }}' ? 'border-l-[3px] border-l-secondary' : 'border-l-[3px] border-l-transparent'">
                     {# Toggle on whitespace/caret only; id + title stop propagation so they stay selectable. #}
                     <div role="button" tabindex="0"
-                        @click.stop="activeChild = activeChild === '{{ child.id|escapejs }}' ? null : '{{ child.id|escapejs }}'"
-                        @keydown.enter.stop="activeChild = activeChild === '{{ child.id|escapejs }}' ? null : '{{ child.id|escapejs }}'"
-                        @keydown.space.stop.prevent="activeChild = activeChild === '{{ child.id|escapejs }}' ? null : '{{ child.id|escapejs }}'"
+                        @click.stop="toggleChild('{{ child.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ child.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+                        @keydown.enter.stop="toggleChild('{{ child.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ child.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+                        @keydown.space.stop.prevent="toggleChild('{{ child.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ child.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
                         class="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-3 text-left text-sm">
                         <span class="flex min-w-0 items-baseline gap-1.5">
                             <span class="shrink-0 text-[10px] text-ink-3" x-text="activeChild === '{{ child.id|escapejs }}' ? '&#9662;' : '&#9656;'"></span>

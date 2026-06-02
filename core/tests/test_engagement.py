@@ -154,6 +154,37 @@ class TestBeaconEndpoint:
         assert event.object_id == 42
         assert event.search_id == search.pk
 
+    def test_records_results_expand_view(self, client: Client):
+        # The inline result-expand fires this via window.ccRecordView — a
+        # provision_version_view with no version pk (object_id null), the
+        # provision identified in context, attributed to the search.
+        search = SearchHistory.objects.create(
+            query="guards and handrails", parsed_params={}, result_count=5,
+        )
+        response = client.post(
+            "/api/event",
+            data=json.dumps({
+                "event_type": "provision_version_view",
+                "object_type": "CodeEditionProvision",
+                "search_id": search.pk,
+                "context": {
+                    "surface": "results_expand",
+                    "code": "OBC_2012",
+                    "provision_id": "3.4.6.1.",
+                    "division": "B",
+                },
+            }),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+
+        event = EngagementEvent.objects.get()
+        assert event.event_type == EngagementEvent.EventType.PROVISION_VERSION_VIEW
+        assert event.object_id is None
+        assert event.search_id == search.pk
+        assert event.context["surface"] == "results_expand"
+        assert event.context["provision_id"] == "3.4.6.1."
+
     def test_rejects_unknown_event_type(self, client: Client):
         response = client.post(
             "/api/event",
