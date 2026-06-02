@@ -1,0 +1,135 @@
+{% comment %} Open-result body: the content shown when a result is selected/expanded.
+   Branches by result type — transition-compare (two in-force versions), grouped
+   parent_children (parent + matching-children sub-accordion), or a standard
+   single provision. Shared by the mobile accordion and the desktop master-detail
+   middle column.
+
+   `metadata_in_rail` (master-detail): forwarded to the standard `_result_body`
+   so it emits only the in-force band here and leaves the rail + justification to
+   the right column. Grouped/transition layouts interleave their metadata with
+   content, so they ignore the flag and keep it inline (their right rail is empty).
+   `query_date` flows in from the caller for the band's timeline tick.
+{% endcomment %}
+
+{# Banner: standard/grouped render it per-result inside _result_body; transition-compare shows it once here. #}
+{% if result.result_type == 'transition_compare' %}
+{% include "partials/_provenance_banner.html" with result=result %}
+{% endif %}
+
+{# Grouped children: each accordions open to its full content like a top-level result; one open at a time, top match default; context children are labels. #}
+{% if result.group_type == 'parent_children' %}
+{# Parent provision: shown when the container itself matched, so its title/provenance isn't lost to the grouping (it's absorbed, not a separate row). #}
+{% if result.parent_result %}
+<div class="mt-3 border border-rule bg-panel p-3">
+    <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">Parent provision</p>
+    <p class="mt-1 flex flex-wrap items-baseline gap-2 font-serif text-lg text-ink">
+        {% if result.division %}<span class="font-mono text-xs text-ink-3">{{ result.division }}</span>{% endif %}
+        <span class="select-all cursor-text font-mono font-semibold">{{ result.id }}</span>
+        <span class="italic font-normal text-ink-2">{{ result.title }}</span>
+    </p>
+    {% include "partials/_result_body.html" with result=result.parent_result shared_expand=True %}
+</div>
+{% endif %}
+<div class="mt-3 border border-rule bg-surface-2 p-3"
+    x-data="{ activeChild: '{{ result.top_scoring_child_id|escapejs }}', toggleChild(id, result) { const opening = this.activeChild !== id; this.activeChild = opening ? id : null; if (opening) { window.ccRecordView && window.ccRecordView(result); } } }">
+    <div class="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">
+        <p class="font-semibold">Matching children</p>
+        <p>Top match {{ result.active_child.id }}</p>
+    </div>
+    <div class="mt-3 space-y-2">
+        {% for child in result.children %}
+        {% if child.result %}
+        <div class="border border-rule bg-panel"
+            :class="activeChild === '{{ child.id|escapejs }}' ? 'border-l-[3px] border-l-secondary' : 'border-l-[3px] border-l-transparent'">
+            {# Toggle on whitespace/caret only; id + title stop propagation so they stay selectable. #}
+            <div role="button" tabindex="0"
+                @click.stop="toggleChild('{{ child.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ child.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+                @keydown.enter.stop="toggleChild('{{ child.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ child.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+                @keydown.space.stop.prevent="toggleChild('{{ child.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ child.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+                class="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-3 text-left text-sm">
+                <span class="flex min-w-0 items-baseline gap-1.5">
+                    <span class="shrink-0 text-[10px] text-ink-3" x-text="activeChild === '{{ child.id|escapejs }}' ? '&#9662;' : '&#9656;'"></span>
+                    <span class="shrink-0 cursor-text select-all font-mono font-semibold text-ink" @click.stop>{{ child.id }}</span>
+                    <span role="button" tabindex="0" @click.stop="navigator.clipboard.writeText('{{ child.id|escapejs }}')" @keydown.enter.stop="navigator.clipboard.writeText('{{ child.id|escapejs }}')" title="Copy provision ID" class="inline-flex shrink-0 cursor-pointer items-center p-0.5 text-ink-3 hover:text-secondary">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    </span>
+                    <span class="min-w-0 truncate cursor-text font-serif text-ink-2" @click.stop>&mdash; {{ child.title }}</span>
+                </span>
+                <span class="flex shrink-0 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.06em]">
+                    {% if child.is_top_scoring %}<span class="border border-secondary px-2 py-0.5 font-semibold text-secondary">Top match</span>{% endif %}
+                    <span class="border border-rule px-2 py-0.5 text-ink-3">Score {{ child.score|floatformat:2 }}</span>
+                </span>
+            </div>
+            <div x-show="activeChild === '{{ child.id|escapejs }}'" x-cloak
+                class="border-t border-rule px-3 pb-4 pt-1 accordion-content">
+                {% include "partials/_result_body.html" with result=child.result shared_expand=False %}
+            </div>
+        </div>
+        {% else %}
+        <div class="border border-dashed border-rule bg-surface-2 px-3 py-3 text-sm text-ink-3">
+            <span class="font-mono font-semibold">{{ child.id }}</span>
+            <span class="font-serif">&mdash; {{ child.title }}</span>
+            <span class="ml-1 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Context</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# -- Transition compare -- #}
+{% if result.result_type == 'transition_compare' and not result.has_renderable_content %}
+<div class="mt-4 flex flex-wrap items-center gap-2 border border-rule bg-surface-2 px-4 py-3 text-sm">
+    <span class="font-mono font-semibold text-ink">{{ result.id }}</span>
+    <span class="font-serif italic text-ink-2">&mdash; {{ result.title }}</span>
+    <span class="text-rule">&middot;</span>
+    <span class="font-mono text-[11px] text-ink-3">found in both versions &middot; no viewable content</span>
+</div>
+{% elif result.result_type == 'transition_compare' %}
+{# Transition applicability text #}
+{% if result.transition_context.transition_text %}
+<div class="mt-4 border-l-[3px] border-secondary bg-secondary-soft px-4 py-3">
+    <p class="mb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary">Transition provision</p>
+    <div class="prose dark:prose-invert max-w-none font-serif text-sm italic text-ink">
+        {{ result.transition_context.transition_text|safe }}
+    </div>
+</div>
+{% endif %}
+
+<div class="mt-4 space-y-3" x-data="{ showPrevious: false }">
+    {% for version in result.versions %}
+    {% if version.transition_context.is_primary %}
+    <div class="border border-secondary bg-secondary-soft p-4">
+        <div class="flex items-start justify-between gap-3">
+            <p class="font-mono text-sm font-semibold text-ink">
+                {{ version.clause.regulation.reg_id|default:version.code_display_name }} version
+            </p>
+            <span class="border border-secondary px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary">In force</span>
+        </div>
+        {% include "partials/_result_document_block.html" with result=version shared_expand=True %}
+    </div>
+    {% else %}
+    <div>
+        <button type="button" @click.stop="showPrevious = !showPrevious"
+            class="w-full border border-rule bg-surface-2 px-4 py-3 text-left font-mono text-sm font-semibold text-ink-2 hover:border-secondary hover:text-secondary">
+            <span x-text="showPrevious ? '&#9662;' : '&#9656;'" class="text-[10px] mr-1"></span>
+            {{ version.clause.regulation.reg_id|default:version.code_display_name }} version (previous)
+        </button>
+        <div x-show="showPrevious" x-cloak class="mt-1 border border-rule bg-surface-2 p-4 accordion-content">
+            {% include "partials/_result_document_block.html" with result=version shared_expand=True %}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% elif result.group_type == 'parent_children' %}
+{# Grouped: children render as the accordion above; the group has no body of its own. #}
+{% else %}
+{# -- Standard single result -- #}
+{% include "partials/_result_body.html" with result=result metadata_in_rail=metadata_in_rail %}
+{% endif %}
+
+{# Card-level justification only for transition-compare; standard/grouped render "Why this result" inside _result_body (or the rail). #}
+{% if result.result_type == 'transition_compare' %}
+{% include "partials/_result_justification.html" with result=result %}
+{% endif %}

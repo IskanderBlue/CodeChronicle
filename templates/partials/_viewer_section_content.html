@@ -8,7 +8,11 @@
     {% for section in sections %}
     <div id="section-{{ section.provision_id|slugify }}"
         {% if section.is_active %}data-active-section{% endif %}
-        class="px-4 py-4 {% if section.is_active %}border-l-[3px] border-secondary bg-secondary-soft{% endif %}">
+        {% comment %} Active provision marked by the oxblood left rail only — the same
+           "you are here" vocabulary search uses. No `bg-secondary-soft` fill: that
+           token is reserved for the in-force band, and a full pink wash over the
+           provision body read as an error. {% endcomment %}
+        class="px-4 py-4 {% if section.is_active %}border-l-[3px] border-secondary{% else %}border-l-[3px] border-transparent{% endif %}">
         <p class="mb-2">
             <span class="font-mono text-[13px] font-semibold {% if section.is_active %}text-secondary{% else %}text-ink{% endif %}">{{ section.provision_id }}</span>
             <span class="font-serif italic text-ink-2"> — {{ section.title }}</span>

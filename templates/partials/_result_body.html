@@ -7,10 +7,20 @@
    grouped child reads identically to a standalone hit — grouping is a UI
    aide, not a content drop.  `shared_expand` is forwarded to the document
    block; `query_date` flows in from the including template's context.
+
+   `metadata_in_rail` (master-detail, lg+): when set, only the in-force band
+   renders here (in the middle column); the provenance rail and the "Why this
+   result" justification are rendered separately in the right column by the
+   caller. When unset (mobile accordion, grouped children), the full stacked
+   banner + justification render inline as before.
 {% endcomment %}
 
-{# -- Provenance banner -- #}
+{# -- Provenance: in-force band (+ rail when stacked inline) -- #}
+{% if metadata_in_rail %}
+<div class="mt-3">{% include "partials/_provenance_band.html" with result=result query_date=query_date %}</div>
+{% else %}
 {% include "partials/_provenance_banner.html" with result=result %}
+{% endif %}
 
 {# -- Provision body -- #}
 {% include "partials/_result_document_block.html" with result=result shared_expand=shared_expand %}
@@ -23,5 +33,7 @@
 </div>
 {% endif %}
 
-{# -- Why this result matched -- #}
+{# -- Why this result matched (inline only; the rail carries it in master-detail) -- #}
+{% if not metadata_in_rail %}
 {% include "partials/_result_justification.html" with result=result %}
+{% endif %}

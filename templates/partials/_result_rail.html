@@ -1,0 +1,10 @@
+{% comment %} Right-column metadata for an open result (master-detail, lg+).
+   Standard results: the provenance rail (base reg / amendment chain / next
+   version) plus the "Why this result" justification. Grouped and
+   transition-compare results keep their metadata inline in the middle column
+   (their layouts interleave it with content), so the rail is intentionally
+   empty for them — see _result_expanded.html. {% endcomment %}
+{% if result.group_type != 'parent_children' and result.result_type != 'transition_compare' %}
+{% include "partials/_provenance_rail.html" with result=result %}
+{% include "partials/_result_justification.html" with result=result %}
+{% endif %}
