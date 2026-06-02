@@ -223,7 +223,7 @@
             {% if data_current_to %}
             <span class="flex items-center gap-[7px]">
                 <span class="inline-block w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                Consolidation current to {{ data_current_to|date:"j M Y" }}
+                Consolidation current to {{ data_current_to|date:"Y-m-d" }}
             </span>
             {% endif %}
         </div>
@@ -353,7 +353,10 @@
     {% endif %}
 
     <main class="flex-grow">
-        <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {% comment %} Reading pages keep the 7xl measure for legible line length;
+           the working surfaces (search, permalink) override `content_width` to a
+           wider cap so the three-column layout reclaims the side margins. {% endcomment %}
+        <div class="{% block content_width %}max-w-7xl{% endblock %} mx-auto py-6 sm:px-6 lg:px-8">
             {% block content %}{% endblock %}
         </div>
     </main>

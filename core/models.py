@@ -896,8 +896,8 @@ class CorpusCurrency(models.Model):
         from django.db.models import Count, Max, Min
 
         def _fmt(d: date) -> str:
-            # Match Django's "j M Y" (e.g. "1 Jan 2014"), cross-platform.
-            return f"{d.day} {d:%b} {d.year}"
+            # ISO 8601 calendar date (e.g. "2014-01-01").
+            return d.isoformat()
 
         prov_editions = CodeEdition.objects.annotate(
             _reg_count=Count("regulations")

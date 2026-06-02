@@ -806,6 +806,10 @@ export async function initPdfContainers(root) {
     await updateStorageUi();
 }
 
+export function getPdfMappingCount() {
+    return mappingRegistry.size;
+}
+
 export async function clearAllPdfMappings() {
     await idbClearMappings();
     mappingRegistry.clear();

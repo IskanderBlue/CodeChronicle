@@ -1,293 +1,120 @@
 {% extends 'base.html' %}
 
 {% block title %}CodeChronicle - Settings{% endblock %}
+
+{% load static %}
 {% block extra_head %}
-<script>
-    (function () {
-        const PDF_DB_NAME = 'codechronicle_pdf_cache';
-        const PDF_DB_VERSION = 1;
-        const PDF_DB_STORE = 'pdf_mappings';
+<script type="module">
+    import { restorePdfMappings, getPdfMappingCount, clearAllPdfMappings } from '{% static "js/pdf-viewer.mjs" %}';
 
-        function humanBytes(value) {
-            if (!Number.isFinite(value) || value <= 0) return '0 B';
-            const units = ['B', 'KB', 'MB', 'GB'];
-            let size = value;
-            let unit = 0;
-            while (size >= 1024 && unit < units.length - 1) {
-                size /= 1024;
-                unit += 1;
-            }
-            const decimals = unit === 0 ? 0 : 1;
-            return `${size.toFixed(decimals)} ${units[unit]}`;
-        }
+    document.addEventListener('DOMContentLoaded', async () => {
+        const clearButton = document.querySelector('[data-pdf-clear-cache]');
+        if (!clearButton) return;
 
-        function getPdfDb() {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open(PDF_DB_NAME, PDF_DB_VERSION);
-                request.onupgradeneeded = () => {
-                    const db = request.result;
-                    if (!db.objectStoreNames.contains(PDF_DB_STORE)) {
-                        db.createObjectStore(PDF_DB_STORE, { keyPath: 'expected_key' });
-                    }
-                };
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error || new Error('Could not open IndexedDB.'));
-            });
-        }
+        await restorePdfMappings();
+        if (getPdfMappingCount() > 0) clearButton.classList.remove('hidden');
 
-        async function mappingCount() {
-            const db = await getPdfDb();
-            return new Promise((resolve, reject) => {
-                const tx = db.transaction(PDF_DB_STORE, 'readonly');
-                const request = tx.objectStore(PDF_DB_STORE).count();
-                request.onsuccess = () => resolve(Number(request.result) || 0);
-                request.onerror = () => reject(request.error || new Error('Could not read PDF mapping count.'));
-            });
-        }
-
-        async function clearMappings() {
-            const db = await getPdfDb();
-            return new Promise((resolve, reject) => {
-                const tx = db.transaction(PDF_DB_STORE, 'readwrite');
-                tx.oncomplete = () => resolve(undefined);
-                tx.onerror = () => reject(tx.error || new Error('Could not clear PDF mappings.'));
-                tx.objectStore(PDF_DB_STORE).clear();
-            });
-        }
-
-        async function refreshStorageUi(controls) {
-            const usageLabel = controls.querySelector('[data-pdf-storage-usage]');
-            const engineLabel = controls.querySelector('[data-pdf-storage-engine]');
-            const clearButton = controls.querySelector('[data-pdf-clear-cache]');
-
-            let count = 0;
-            try {
-                count = await mappingCount();
-            } catch (err) {
-                console.error(err);
-            }
-
-            let usageText = `${count} mapped file${count === 1 ? '' : 's'}`;
-            if (navigator.storage && navigator.storage.estimate) {
-                try {
-                    const estimate = await navigator.storage.estimate();
-                    usageText += ` | Storage: ${humanBytes(estimate.usage || 0)} / ${humanBytes(estimate.quota || 0)}`;
-                } catch (err) {
-                    console.error('Storage estimate failed:', err);
-                }
-            }
-
-            if (usageLabel) usageLabel.textContent = usageText;
-            if (engineLabel) {
-                const opfsAvailable = !!(navigator.storage && navigator.storage.getDirectory);
-                engineLabel.textContent = opfsAvailable ? 'IndexedDB cache (OPFS available)' : 'IndexedDB cache';
-            }
-            if (clearButton) clearButton.disabled = count === 0;
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            const controls = document.querySelector('[data-pdf-storage-controls]');
-            if (!controls || !window.indexedDB) return;
-
-            const clearButton = controls.querySelector('[data-pdf-clear-cache]');
-            if (clearButton) {
-                clearButton.addEventListener('click', async () => {
-                    await clearMappings();
-                    await refreshStorageUi(controls);
-                });
-            }
-
-            await refreshStorageUi(controls);
+        clearButton.addEventListener('click', async () => {
+            await clearAllPdfMappings();
+            clearButton.classList.add('hidden');
         });
-    })();
+    });
 </script>
 {% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto px-4 py-8"
-    x-data="{ tab: window.location.hash === '#account' ? 'account' : 'general' }"
-    x-init="$watch('tab', val => window.location.hash = val)">
-    <h1 class="font-serif text-2xl font-bold text-ink mb-6">Settings</h1>
-
-    <!-- Tabs -->
-    <div class="border-b border-rule mb-6">
-        <nav class="-mb-px flex space-x-8 font-sans text-sm uppercase tracking-[0.06em]">
-            <button @click="tab = 'general'" type="button"
-                :class="tab === 'general'
-                    ? 'border-secondary text-secondary'
-                    : 'border-transparent text-ink-3 hover:text-ink hover:border-rule'"
-                class="whitespace-nowrap py-3 px-1 border-b-2 font-medium">
-                General
-            </button>
-            <button @click="tab = 'account'" type="button"
-                :class="tab === 'account'
-                    ? 'border-secondary text-secondary'
-                    : 'border-transparent text-ink-3 hover:text-ink hover:border-rule'"
-                class="whitespace-nowrap py-3 px-1 border-b-2 font-medium">
-                Account
-            </button>
-        </nav>
+<div class="max-w-2xl mx-auto px-4 py-8">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="font-serif text-2xl font-bold text-ink">Settings</h1>
+        <button type="button" data-pdf-clear-cache
+            title="These locally cached PDFs are obsolete — CodeChronicle no longer uses them. Clear them to free up browser storage."
+            class="hidden inline-flex items-center px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.04em] border border-ink-2 text-ink-2 hover:bg-surface-2">
+            Clear cached PDFs
+        </button>
     </div>
 
-    <!-- General Tab -->
-    <div x-show="tab === 'general'" x-cloak>
-        <div class="bg-surface-2 border border-rule">
-            <div class="px-4 py-5 sm:p-6">
-                <h2 class="font-serif text-lg font-semibold text-ink mb-1">Local PDF Cache</h2>
-                <p class="text-sm text-ink-3 mb-4">
-                    PDF mappings are stored in your browser only. Clear cached files here if you need to reset mappings.
-                </p>
-                <div class="border border-rule-2 bg-surface px-4 py-3"
-                    data-pdf-storage-controls>
-                    <p class="font-mono text-xs text-ink-3">
-                        <span data-pdf-storage-engine>IndexedDB cache</span>
-                        <span class="mx-1 text-rule">|</span>
-                        <span data-pdf-storage-usage>0 mapped files</span>
-                    </p>
-                    <div class="mt-3">
-                        <button type="button" data-pdf-clear-cache
-                            class="inline-flex items-center px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.04em] border border-ink-2 text-ink-2 hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                            Clear cached PDFs
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="mt-6 bg-surface-2 border border-rule">
-            <div class="px-4 py-5 sm:p-6">
-
-                <h3 class="font-mono text-[11px] font-semibold text-ink-2 uppercase tracking-[0.08em]">
-                    Expected PDF Filenames
-                </h3>
-                <p class="mt-2 text-xs text-ink-3">
-                    Use these expected filenames when mapping files from search results.
-                </p>
-                <div class="mt-3 overflow-x-auto">
-                    <table class="min-w-full text-sm text-left border border-rule">
-                        <thead class="bg-surface-2 font-mono text-[11px] uppercase tracking-[0.04em] text-ink-3">
-                            <tr>
-                                <th class="px-3 py-2 font-medium">Code</th>
-                                <th class="px-3 py-2 font-medium">Effective Date</th>
-                                <th class="px-3 py-2 font-medium">Map Code</th>
-                                <th class="px-3 py-2 font-medium">Filename</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-rule-2 text-ink-2">
-                            {% for row in pdf_expectations %}
-                            <tr>
-                                <td class="px-3 py-2 whitespace-nowrap font-mono text-xs">{{ row.system }}_{{ row.year }}</td>
-                                <td class="px-3 py-2 whitespace-nowrap font-mono text-xs">{{ row.effective_date }}</td>
-                                <td class="px-3 py-2 whitespace-nowrap font-mono text-xs">{{ row.map_code }}</td>
-                                <td class="px-3 py-2 whitespace-nowrap font-mono text-xs">
-                                    {% if row.download_url %}
-                                    <a class="text-secondary underline font-medium"
-                                        href="{{ row.download_url }}" target="_blank" rel="noopener noreferrer">
-                                        {{ row.filename }}
-                                    </a>
-                                    {% else %}
-                                    {{ row.filename }}
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td class="px-3 py-3 text-center text-ink-3" colspan="4">
-                                    No PDF filenames configured.
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+    <!-- Subscription -->
+    <div class="bg-surface-2 border border-rule">
+        <div class="px-4 py-5 sm:p-6">
+            <h2 class="font-serif text-lg font-semibold text-ink mb-1">Subscription</h2>
+            {% if request.user.has_active_subscription %}
+            <p class="text-sm text-ink-2 mb-4">
+                You are on the <span class="font-semibold text-insert">Pro</span> plan.
+            </p>
+            <form method="POST" action="{% url 'core:stripe_portal' %}">
+                {% csrf_token %}
+                <button type="submit"
+                    class="min-w-40 py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+                    Manage Billing
+                </button>
+            </form>
+            {% else %}
+            <p class="text-sm text-ink-2 mb-4">
+                You are on the <span class="font-semibold text-ink">Free</span> plan.
+            </p>
+            <a href="{% url 'core:pricing' %}"
+                class="inline-flex items-center min-w-40 justify-center py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+                Upgrade to Pro
+            </a>
+            {% endif %}
         </div>
     </div>
 
-    <!-- Account Tab -->
-    <div x-show="tab === 'account'" x-cloak>
-        <!-- Subscription -->
-        <div class="bg-surface-2 border border-rule">
-            <div class="px-4 py-5 sm:p-6">
-                <h2 class="font-serif text-lg font-semibold text-ink mb-1">Subscription</h2>
-                {% if request.user.has_active_subscription %}
-                <p class="text-sm text-ink-2 mb-4">
-                    You are on the <span class="font-semibold text-insert">Pro</span> plan.
-                </p>
-                <form method="POST" action="{% url 'core:stripe_portal' %}">
-                    {% csrf_token %}
+    <!-- Sign Out -->
+    <div class="my-6 bg-surface-2 border border-rule">
+        <div class="px-4 py-5 sm:p-6">
+            <h2 class="font-serif text-lg font-semibold text-ink mb-1">Sign Out</h2>
+            <p class="text-sm text-ink-2 mb-4">
+                Sign out of your CodeChronicle account on this device.
+            </p>
+            <form method="POST" action="{% url 'account_logout' %}">
+                {% csrf_token %}
+                {% if redirect_field_value %}
+                <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}" />
+                {% endif %}
+
+                <div class="flex justify-left space-y-4">
                     <button type="submit"
                         class="min-w-40 py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
-                        Manage Billing
+                        Sign Out
                     </button>
-                </form>
-                {% else %}
-                <p class="text-sm text-ink-2 mb-4">
-                    You are on the <span class="font-semibold text-ink">Free</span> plan.
-                </p>
-                <a href="{% url 'core:pricing' %}"
-                    class="inline-flex items-center min-w-40 justify-center py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
-                    Upgrade to Pro
-                </a>
-                {% endif %}
-            </div>
+                </div>
+            </form>
         </div>
+    </div>
 
-        <!-- Sign Out -->
-        <div class="my-6 bg-surface-2 border border-rule">
-            <div class="px-4 py-5 sm:p-6">
-                <h2 class="font-serif text-lg font-semibold text-ink mb-1">Sign Out</h2>
-                <p class="text-sm text-ink-2 mb-4">
-                    Sign out of your CodeChronicle account on this device.
-                </p>
-                <form method="POST" action="{% url 'account_logout' %}">
-                    {% csrf_token %}
-                    {% if redirect_field_value %}
-                    <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}" />
+    <!-- Change Password -->
+    <div class="bg-surface-2 border border-rule">
+        <div class="px-4 py-5 sm:p-6">
+            <h2 class="font-serif text-lg font-semibold text-ink mb-1">Change Password</h2>
+            <p class="text-sm text-ink-2 mb-4">
+                Keep your account secure with a strong password.
+            </p>
+
+            <form method="post" action="{% url 'account_change_password' %}" class="space-y-4">
+                {% csrf_token %}
+                {% for field in password_form %}
+                <div>
+                    <label for="{{ field.id_for_label }}"
+                        class="block font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-ink-3">
+                        {{ field.label }}
+                    </label>
+                    <div class="mt-1">
+                        <input id="{{ field.id_for_label }}" name="{{ field.name }}" type="password" required
+                            class="appearance-none block w-full px-3 py-2 border border-ink-2 bg-panel placeholder-ink-3 text-ink focus:outline-none focus:ring-1 focus:ring-secondary focus:border-secondary sm:text-sm">
+                    </div>
+                    {% if field.help_text %}
+                    <p class="mt-1 text-xs text-ink-3">{{ field.help_text|safe }}</p>
                     {% endif %}
-
-                    <div class="flex justify-left space-y-4">
-                        <button type="submit"
-                            class="min-w-40 py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
-                            Sign Out
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Change Password -->
-        <div class="bg-surface-2 border border-rule">
-            <div class="px-4 py-5 sm:p-6">
-                <h2 class="font-serif text-lg font-semibold text-ink mb-1">Change Password</h2>
-                <p class="text-sm text-ink-2 mb-4">
-                    Keep your account secure with a strong password.
-                </p>
-
-                <form method="post" action="{% url 'account_change_password' %}" class="space-y-4">
-                    {% csrf_token %}
-                    {% for field in password_form %}
-                    <div>
-                        <label for="{{ field.id_for_label }}"
-                            class="block font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-ink-3">
-                            {{ field.label }}
-                        </label>
-                        <div class="mt-1">
-                            <input id="{{ field.id_for_label }}" name="{{ field.name }}" type="password" required
-                                class="appearance-none block w-full px-3 py-2 border border-ink-2 bg-panel placeholder-ink-3 text-ink focus:outline-none focus:ring-1 focus:ring-secondary focus:border-secondary sm:text-sm">
-                        </div>
-                        {% if field.help_text %}
-                        <p class="mt-1 text-xs text-ink-3">{{ field.help_text|safe }}</p>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                    <div class="flex justify-left">
-                        <button type="submit"
-                            class="min-w-40 px-4 py-2 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
-                            Change Password
-                        </button>
-                    </div>
-                </form>
-            </div>
+                </div>
+                {% endfor %}
+                <div class="flex justify-left">
+                    <button type="submit"
+                        class="min-w-40 px-4 py-2 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+                        Change Password
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
