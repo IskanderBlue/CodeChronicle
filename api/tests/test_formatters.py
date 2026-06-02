@@ -105,6 +105,66 @@ def test_group_results_collapses_when_more_than_80_percent_of_direct_children_ma
     assert grouped_results[0]["parent_id"] == "3.2.9"
     assert len(grouped_results[0]["children"]) == 5
     assert grouped_results[0]["top_scoring_child_id"] == "3.2.9.2"
+    # Each matched child carries its full formatted result so the template can
+    # accordion it open to its own content (grouping is a UI aide, not a drop).
+    children = grouped_results[0]["children"]
+    assert all(c["is_match"] for c in children)
+    assert all(c["result"] is not None for c in children)
+    assert {c["result"]["id"] for c in children} == {f"3.2.9.{i}" for i in range(1, 6)}
+
+
+def test_group_absorbs_parent_that_also_matched():
+    # The subsection itself matched (parent_id 3.2.9 → its own parent 3.2) AND
+    # 4/4 of its children matched.  The parent must not appear as a second
+    # standalone row alongside the group card — both share one accordion key.
+    formatted_results = [
+        {"id": "3.2.9", "title": "Parent", "code": "NBC_2025",
+         "parent_id": "3.2", "division": "B", "score": 0.99},
+    ] + [
+        {"id": f"3.2.9.{i}", "title": f"Child {i}", "code": "NBC_2025",
+         "parent_id": "3.2.9", "division": "B", "score": 0.9 - 0.01 * i}
+        for i in range(1, 5)
+    ]
+    hierarchy = {
+        ("NBC_2025", "3.2.9", "B"): {
+            "parent_title": "Parent Section",
+            "children": [
+                {"node_id": f"3.2.9.{i}", "title": f"Child {i}", "page": i, "page_end": i}
+                for i in range(1, 5)
+            ],
+        }
+    }
+
+    grouped_results = formatters.group_formatted_results(formatted_results, hierarchy)
+
+    rows_for_parent = [r for r in grouped_results if r.get("id") == "3.2.9"]
+    assert len(rows_for_parent) == 1
+    assert rows_for_parent[0]["group_type"] == "parent_children"
+    # The parent's own match is absorbed onto the group (not dropped) so the
+    # template can still surface the parent provision.
+    assert rows_for_parent[0]["parent_result"]["id"] == "3.2.9"
+    # The group header shows the parent's score (0.99), not the top child's.
+    assert rows_for_parent[0]["score"] == 0.99
+
+
+def test_nest_child_results_children_are_expandable_and_keep_parent():
+    # Phase-3 nesting (parent matched + a child matched, below the Phase-2
+    # threshold): children must carry their full result so they accordion open,
+    # and the parent provision must be preserved as parent_result.
+    parent = {"id": "3.2.9", "title": "Parent", "code": "OBC_2012",
+              "parent_id": "3.2", "division": "B", "score": 0.95}
+    child = {"id": "3.2.9.1", "title": "Child", "code": "OBC_2012",
+             "parent_id": "3.2.9", "division": "B", "score": 0.8,
+             "html_content": "<p>body</p>"}
+
+    out = formatters._nest_child_results([parent, child])
+
+    groups = [r for r in out if r.get("group_type") == "parent_children"]
+    assert len(groups) == 1
+    assert all("result" in c for c in groups[0]["children"])
+    assert groups[0]["parent_result"]["id"] == "3.2.9"
+    # The child was absorbed — it is not also a standalone row.
+    assert [r["id"] for r in out] == ["3.2.9"]
 
 
 def test_group_results_does_not_group_at_or_below_80_percent():
@@ -225,6 +285,47 @@ def test_group_results_keeps_single_child_match_standalone():
     assert len(grouped_results) == 1
     assert grouped_results[0].get("group_type") is None
     assert grouped_results[0]["id"] == "Table-9.10.3.1.-A"
+
+
+def test_container_levels_cover_structural_headings():
+    # Guards the level set the document block keys "Content not yet available"
+    # suppression off — headings never carry body text; leaves do.
+    from core.models import CodeEditionProvision as P
+
+    assert P.Level.DIVISION in formatters._CONTAINER_LEVELS
+    assert P.Level.PART in formatters._CONTAINER_LEVELS
+    assert P.Level.SECTION in formatters._CONTAINER_LEVELS
+    assert P.Level.SUBSECTION in formatters._CONTAINER_LEVELS
+    assert P.Level.ARTICLE not in formatters._CONTAINER_LEVELS
+
+
+@pytest.mark.django_db
+def test_format_single_result_marks_structural_headings(monkeypatch):
+    from core.models import Code, CodeEdition, CodeEditionProvision
+
+    monkeypatch.setattr(formatters, "_build_code_display_name", lambda code_edition: code_edition)
+    system = Code.objects.create(code="OBC", display_name="OBC", is_national=False)
+    edition = CodeEdition.objects.create(
+        code=system, edition_id="2024", year=2024,
+        map_codes=["OBC_2024"], effective_date=date(2024, 1, 1), source="e-Laws",
+    )
+    subsection = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="1.3.7.", level="subsection", division="C",
+    )
+    article = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="1.3.7.1.", level="article", division="C",
+        parent=subsection,
+    )
+
+    sub_fmt = formatters._format_single_result(
+        {"code_edition": "OBC_2024", "provision": subsection, "version": None}
+    )
+    art_fmt = formatters._format_single_result(
+        {"code_edition": "OBC_2024", "provision": article, "version": None}
+    )
+
+    assert sub_fmt["is_structural"] is True
+    assert art_fmt["is_structural"] is False
 
 
 def _version(version: int, title: str, eff: date, ineff: date | None) -> CodeEditionProvisionVersion:

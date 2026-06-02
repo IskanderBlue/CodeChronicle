@@ -15,6 +15,17 @@ from core.models import CodeEditionProvision, CodeEditionProvisionVersion
 
 logger = logging.getLogger(__name__)
 
+# Structural container levels: these are heading nodes (Division A / Part 3 /
+# Section 3.2 / Subsection 1.3.7.) whose substantive text lives in their child
+# articles — they legitimately carry no body, so the empty-content notice must
+# not read as a data gap for them.  See _result_document_block.html.
+_CONTAINER_LEVELS = frozenset({
+    CodeEditionProvision.Level.DIVISION,
+    CodeEditionProvision.Level.PART,
+    CodeEditionProvision.Level.SECTION,
+    CodeEditionProvision.Level.SUBSECTION,
+})
+
 _HTML_TAG_RE = re.compile(r"(<[^>]+>)")
 # Splits text into words and whitespace runs, preserving both.
 _WORD_SPACE_RE = re.compile(r"(\S+)")
@@ -421,6 +432,10 @@ def _format_single_result(
         "most_recent_clause": most_recent_clause,
         "contributing_clauses": contributing_clauses,
         "is_base": result.get("is_base", True),
+        # Structural heading node (part/section/subsection/division): never
+        # carries body text, so the document block suppresses the
+        # "Content not yet available" notice rather than implying a data gap.
+        "is_structural": bool(provision and provision.level in _CONTAINER_LEVELS),
         "version": version,
         "provision": provision,
         "base_regulation": base_regulation,
@@ -595,6 +610,12 @@ def _build_grouped_result(
                 "score": (matched or {}).get("score", 0),
                 "is_match": matched is not None,
                 "is_top_scoring": child_id == top_scoring_child.get("id"),
+                # Full formatted result for matched children so the template can
+                # accordion each open to its own content (provenance + body +
+                # justification) — grouping is a UI aide, not a content drop.
+                # Unmatched "context" children weren't search hits, so they have
+                # no formatted body and stay label-only.
+                "result": matched,
             }
         )
 
@@ -611,8 +632,6 @@ def _build_grouped_result(
                 "id": top_scoring_child.get("id"),
                 "title": top_scoring_child.get("title"),
             },
-            "viewer_node_id": top_scoring_child.get("id"),
-            "viewer_title": top_scoring_child.get("title"),
             "child_match_count": child_match_count,
             "child_total_count": child_total_count,
             "matched_child_ids": [item.get("id") for item in matched_results if item.get("id")],
@@ -651,6 +670,26 @@ def group_formatted_results(
                 continue
             output.append(grouped_results_by_key[key])
             collapsed_keys.add(key)
+            continue
+        # A provision that matches on its own AND is the parent of a built group
+        # is already represented by that group card (id == parent_id).  Don't
+        # leave it as a second standalone row — that duplicates the parent and
+        # collides on the accordion key (code + id).  Instead absorb its match
+        # onto the group as ``parent_result`` so the group can still surface the
+        # parent provision's own title/provenance/content (it isn't lost, just
+        # not a separate row).
+        identity = (
+            str(result.get("code") or ""),
+            str(result.get("id") or ""),
+            str(result.get("division") or ""),
+        )
+        if identity in grouped_results_by_key:
+            group = grouped_results_by_key[identity]
+            group["parent_result"] = result
+            # The group card header shows the *parent's* score (the child it was
+            # cloned from lent its score); each child keeps its own in its
+            # accordion.  Phase-3 groups already carry the parent's score.
+            group["score"] = result.get("score", group.get("score", 0))
             continue
         output.append(result)
 
@@ -799,6 +838,10 @@ def _nest_child_results(
     absorbed_child_keys: set[tuple[str, str, str]] = set()
     for parent_key, children in children_by_parent.items():
         parent = results_by_key[parent_key]
+        # Snapshot the parent's own match before we mutate it into the group
+        # card, so the template can still surface the parent provision (its
+        # title/provenance/content) — parity with the Phase-2 ``parent_result``.
+        parent_self = dict(parent)
         top_child = max(children, key=lambda c: (c.get("score", 0),))
         child_entries = []
         for child in sorted(children, key=lambda c: _code_order_key(str(c.get("id", "")))):
@@ -811,26 +854,26 @@ def _nest_child_results(
                 "score": child.get("score", 0),
                 "is_match": True,
                 "is_top_scoring": child_id == str(top_child.get("id", "")),
+                # Full formatted child so the template accordions it open to its
+                # own content — parity with Phase-2 grouping.
+                "result": child,
             })
             absorbed_child_keys.add(_nest_result_key(child))
 
         parent["group_type"] = "parent_children"
         parent["children"] = child_entries
+        parent["parent_result"] = parent_self
         parent["top_scoring_child_id"] = str(top_child.get("id", ""))
         parent["active_child"] = {
             "id": top_child.get("id"),
             "title": top_child.get("title"),
         }
-        parent["viewer_node_id"] = top_child.get("id")
-        parent["viewer_title"] = top_child.get("title")
         parent["child_match_count"] = len(children)
         parent["child_total_count"] = len(children)
         parent["matched_child_ids"] = [str(c.get("id", "")) for c in children]
-        # Carry over content fields from the top-scoring child for the document block
-        for field in ("html_content", "page_images", "tables", "notes_html",
-                      "page", "page_end"):
-            if top_child.get(field) is not None:
-                parent[field] = top_child[field]
+        # The card keeps the parent's own score (header) — its content is no
+        # longer rendered at card level, so nothing is carried from the child;
+        # each child shows its own body and score in its accordion.
 
     return [r for r in results if _nest_result_key(r) not in absorbed_child_keys]
 

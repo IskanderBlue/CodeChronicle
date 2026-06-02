@@ -18,79 +18,124 @@ with the results-card highlight). Read by sectionContentUrl() in search.html.
 <div
     class="border-b border-rule border-l-[3px] transition-colors"
     :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? 'border-l-secondary bg-panel' : 'border-l-transparent hover:border-l-secondary/50'">
-    <button type="button" class="w-full text-left" @click="activeResult = activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? null : '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
-        {# -- Collapsed: compact one-liner -- #}
-        <div class="px-4 py-3 sm:px-5" x-show="activeResult !== '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
-            <div class="flex items-baseline gap-2">
-                <span class="shrink-0 font-mono text-[12px] font-semibold text-ink">{% if result.division %}{{ result.division }} &middot; {% endif %}{{ result.id }}</span>
-                <span class="truncate font-serif text-sm text-ink">{{ result.title }}</span>
-                {% if result.clause %}
-                <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">Amended</span>
+    {# Header toggles the accordion. Collapsed: click anywhere to expand. Expanded: collapse on whitespace only; text blocks stop propagation so they stay selectable. #}
+    {# -- Collapsed: compact one-liner -- #}
+    <div class="px-4 py-3 sm:px-5 cursor-pointer" role="button" tabindex="0"
+        x-show="activeResult !== '{{ result.code|escapejs }}_{{ result.id|escapejs }}'"
+        @click="activeResult = '{{ result.code|escapejs }}_{{ result.id|escapejs }}'"
+        @keydown.enter="activeResult = '{{ result.code|escapejs }}_{{ result.id|escapejs }}'"
+        @keydown.space.prevent="activeResult = '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
+        <div class="flex items-baseline gap-2">
+            <span class="shrink-0 font-mono text-[12px] font-semibold text-ink">{% if result.division %}{{ result.division }} &middot; {% endif %}{{ result.id }}</span>
+            <span class="truncate font-serif text-sm text-ink">{{ result.title }}</span>
+            {% if result.group_type == 'parent_children' %}
+            <span class="shrink-0 font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-secondary">Contains {{ result.child_match_count }} child{{ result.child_match_count|pluralize:",ren" }}</span>
+            {% endif %}
+            {% if result.clause %}
+            <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">Amended</span>
+            {% endif %}
+            <span class="ml-auto shrink-0 font-mono text-[9px] uppercase tracking-[0.06em] text-ink-3">{{ result.code_display_name }}</span>
+        </div>
+    </div>
+    {# -- Expanded: full header -- #}
+    <div class="px-4 py-5 sm:p-6 cursor-pointer" role="button" tabindex="0"
+        x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'" x-cloak
+        @click="activeResult = null"
+        @keydown.enter="activeResult = null"
+        @keydown.space.prevent="activeResult = null">
+        <div class="flex justify-between items-start gap-4">
+            <div class="min-w-0 cursor-text" @click.stop>
+                {% if result.group_type == 'parent_children' %}
+                {# Grouped: a container, not a standalone provision — only the grouping label here; edition/id/title belong to the child rows below. #}
+                <p class="font-mono text-[12px] font-semibold uppercase tracking-[0.1em] text-ink-3">
+                    Grouped result &middot; {{ result.child_match_count }} matching child{{ result.child_match_count|pluralize:",ren" }}
+                </p>
+                {% else %}
+                <p class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary">{{ result.code_display_name }}</p>
+                {% if result.result_type == 'transition_compare' %}
+                <p class="mt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-secondary">
+                    Transition &mdash; two versions in force
+                </p>
                 {% endif %}
-                <span class="ml-auto shrink-0 font-mono text-[9px] uppercase tracking-[0.06em] text-ink-3">{{ result.code_display_name }}</span>
+                <h3 class="mt-2 flex flex-wrap items-baseline gap-2 font-serif text-[26px] leading-[1.15] text-ink">
+                    {% if result.division %}<span class="font-mono text-sm text-ink-3">{{ result.division }}</span>{% endif %}
+                    <span class="select-all font-mono text-[22px] font-semibold">{{ result.id }}</span>
+                    <span role="button" tabindex="0" @click.stop="navigator.clipboard.writeText('{{ result.id|escapejs }}')" @keydown.enter.stop="navigator.clipboard.writeText('{{ result.id|escapejs }}')" title="Copy provision ID" class="inline-flex cursor-pointer items-center p-1 text-ink-3 hover:text-secondary">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    </span>
+                    <span class="italic font-normal">{{ result.title }}</span>
+                </h3>
+                {% endif %}
             </div>
+            <span class="shrink-0 cursor-text border border-rule px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3" @click.stop>
+                Score {{ result.score|floatformat:2 }}
+            </span>
         </div>
-        {# -- Expanded: full header -- #}
-        <div class="px-4 py-5 sm:p-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'" x-cloak>
-            <div class="flex justify-between items-start gap-4">
-                <div class="min-w-0">
-                    <p class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary">{{ result.code_display_name }}</p>
-                    {% if result.group_type == 'parent_children' %}
-                    <p class="mt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">
-                        Grouped result &middot; {{ result.child_match_count }}/{{ result.child_total_count }} child matches
-                    </p>
-                    {% endif %}
-                    {% if result.result_type == 'transition_compare' %}
-                    <p class="mt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-secondary">
-                        Transition &mdash; two versions in force
-                    </p>
-                    {% endif %}
-                    <h3 class="mt-2 flex flex-wrap items-baseline gap-2 font-serif text-[26px] leading-[1.15] text-ink">
-                        {% if result.division %}<span class="font-mono text-sm text-ink-3">{{ result.division }}</span>{% endif %}
-                        <span class="select-all font-mono text-[22px] font-semibold">{{ result.id }}</span>
-                        <span role="button" tabindex="0" @click.stop="navigator.clipboard.writeText('{{ result.id|escapejs }}')" @keydown.enter.stop="navigator.clipboard.writeText('{{ result.id|escapejs }}')" title="Copy provision ID" class="inline-flex cursor-pointer items-center p-1 text-ink-3 hover:text-secondary">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                        </span>
-                        <span class="italic font-normal">{{ result.title }}</span>
-                    </h3>
-                </div>
-                <span class="shrink-0 border border-rule px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">
-                    Score {{ result.score|floatformat:2 }}
-                </span>
-            </div>
-        </div>
-    </button>
+    </div>
 
     <div class="px-4 pb-5 sm:px-6 sm:pb-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
 
-        {# -- Provenance banner -- #}
+        {# Banner: standard/grouped render it per-result inside _result_body; transition-compare shows it once here. #}
+        {% if result.result_type == 'transition_compare' %}
         {% include "partials/_provenance_banner.html" with result=result %}
+        {% endif %}
 
-        {# -- Grouped children -- #}
+        {# Grouped children: each accordions open to its full content like a top-level result; one open at a time, top match default; context children are labels. #}
         {% if result.group_type == 'parent_children' %}
+        {# Parent provision: shown when the container itself matched, so its title/provenance isn't lost to the grouping (it's absorbed, not a separate row). #}
+        {% if result.parent_result %}
+        <div class="mt-3 border border-rule bg-panel p-3">
+            <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">Parent provision</p>
+            <p class="mt-1 flex flex-wrap items-baseline gap-2 font-serif text-lg text-ink">
+                {% if result.division %}<span class="font-mono text-xs text-ink-3">{{ result.division }}</span>{% endif %}
+                <span class="select-all cursor-text font-mono font-semibold">{{ result.id }}</span>
+                <span class="italic font-normal text-ink-2">{{ result.title }}</span>
+            </p>
+            {% include "partials/_result_body.html" with result=result.parent_result shared_expand=True %}
+        </div>
+        {% endif %}
         <div class="mt-3 border border-rule bg-surface-2 p-3"
-            data-top-scoring-child="{{ result.top_scoring_child_id }}">
+            x-data="{ activeChild: '{{ result.top_scoring_child_id|escapejs }}' }">
             <div class="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">
                 <p class="font-semibold">Matching children</p>
                 <p>Top match {{ result.active_child.id }}</p>
             </div>
             <div class="mt-3 space-y-2">
                 {% for child in result.children %}
-                <div {% if child.is_top_scoring %}class="border-l-[3px] border-secondary bg-secondary-soft px-3 py-3 text-sm"{% elif child.is_match %}class="border border-rule bg-panel px-3 py-3 text-sm"{% else %}class="border border-dashed border-rule bg-surface-2 px-3 py-3 text-sm text-ink-3"{% endif %}>
-                    <div class="flex items-center justify-between gap-2">
-                        <p class="text-ink"><span class="font-mono font-semibold">{{ child.id }}</span> <span class="font-serif">&mdash; {{ child.title }}</span></p>
-                        <div class="flex items-center gap-2 shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]">
-                            {% if child.is_top_scoring %}
-                            <span class="border border-secondary px-2 py-0.5 font-semibold text-secondary">Top match</span>
-                            {% endif %}
-                            {% if child.is_match %}
-                            <span class="text-ink-2">Matched</span>
-                            {% else %}
-                            <span class="text-ink-3">Context</span>
-                            {% endif %}
-                        </div>
+                {% if child.result %}
+                <div class="border border-rule bg-panel"
+                    :class="activeChild === '{{ child.id|escapejs }}' ? 'border-l-[3px] border-l-secondary' : 'border-l-[3px] border-l-transparent'">
+                    {# Toggle on whitespace/caret only; id + title stop propagation so they stay selectable. #}
+                    <div role="button" tabindex="0"
+                        @click.stop="activeChild = activeChild === '{{ child.id|escapejs }}' ? null : '{{ child.id|escapejs }}'"
+                        @keydown.enter.stop="activeChild = activeChild === '{{ child.id|escapejs }}' ? null : '{{ child.id|escapejs }}'"
+                        @keydown.space.stop.prevent="activeChild = activeChild === '{{ child.id|escapejs }}' ? null : '{{ child.id|escapejs }}'"
+                        class="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-3 text-left text-sm">
+                        <span class="flex min-w-0 items-baseline gap-1.5">
+                            <span class="shrink-0 text-[10px] text-ink-3" x-text="activeChild === '{{ child.id|escapejs }}' ? '&#9662;' : '&#9656;'"></span>
+                            <span class="shrink-0 cursor-text select-all font-mono font-semibold text-ink" @click.stop>{{ child.id }}</span>
+                            <span role="button" tabindex="0" @click.stop="navigator.clipboard.writeText('{{ child.id|escapejs }}')" @keydown.enter.stop="navigator.clipboard.writeText('{{ child.id|escapejs }}')" title="Copy provision ID" class="inline-flex shrink-0 cursor-pointer items-center p-0.5 text-ink-3 hover:text-secondary">
+                                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                            </span>
+                            <span class="min-w-0 truncate cursor-text font-serif text-ink-2" @click.stop>&mdash; {{ child.title }}</span>
+                        </span>
+                        <span class="flex shrink-0 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.06em]">
+                            {% if child.is_top_scoring %}<span class="border border-secondary px-2 py-0.5 font-semibold text-secondary">Top match</span>{% endif %}
+                            <span class="border border-rule px-2 py-0.5 text-ink-3">Score {{ child.score|floatformat:2 }}</span>
+                        </span>
+                    </div>
+                    <div x-show="activeChild === '{{ child.id|escapejs }}'" x-cloak
+                        class="border-t border-rule px-3 pb-4 pt-1 accordion-content">
+                        {% include "partials/_result_body.html" with result=child.result shared_expand=False %}
                     </div>
                 </div>
+                {% else %}
+                <div class="border border-dashed border-rule bg-surface-2 px-3 py-3 text-sm text-ink-3">
+                    <span class="font-mono font-semibold">{{ child.id }}</span>
+                    <span class="font-serif">&mdash; {{ child.title }}</span>
+                    <span class="ml-1 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Context</span>
+                </div>
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -141,43 +186,17 @@ with the results-card highlight). Read by sectionContentUrl() in search.html.
             {% endif %}
             {% endfor %}
         </div>
+        {% elif result.group_type == 'parent_children' %}
+        {# Grouped: children render as the accordion above; the group has no body of its own. #}
         {% else %}
         {# -- Standard single result -- #}
-        {% include "partials/_result_document_block.html" with result=result %}
-        {% if result.clause %}
-        <div class="mt-3">
-            <a href="{% url 'core:regulation_detail' result.clause.regulation.pk %}"
-               class="font-mono text-[11px] font-medium text-secondary hover:text-secondary-2 hover:underline">
-                View amending regulation (O. Reg. {{ result.clause.regulation.reg_id }})
-            </a>
-        </div>
-        {% endif %}
+        {% include "partials/_result_body.html" with result=result %}
         {% endif %}
 
-        {# -- Why this result matched -- #}
-        <div class="mt-4 border-t border-rule pt-3" data-result-justification>
-            <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Why this result</p>
-            {% if result.score_explanation %}
-            <p class="mt-2 font-serif text-sm text-ink-2">{{ result.score_explanation }}</p>
-            {% endif %}
-            {% if result.show_matched_terms and result.matched_terms %}
-            <div class="mt-2 flex flex-wrap items-center gap-1.5">
-                <span class="font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">Matched</span>
-                {% for term in result.matched_terms %}
-                <span class="border border-rule bg-surface-2 px-2 py-0.5 font-mono text-[10px] text-ink-2">{{ term }}</span>
-                {% endfor %}
-            </div>
-            {% endif %}
-            {% if result.show_matched_terms and result.matched_terms_indirect %}
-            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <span class="font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">Also</span>
-                {% for term in result.matched_terms_indirect %}
-                <span class="border border-dashed border-rule bg-surface-2 px-2 py-0.5 font-mono text-[10px] italic text-ink-3">{{ term }}</span>
-                {% endfor %}
-            </div>
-            {% endif %}
-            <p class="mt-2 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Relevance score {{ result.score|floatformat:2 }}</p>
-        </div>
+        {# Card-level justification only for transition-compare; standard/grouped render "Why this result" inside _result_body. #}
+        {% if result.result_type == 'transition_compare' %}
+        {% include "partials/_result_justification.html" with result=result %}
+        {% endif %}
     </div>
 </div>
 {% endfor %}

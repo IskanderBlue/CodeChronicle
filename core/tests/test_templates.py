@@ -125,7 +125,9 @@ def test_search_results_partial_initializes_first_result_as_open_accordion_item(
     )
 
     assert 'activeResult: "NBC_2025_3.1.1.1"' in html
-    assert html.count('@click="activeResult = ') == 2
+    # Each result has a collapse handler (expanded header → null); the expand
+    # handlers (collapsed → key) are distinct strings. One collapse per result.
+    assert html.count('@click="activeResult = null"') == 2
 
 
 def test_grouped_result_renders_parent_header_and_children():
@@ -146,18 +148,24 @@ def test_grouped_result_renders_parent_header_and_children():
                     "child_total_count": 5,
                     "top_scoring_child_id": "3.2.9.2",
                     "active_child": {"id": "3.2.9.2", "title": "Closures"},
+                    "parent_result": {
+                        "id": "3.2.9", "title": "Parent Section", "division": "B",
+                        "code_edition": "NBC_2025", "is_structural": True,
+                    },
                     "children": [
                         {
                             "id": "3.2.9.1",
                             "title": "General",
                             "is_match": True,
                             "is_top_scoring": False,
+                            "result": {"id": "3.2.9.1", "html_content": "<p>GENERAL BODY</p>"},
                         },
                         {
                             "id": "3.2.9.2",
                             "title": "Closures",
                             "is_match": True,
                             "is_top_scoring": True,
+                            "result": {"id": "3.2.9.2", "html_content": "<p>CLOSURES BODY</p>"},
                         },
                     ],
                 }
@@ -169,6 +177,12 @@ def test_grouped_result_renders_parent_header_and_children():
     assert "3.2.9.1" in html
     assert "3.2.9.2" in html
     assert "Matching children" in html
+    # Children accordion (each child carries its own result body), the per-child
+    # accordion state, and the absorbed parent provision all render.
+    assert "GENERAL BODY" in html
+    assert "CLOSURES BODY" in html
+    assert "activeChild" in html
+    assert "Parent provision" in html
 
 
 def test_grouped_result_marks_top_scoring_child():
@@ -195,12 +209,14 @@ def test_grouped_result_marks_top_scoring_child():
                             "title": "General",
                             "is_match": True,
                             "is_top_scoring": False,
+                            "result": {"id": "3.2.9.1"},
                         },
                         {
                             "id": "3.2.9.2",
                             "title": "Closures",
                             "is_match": True,
                             "is_top_scoring": True,
+                            "result": {"id": "3.2.9.2"},
                         },
                     ],
                 }
@@ -208,7 +224,9 @@ def test_grouped_result_marks_top_scoring_child():
         },
     )
 
-    assert 'data-top-scoring-child="3.2.9.2"' in html
+    # The top-scoring child is the default-open accordion item and wears the
+    # "Top match" chip.
+    assert "activeChild: '3.2.9.2'" in html
     assert "Top match" in html
 
 
