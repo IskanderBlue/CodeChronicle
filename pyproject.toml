@@ -111,6 +111,8 @@ module = [
     "djstripe.*",
     "coloured_logger",
     "markdown",
+    "boto3.*",
+    "botocore.*",
 ]
 ignore_missing_imports = true
 

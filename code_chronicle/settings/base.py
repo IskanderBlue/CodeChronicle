@@ -117,6 +117,25 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 ASSET_ROOT = Path(os.environ.get("ASSET_ROOT", BASE_DIR / "assets"))
 
 
+# ===================
+# Cloudflare R2 — asset object storage (upload/sync side only)
+# ===================
+# Used by ``manage.py sync_images --backend r2`` to publish the mirrored
+# asset trees (documents/, amended/, laws/) to R2.  Serving is handled at
+# the Cloudflare edge by a Worker with an R2 binding (see the Terraform
+# ``modules/cloudflare`` asset-proxy), so the running app needs NO R2
+# credentials — only whoever runs the sync does.  S3-compatible: keys are
+# minted under R2 > Manage R2 API Tokens.  Endpoint defaults to the
+# account-scoped R2 host when unset.
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
+R2_BUCKET = os.environ.get("R2_BUCKET", "")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+R2_ENDPOINT_URL = os.environ.get("R2_ENDPOINT_URL", "") or (
+    f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else ""
+)
+
+
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
