@@ -365,12 +365,17 @@ def _provenance_result(
         base_regulation=base_regulation,
         next_version=next_version,
     )
+    next_clause = next_version.last_contributing_clause if next_version else None
     return {
         "version": target_version,
         "clause": clause,
         "is_base": clause is None,
         "base_regulation": base_regulation,
         "next_version": next_version,
+        # Proof of the version's END: the next version's commencement (this
+        # version stops the day the next one comes into force).  Mirrors the
+        # band's From popup, which proves the START.
+        "next_commencement": next_clause.commencement if next_clause else None,
         "amendment_chain": chain,
         "copy_text": copy_text,
         "band": None,

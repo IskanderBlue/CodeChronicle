@@ -31,6 +31,17 @@ def edition_json(tmp_path: Path) -> Path:
     return out
 
 
+def test_norm_clause_id_bridges_id_forms() -> None:
+    """The dotted ``resolved_clauses`` form, the ``s.``-prefixed source form,
+    and the bare ``clause_id`` form all collapse to one match key."""
+    from core.management.commands.load_edition import _norm_clause_id
+
+    assert _norm_clause_id("4.2.1.1.(1)") == _norm_clause_id("4.2.1.1(1)")
+    assert _norm_clause_id("s. 1.(1)") == _norm_clause_id("1(1)")
+    assert _norm_clause_id("Subsection 2 (2)") == _norm_clause_id("2(2)")
+    assert _norm_clause_id("161(2)") == "161(2)"  # already-bare unchanged
+
+
 @pytest.mark.django_db
 class TestLoadEdition:
     def test_creates_code_and_edition(self, edition_json: Path) -> None:
@@ -128,6 +139,58 @@ class TestLoadEdition:
                 "target_id": "1.1.3.2.(2)", "target_division": "B",
             },
         ]
+
+    def test_resolves_clause_commencement_provenance(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """Each clause is linked to the commencement entry that set its date,
+        matched through ``_norm_clause_id`` (resolved_clauses uses a dotted /
+        ``s.``-prefixed form the bare clause_id doesn't), with the default
+        entry covering clauses no deferred entry claims."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        for reg in data["regulations"]:
+            if reg["reg_id"] == "22/98":
+                reg["commencement"] = [
+                    {
+                        "clause": "5(1)", "is_default": True,
+                        "effective_date": "1998-04-06", "resolved_clauses": [],
+                        "source": "parsed",
+                        "commencement_clause": "In force on April 6, 1998.",
+                    },
+                    {
+                        "clause": "5(2)", "is_default": False,
+                        "effective_date": "1999-01-01",
+                        # Prefixed + dotted form of clause_id "1.(1)".
+                        "resolved_clauses": ["s. 1.(1)"],
+                        "source": "parsed",
+                        "commencement_clause": "Clause 1 in force on Jan 1, 1999.",
+                    },
+                ]
+                for cl in reg["clauses"]:
+                    if cl["clause_id"] == "1.(1)":
+                        cl["effective_date"] = "1999-01-01"
+        out = tmp_path / "OBC_1997_clause_commencement.json"
+        out.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(out))
+
+        reg = Regulation.objects.get(reg_id="22/98")
+        # Deferred clause linked to the non-default entry despite the id-form gap.
+        deferred = RegulationClause.objects.get(regulation=reg, clause_id="1.(1)")
+        assert deferred.commencement is not None
+        assert deferred.commencement["is_default"] is False
+        assert deferred.commencement["effective_date"] == "1999-01-01"
+        # A clause no deferred entry claims falls under the default entry.
+        other = RegulationClause.objects.get(regulation=reg, clause_id="15.(1)")
+        assert other.commencement is not None
+        assert other.commencement["is_default"] is True
+
+    def test_clause_commencement_none_without_schedule(
+        self, edition_json: Path,
+    ) -> None:
+        """Clauses of a regulation with no commencement schedule link to None."""
+        call_command("load_edition", "--source", str(edition_json))
+        cl = RegulationClause.objects.get(clause_id="1.(1)")
+        assert cl.commencement is None
 
     def test_commencement_fields_default_when_absent(
         self, edition_json: Path,

@@ -328,6 +328,61 @@ def test_format_single_result_marks_structural_headings(monkeypatch):
     assert art_fmt["is_structural"] is False
 
 
+@pytest.mark.django_db
+def test_format_single_result_exposes_next_commencement(monkeypatch):
+    """The band's 'Until' proof: a version's result carries the NEXT version's
+    CommencementProvenance (its contributing clause's resolved entry), since
+    the version ends the day the next one comes into force."""
+    from core.models import (
+        Code,
+        CodeEdition,
+        CodeEditionProvision,
+        CodeEditionProvisionVersion,
+        CodeEditionProvisionVersionClause,
+        Regulation,
+        RegulationClause,
+    )
+
+    monkeypatch.setattr(formatters, "_build_code_display_name", lambda c: c)
+    system = Code.objects.create(code="OBC", display_name="OBC")
+    edition = CodeEdition.objects.create(
+        code=system, edition_id="2012", year=2012,
+        effective_date=date(2012, 1, 1), source="e-Laws",
+    )
+    article = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="1.1.1.1.", level="article", division="A",
+    )
+    v0 = CodeEditionProvisionVersion.objects.create(
+        provision=article, version=0,
+        effective_date=date(2014, 1, 1), ineffective_date=date(2016, 1, 1),
+    )
+    v1 = CodeEditionProvisionVersion.objects.create(
+        provision=article, version=1, effective_date=date(2016, 1, 1),
+    )
+    reg = Regulation.objects.create(
+        reg_id="332/12", edition=edition, role="amendment",
+        effective_date=date(2014, 1, 1),
+    )
+    entry = {
+        "regulation": "332/12", "clause": "4.4.1.1(2)", "is_default": False,
+        "effective_date": "2016-01-01", "source": "parsed",
+        "commencement_clause": "Comes into force on January 1, 2016.",
+    }
+    clause = RegulationClause.objects.create(
+        regulation=reg, clause_id="c1",
+        effective_date=date(2016, 1, 1), commencement=entry,
+    )
+    CodeEditionProvisionVersionClause.objects.create(
+        version=v1, clause=clause, apply_order=0,
+    )
+
+    res = formatters._format_single_result(
+        {"code_edition": "OBC_2012", "provision": article, "version": v0}
+    )
+    # v0 ends when v1 (produced by `clause`) commences — its provenance rides along.
+    assert res["next_commencement"] == entry
+
+
 def _version(version: int, title: str, eff: date, ineff: date | None) -> CodeEditionProvisionVersion:
     """An unsaved version row carrying only the fields _in_force_title reads."""
     return CodeEditionProvisionVersion(

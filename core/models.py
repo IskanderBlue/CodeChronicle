@@ -470,6 +470,21 @@ class RegulationClause(models.Model):
             "provision it touches, not just the primary target."
         ),
     )
+    commencement = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "The single CommencementProvenance record that set this clause's "
+            "``effective_date`` — the *why* behind the date: the verbatim "
+            "commencement subsection, its ``source`` (parsed / "
+            "commencement-input / regulations-act-default / catalog), and for "
+            "derived dates the ``depends_on`` statute and ``computation``. "
+            "Resolved at load from the regulation's commencement schedule via "
+            "``resolved_clauses`` (with the default entry as fallback); see "
+            "load_edition._resolve_clause_commencement. Mirrors one entry of "
+            "``Regulation.commencement``."
+        ),
+    )
     amended_by = models.JSONField(null=True, blank=True)
     page = models.IntegerField(null=True, blank=True)
     bbox = models.JSONField(null=True, blank=True)

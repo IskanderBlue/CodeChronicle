@@ -173,15 +173,30 @@
                 </div>
 
                 {% comment %} Clause commencement — the date this directive comes
-                   into force.  When it's later than the regulation's blanket
-                   effective date the clause is "deferred" (staggered): flagged
-                   in highlight.  ``is_staggered`` is computed in the view so the
-                   template makes no date comparison of its own. {% endcomment %}
+                   into force, plus a Deferred/Default marker that opens the
+                   commencement-provenance popup (the *why*: verbatim subsection,
+                   source, any statute dependency).  ``is_staggered`` is computed
+                   in the view; ``clause.commencement`` is the resolved
+                   CommencementProvenance entry (load_edition). {% endcomment %}
                 {% if clause.effective_date %}
-                <div class="mb-[10px] flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3">In force</span>
-                    <span class="font-mono text-[11.5px] {% if clause.is_staggered %}font-semibold text-highlight{% else %}text-ink-2{% endif %}">{{ clause.effective_date|date:"Y-m-d" }}</span>
-                    {% if clause.is_staggered %}<span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-highlight border border-highlight px-1 py-0.5">Deferred</span>{% endif %}
+                <div class="mb-[10px]"{% if clause.commencement %} x-data="{ cmOpen: false }"{% endif %}>
+                    <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <span class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3">In force</span>
+                        <span class="font-mono text-[11.5px] {% if clause.is_staggered %}font-semibold text-highlight{% else %}text-ink-2{% endif %}">{{ clause.effective_date|date:"Y-m-d" }}</span>
+                        {% if clause.commencement %}
+                        <button type="button" @click.stop="cmOpen = true"
+                            title="Why this date? — commencement provenance"
+                            class="inline-flex items-center gap-1 font-mono text-[9px] font-semibold uppercase tracking-[0.06em] border px-1 py-0.5 cursor-pointer transition-colors {% if clause.is_staggered %}text-highlight border-highlight hover:bg-highlight hover:text-secondary-contrast{% else %}text-ink-3 border-rule hover:border-ink-3 hover:text-ink{% endif %}">
+                            {% if clause.is_staggered %}Deferred{% else %}Default{% endif %}
+                            <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 11v5m0-8h.01"/></svg>
+                        </button>
+                        {% elif clause.is_staggered %}
+                        <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-highlight border border-highlight px-1 py-0.5">Deferred</span>
+                        {% endif %}
+                    </div>
+                    {% if clause.commencement %}
+                    {% include "partials/_commencement_modal.html" with commencement=clause.commencement effective_date=clause.effective_date %}
+                    {% endif %}
                 </div>
                 {% endif %}
 

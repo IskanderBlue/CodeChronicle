@@ -87,12 +87,30 @@ def staggered_reg(db):
     RegulationClause.objects.create(
         regulation=reg, clause_id="0_on_time", target_id="1.1.1.1.",
         effective_date=date(2014, 1, 1), clause_text="on-time clause",
+        commencement={
+            "regulation": "332/12", "clause": "4.4.1.1(1)", "is_default": True,
+            "effective_date": "2014-01-01", "source": "parsed",
+            "commencement_clause": "This Regulation comes into force on "
+                                   "January 1, 2014.",
+        },
     )
     RegulationClause.objects.create(
         regulation=reg, clause_id="1_deferred", target_id="4.2.1.1.",
         effective_date=date(2016, 1, 1), clause_text="deferred clause",
         add_text="(FT1 Rating)", add_anchor="after:CSA",
         directives=[{"action": "amend_add", "target_id": "1.10.2.3.(2)"}],
+        commencement={
+            "regulation": "332/12", "clause": "4.4.1.1(2)", "is_default": False,
+            "effective_date": "2016-01-01", "source": "commencement-input",
+            "commencement_clause": "Sentences 4.2.1.1.(1) and (4) come into "
+                                   "force on January 1, 2016.",
+            "depends_on": {
+                "legislation": "Lake Simcoe Protection Act, 2008",
+                "provision": "Section 2", "date_type": "proclamation",
+                "date": "2016-01-01",
+            },
+            "computation": "later of filing and proclamation",
+        },
     )
     return reg
 
@@ -144,6 +162,25 @@ class TestCommencementDisplay:
         content = response.content.decode()
         # No deferred record → the header's EFFECTIVE date is the whole story.
         assert "Commencement schedule" not in content
+
+
+@pytest.mark.django_db
+class TestCommencementPopup:
+    """Clicking a clause's Deferred/Default marker opens a popup showing the
+    CommencementProvenance (the *why* behind the in-force date)."""
+
+    def test_marker_opens_popup_with_provenance(self, client: Client, staggered_reg):
+        content = client.get(f"/regulation/{staggered_reg.pk}/").content.decode()
+        # Trigger wiring + teleported modal.
+        assert "cmOpen" in content
+        assert "x-teleport" in content
+        assert 'title="Why this date? — commencement provenance"' in content
+        # Provenance detail body.
+        assert "How this date was set" in content
+        assert "come into force on January 1, 2016" in content   # verbatim text
+        # Statute dependency surfaced.
+        assert "Lake Simcoe Protection Act, 2008" in content
+        assert "later of filing and proclamation" in content     # computation
 
 
 @pytest.mark.django_db

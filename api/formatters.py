@@ -413,6 +413,13 @@ def _format_single_result(
         next_version=next_version,
     )
 
+    # Commencement provenance for the band's "Until" edge: this version ends
+    # exactly when the NEXT version comes into force, so the proof of the end
+    # is the next version's CommencementProvenance (its contributing clause's
+    # resolved entry).  Lets the band show why the version started AND ended.
+    next_clause = next_version.last_contributing_clause if next_version else None
+    next_commencement = next_clause.commencement if next_clause else None
+
     return {
         "id": result.get("id"),
         "title": result.get("title", "No title"),
@@ -454,6 +461,7 @@ def _format_single_result(
         "provision": provision,
         "base_regulation": base_regulation,
         "next_version": next_version,
+        "next_commencement": next_commencement,
         "amendment_chain": all_versions,
         "appendix_notes": appendix_notes,
         "transition_provision_version": transition_provision_version,

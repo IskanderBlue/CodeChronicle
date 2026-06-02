@@ -40,6 +40,26 @@ def _require_date(value: str | None, field: str) -> date:
     return date.fromisoformat(value)
 
 
+def _norm_clause_id(raw: str) -> str:
+    """Canonicalise a clause id for cross-referencing commencement records.
+
+    A commencement entry's ``resolved_clauses`` carries the governed
+    clause ids in a *sentence-dotted* form (``"4.2.1.1.(1)"``) while the
+    clause's own ``clause_id`` uses the bare form (``"4.2.1.1(1)"``) — and
+    the source filings sometimes prefix ``"s. "``/``"ss. "``.  Collapse
+    both namespaces to one key: drop the section-style prefix, the period
+    that immediately precedes a parenthesis, and inner spaces.  (CCM
+    contract `resolved_clauses`; the dotted-vs-bare divergence is a known
+    producer inconsistency — joining at load keeps the stored link clean.)
+    """
+    s = (raw or "").strip().lower()
+    for prefix in ("subsection ", "section ", "ss. ", "s. ", "ss.", "s."):
+        if s.startswith(prefix):
+            s = s[len(prefix):].lstrip()
+            break
+    return s.replace(".(", "(").replace(" ", "")
+
+
 class Command(BaseCommand):
     help = "Load a CCM consolidated edition JSON into provenance models."
 
@@ -269,6 +289,8 @@ class Command(BaseCommand):
                             full_ab.append(entry)
                     existing["amended_by"] = full_ab
 
+        commencement_by_clause = self._resolve_clause_commencement(regulations)
+
         clause_lookup: dict[tuple[str, str], RegulationClause] = {}
         clauses_to_create: list[RegulationClause] = []
         for (reg_id, clause_id), cl_data in merged.items():
@@ -288,6 +310,7 @@ class Command(BaseCommand):
                 add_text=cl_data.get("add_text", ""),
                 add_anchor=cl_data.get("add_anchor", ""),
                 directives=cl_data.get("directives"),
+                commencement=commencement_by_clause.get((reg_id, clause_id)),
                 amended_by=cl_data.get("amended_by"),
                 page=cl_data.get("page"),
                 bbox=cl_data.get("bbox"),
@@ -300,6 +323,61 @@ class Command(BaseCommand):
             RegulationClause.objects.bulk_create(clauses_to_create)
 
         return clause_lookup
+
+    def _resolve_clause_commencement(
+        self, regulations: list[dict[str, Any]],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        """Map each ``(reg_id, clause_id)`` to the commencement entry that set
+        its ``effective_date`` — the clause-side companion the contract added
+        as ``resolved_clauses`` (CCM provenance contract).
+
+        A regulation's ``commencement`` schedule is a default entry plus
+        deferred entries; each deferred entry names the clause ids it governs
+        in ``resolved_clauses``.  We invert that to clause -> entry, with the
+        default entry covering any clause no deferred entry claims (its
+        ``effective_date`` is then the regulation's blanket date).  Ids are
+        matched through :func:`_norm_clause_id` because ``resolved_clauses``
+        emits a dotted form the bare ``clause_id`` doesn't.  A
+        ``resolved_clauses`` id that matches no clause is warned, not silently
+        dropped — it signals a producer/contract id-format mismatch.
+        """
+        out: dict[tuple[str, str], dict[str, Any]] = {}
+        for reg_data in regulations:
+            reg_id = reg_data["reg_id"]
+            entries = reg_data.get("commencement") or []
+            if not entries:
+                continue
+            default_entry = next(
+                (e for e in entries if e.get("is_default")), None
+            )
+            clause_ids = {
+                cl["clause_id"] for cl in reg_data.get("clauses", [])
+            }
+            norm_to_clause: dict[str, str] = {}
+            for cid in clause_ids:
+                norm_to_clause.setdefault(_norm_clause_id(cid), cid)
+
+            claimed: set[str] = set()
+            for entry in entries:
+                for rc in entry.get("resolved_clauses") or []:
+                    cid = norm_to_clause.get(_norm_clause_id(rc))
+                    if cid is None:
+                        logger.warning(
+                            "Reg %s commencement entry %r: resolved_clauses id "
+                            "%r matches no clause_id (producer id-format "
+                            "mismatch)", reg_id, entry.get("clause"), rc,
+                        )
+                        continue
+                    out[(reg_id, cid)] = entry
+                    claimed.add(cid)
+
+            # Clauses no deferred entry claims fall under the default entry.
+            if default_entry is not None:
+                for cid in clause_ids:
+                    if cid not in claimed:
+                        out.setdefault((reg_id, cid), default_entry)
+
+        return out
 
     def _load_assets(
         self,
