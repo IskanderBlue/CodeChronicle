@@ -41,6 +41,12 @@ db.sqlite3-journal
 staticfiles/
 media/
 
+# Local mirror of the CCM-mirrored asset trees (documents/, amended/, laws/).
+# This is the on-disk copy used by the dev/local backend; the authoritative
+# production copy lives in the Cloudflare R2 bucket (codechronicle-assets-prod),
+# published via `manage.py sync_images --backend r2`. Not source — do not commit.
+assets/
+
 # Environment
 .env
 .env.prod

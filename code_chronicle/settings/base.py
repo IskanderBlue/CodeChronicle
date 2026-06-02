@@ -107,13 +107,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # CCM output JSON.  Inline ``<img src="/laws/images/...">`` references
 # in version HTML resolve here without rewriting.
 #
-# Development: served by Django via ``core.urls`` under ``/`` (see
-# url conf).  Production: nginx alias ``/`` → ASSET_ROOT for the
-# ``documents/``, ``amended/``, and ``laws/`` prefixes.
+# Development: served by Django via ``core.urls`` under ``/`` (see url conf).
+# Production: served from Cloudflare R2 at the edge by a Worker bound to the
+# ``codechronicle-assets-prod`` bucket (see the CodeChronicleTerraform
+# ``modules/cloudflare`` asset proxy) — the origin/app is not in the path.
 #
-# Override with ``ASSET_ROOT`` env var to point at a checkout of
-# ``CodeChronicleMapping/data/outputs`` directly during local dev — the
-# layout is identical, so no sync step is needed in that mode.
+# The default ``BASE_DIR/assets`` directory is the on-disk copy for the local
+# backend; it is gitignored and is the local mirror of what ``sync_images
+# --backend r2`` publishes to the R2 bucket. Override with the ``ASSET_ROOT``
+# env var to point at a checkout of ``CodeChronicleMapping/data/outputs``
+# directly during local dev — the layout is identical, so no sync is needed.
 ASSET_ROOT = Path(os.environ.get("ASSET_ROOT", BASE_DIR / "assets"))
 
 
