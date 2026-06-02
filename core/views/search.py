@@ -16,11 +16,13 @@ from config.code_metadata import (
     get_pdf_filename,
     get_source_url,
 )
+from core.events import record_event
 from core.ip_utils import extract_client_ip
 from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    EngagementEvent,
 )
 
 logger = Logger(__name__)
@@ -362,6 +364,27 @@ def viewer_section_content(request: HttpRequest):
     for v in versions:
         by_provision.setdefault(v.provision_id, []).append(v)
 
+    # Engagement: the user drilled into this provision from search results.
+    # Pin the event to the version in force on the query date (the last one
+    # grouped for the matched provision), attributed to the originating search
+    # via ``search_id`` threaded through from the results partial.  Non-fatal.
+    matched_active = by_provision.get(matched.pk, [])
+    record_event(
+        request,
+        event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
+        object_type="CodeEditionProvisionVersion",
+        object_id=matched_active[-1].pk if matched_active else None,
+        search_id=_query_value(request, "search_id"),
+        context={
+            "code": code,
+            "edition_id": edition_id,
+            "division": matched.division,
+            "provision_id": matched.provision_id,
+            "query_date": query_date.isoformat(),
+            "surface": "search_viewer",
+        },
+    )
+
     # Build depth-first ordered list rooted at subtree_root.
     by_pk: dict[int, CodeEditionProvision] = {p.pk: p for p in all_provisions}
     children_by_parent: dict[int | None, list[CodeEditionProvision]] = {}
@@ -460,5 +483,8 @@ def search_results(request):
             "meta": {"applicable_codes": result["applicable_codes"]},
             "query_date": result.get("parsed_params", {}).get("date"),
             "keywords": result.get("parsed_params", {}).get("keywords", []),
+            # Threaded into the viewer's section-content request so a
+            # provision drill-in attributes back to this search.
+            "search_id": result.get("search_history_id"),
         },
     )

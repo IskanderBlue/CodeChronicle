@@ -5,6 +5,12 @@ request so it can highlight matched terms in the provision body (parity
 with the results-card highlight). Read by sectionContentUrl() in search.html.
 {% endcomment %}
 <div id="cc-query-keywords" hidden data-keywords="{{ keywords|join:',' }}"></div>
+{% comment %}
+Originating search id, threaded into the viewer's section-content request so a
+provision drill-in attributes back to this search (click-through). Read by
+sectionContentUrl() in search.html.
+{% endcomment %}
+<div id="cc-search-id" hidden data-search-id="{{ search_id|default_if_none:'' }}"></div>
 <div class="mb-4 flex flex-wrap items-center gap-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
     <span>{{ results|length }} RESULT{{ results|length|pluralize|upper }}</span>
     <span class="text-rule">&middot;</span>

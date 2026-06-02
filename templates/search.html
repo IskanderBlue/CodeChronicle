@@ -92,28 +92,27 @@
                         placeholder="fire-resistance rating between dwelling units, Ontario, May 1993"
                         class="w-full min-w-0 flex-1 border-0 bg-transparent px-4 py-[14px] font-serif text-[17px] text-ink placeholder:text-ink-3/60 focus:outline-none focus:ring-0">
                 </div>
-                <!-- JUR cell -->
-                <label class="flex items-center gap-1 border-t border-rule px-3 py-2 font-mono text-[11px] text-ink-3 sm:border-l sm:border-t-0 sm:py-0">
-                    <span class="tracking-[0.06em]">JUR&nbsp;&middot;</span>
-                    <select name="province"
-                        class="border-0 bg-transparent py-1 font-mono text-[11px] text-ink focus:outline-none focus:ring-0 dark:[color-scheme:dark]">
-                        <option value="">AUTO</option>
-                        <option value="AB">AB</option>
-                        <option value="BC">BC</option>
-                        <option value="ON">ON</option>
-                        <option value="QC">QC</option>
-                    </select>
-                </label>
-                <!-- AS-OF cell (user-input role: ink → amber) -->
+                <!-- JUR cell — locked to Ontario (the only jurisdiction we
+                     cover).  "JUR" carries its full word via <abbr>; the value
+                     is fixed ON with a hidden input so it still posts. -->
+                <div class="flex items-center gap-1 border-t border-rule px-3 py-2 font-mono text-[11px] text-ink-3 sm:border-l sm:border-t-0 sm:py-0">
+                    <abbr title="Jurisdiction" class="cursor-help tracking-[0.06em] no-underline decoration-dotted underline-offset-2 hover:underline">JUR</abbr>
+                    <span class="text-rule">&middot;</span>
+                    <span class="font-semibold text-ink" title="Only Ontario is currently covered">ON</span>
+                    <input type="hidden" name="province" value="ON">
+                </div>
+                <!-- AS-OF cell (user-input role: ink → amber).  Defaults to the
+                     corpus's last covered date — the same end date the masthead
+                     shows ("Consolidation current to") — via CorpusCurrency. -->
                 <label class="flex items-center gap-2 border-t border-rule px-3 py-2 sm:border-l sm:border-t-0 sm:py-0">
                     <span class="font-mono text-[11px] tracking-[0.06em] text-ink-3">AS-OF</span>
-                    <input type="date" name="date"
+                    <input type="date" name="date" value="{{ coverage_end|date:'Y-m-d' }}"
                         class="border border-ink-2 bg-panel px-2 py-1 font-mono text-[11px] font-semibold tracking-[0.04em] text-highlight focus:outline-none focus:ring-0 dark:[color-scheme:dark]">
                 </label>
             </div>
             <button type="submit"
                 class="inline-flex items-center justify-center gap-2 bg-secondary px-7 py-[14px] font-sans text-[13px] font-semibold uppercase tracking-[0.1em] text-secondary-contrast hover:bg-secondary-2">
-                Cite <span aria-hidden="true">&crarr;</span>
+                Search <span aria-hidden="true">&crarr;</span>
             </button>
         </div>
         <!-- Meta strip beneath the bar -->
@@ -262,6 +261,9 @@
                 // highlight matched terms in the viewer body. Sourced from the
                 // results partial; same for the whole search.
                 keywords: (document.getElementById('cc-query-keywords')?.dataset.keywords) || '',
+                // Originating search id so the drill-in engagement event
+                // attributes back to this search (click-through tracking).
+                search_id: (document.getElementById('cc-search-id')?.dataset.searchId) || '',
             });
             return '{% url "core:viewer_section_content" %}?' + p.toString();
         },
@@ -283,6 +285,30 @@
                 target.addEventListener('htmx:afterSettle', scrollOnce);
                 htmx.ajax('GET', url, { source: target, target: target, swap: 'innerHTML' });
             }
+        },
+        recordLinkClick(surface) {
+            // Engagement beacon for links that leave the app (external source,
+            // PDF download) — no server round-trip of their own to capture.
+            // keepalive lets the POST survive the new-tab navigation; failures
+            // are swallowed so a tracking hiccup never blocks the click.
+            try {
+                const sid = parseInt(document.getElementById('cc-search-id')?.dataset.searchId || '', 10);
+                fetch('/api/event', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    keepalive: true,
+                    body: JSON.stringify({
+                        event_type: 'result_link_click',
+                        search_id: Number.isInteger(sid) ? sid : null,
+                        context: {
+                            surface: surface,
+                            code: this.viewerResult ? (this.viewerResult.code || '') : '',
+                            provision_id: this.viewerResult ? (this.viewerResult.id || '') : '',
+                        },
+                    }),
+                }).catch(() => {});
+            } catch (e) { /* never fatal */ }
         }
     }"
     x-init="window.addEventListener('popstate', () => { if (viewerOpen) closeViewer(); })"
@@ -296,6 +322,7 @@
             <div class="min-w-0">
                 <template x-if="viewerResult && viewerResult.source_url">
                     <a :href="viewerResult.source_url" target="_blank" rel="noopener noreferrer"
+                        @click="recordLinkClick('source_link')"
                         class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary hover:underline"
                         x-text="viewerResult.code_display_name"></a>
                 </template>
@@ -365,7 +392,8 @@
                             <p class="text-xs text-ink-3">
                                 Expected PDF:
                                 <span x-show="viewerResult && viewerResult.pdf_download_url">
-                                    <a class="font-mono text-xs text-secondary underline font-medium"
+                                    {# JS-cloned <template>: Alpine @click can't bind; beacon fires via data-beacon-pdf delegation. #}
+                                    <a class="font-mono text-xs text-secondary underline font-medium" data-beacon-pdf
                                         :href="viewerResult ? viewerResult.pdf_download_url : ''" target="_blank" rel="noopener noreferrer"
                                         x-text="viewerResult ? viewerResult.pdf_filename : ''"></a>
                                 </span>
@@ -438,6 +466,14 @@
         if (!data) return;
         callback(data);
     }
+
+    // PDF-download beacon: the link lives in a JS-cloned <template>, so it's
+    // outside Alpine's reactive DOM — catch it by delegation and route through
+    // the overlay component's recordLinkClick() for the viewerResult context.
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('[data-beacon-pdf]')) return;
+        withViewerOverlay(data => data.recordLinkClick('pdf_download'));
+    });
 
     document.addEventListener('click', function(e) {
         const btn = e.target.closest('[data-viewer-open]');

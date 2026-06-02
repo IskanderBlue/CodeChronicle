@@ -172,6 +172,76 @@ class SearchHistory(models.Model):
         return f"{self.user or self.ip_address}: {self.query[:50]}"
 
 
+class EngagementEvent(models.Model):
+    """Append-only log of what users *do with* results — the engagement
+    counterpart to ``SearchHistory`` (which only records search inputs).
+
+    One row per tracked interaction: opening a provision version from the
+    search viewer, landing on a regulation or provision permalink, or
+    following a result link out (external source, PDF download).  Writes are
+    best-effort and must never break the page or the search — see
+    ``core.events.record_event``.
+
+    ``object_id`` is intentionally a loose integer, **not** a ``ForeignKey``:
+    events outlive the rows they point at (``load_edition`` replaces
+    provision/version pks wholesale on reload), and an analytics log should
+    not cascade-delete or block deletes.  Resolve targets at report time and
+    tolerate misses.
+    """
+
+    # Auto pk + FK id-shadow, plugin-only — declared for Pyright.
+    id: int
+    search_id: int | None
+
+    class EventType(models.TextChoices):
+        PROVISION_VERSION_VIEW = "provision_version_view", "Provision version view"
+        REGULATION_VIEW = "regulation_view", "Regulation view"
+        RESULT_LINK_CLICK = "result_link_click", "Result link click"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="engagement_events",
+        null=True,  # Anonymous engagement
+        blank=True,
+    )
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    event_type = models.CharField(max_length=40, choices=EventType.choices)
+    # Model label of the target (e.g. "CodeEditionProvisionVersion"), kept as
+    # a plain string so the table stays generic across target types.
+    object_type = models.CharField(max_length=50, blank=True, default="")
+    object_id = models.BigIntegerField(null=True, blank=True)
+    # The search this engagement came from, when known — lets us compute
+    # click-through rate per query.  SET_NULL so pruning history never drops
+    # the engagement record.
+    search = models.ForeignKey(
+        SearchHistory,
+        on_delete=models.SET_NULL,
+        related_name="engagement_events",
+        null=True,
+        blank=True,
+    )
+    # Free-form target detail (provision_id, division, reg_id, query_date,
+    # source surface, …) so reports don't need to re-resolve object_id.
+    context = models.JSONField(default=dict, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "engagement_events"
+        verbose_name = "Engagement Event"
+        verbose_name_plural = "Engagement Events"
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["event_type", "timestamp"]),
+            models.Index(fields=["object_type", "object_id"]),
+            models.Index(fields=["search"]),
+        ]
+
+    def __str__(self):
+        who = self.user or self.ip_address or "anon"
+        return f"{who}: {self.event_type} {self.object_type}#{self.object_id}"
+
+
 class CodeMap(models.Model):
     """
     Top-level map record that stores map identity for a specific code edition.
@@ -779,6 +849,11 @@ class CorpusCurrency(models.Model):
     corpus_label = models.CharField(max_length=200, default="Ontario Building Code")
     corpus_span = models.CharField(max_length=50, blank=True, default="")
     data_current_to = models.DateField(null=True, blank=True)
+    #: The corpus's last covered date as a real date — the end of
+    #: ``corpus_span`` (last in-force day for a closed corpus, else the most
+    #: recent amendment).  Backs the search "as-of" default so it matches the
+    #: masthead end date without re-parsing the formatted span string.
+    coverage_end = models.DateField(null=True, blank=True)
     refreshed_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -837,6 +912,7 @@ class CorpusCurrency(models.Model):
 
         span = ""
         data_current_to = None
+        coverage_end = None
         if first_eff:
             # The corpus's coverage closes when its latest edition ceased to be
             # in force; None on both means it's still the current edition.
@@ -844,11 +920,13 @@ class CorpusCurrency(models.Model):
             if end:
                 last_covered = end - timedelta(days=1)  # exclusive boundary
                 span = f"{_fmt(first_eff)} – {_fmt(last_covered)}"
+                coverage_end = last_covered
             else:
                 span = f"{_fmt(first_eff)} – present"
                 data_current_to = Regulation.objects.filter(
                     edition__in=prov_editions
                 ).aggregate(mx=Max("effective_date"))["mx"]
+                coverage_end = data_current_to
 
         label = "Ontario Building Code"
         code = (
@@ -867,6 +945,7 @@ class CorpusCurrency(models.Model):
                 "corpus_label": label,
                 "corpus_span": span,
                 "data_current_to": data_current_to,
+                "coverage_end": coverage_end,
             },
         )
         return obj

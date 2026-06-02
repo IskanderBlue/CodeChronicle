@@ -7,6 +7,7 @@ from .models import (
     CodeEditionProvisionVersion,
     CodeMap,
     CodeMapNode,
+    EngagementEvent,
     ProvinceCode,
     ProvisionMapping,
     ProvisionVersionTable,
@@ -30,6 +31,21 @@ class SearchHistoryAdmin(admin.ModelAdmin):
     list_filter = ['timestamp']
     search_fields = ['query', 'user__email']
     readonly_fields = ['parsed_params']
+
+
+@admin.register(EngagementEvent)
+class EngagementEventAdmin(admin.ModelAdmin):
+    list_display = ['event_type', 'object_type', 'object_id', 'user', 'ip_address', 'timestamp']
+    list_filter = ['event_type', 'timestamp']
+    search_fields = ['object_type', 'user__email']
+    # Append-only analytics log: inspect, never hand-edit.
+    readonly_fields = [
+        'user', 'ip_address', 'event_type', 'object_type', 'object_id',
+        'search', 'context', 'timestamp',
+    ]
+
+    def has_add_permission(self, request):
+        return False
 
 
 admin.site.register(Code)

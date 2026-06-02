@@ -22,4 +22,5 @@ def masthead_currency(_request: HttpRequest) -> dict[str, Any]:
         "corpus_label": obj.corpus_label,
         "corpus_span": obj.corpus_span,
         "data_current_to": obj.data_current_to,
+        "coverage_end": obj.coverage_end,
     }

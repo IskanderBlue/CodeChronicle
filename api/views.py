@@ -62,6 +62,19 @@ class HistoryResponse(Schema):
     error: str | None = None
 
 
+class EventPayload(Schema):
+    event_type: str
+    object_type: str = ""
+    object_id: int | None = None
+    search_id: int | None = None
+    context: dict = {}
+
+
+class EventResponse(Schema):
+    success: bool
+    error: str | None = None
+
+
 def _is_paid_user(user) -> bool:
     """Return True when API access is allowed for this user."""
     if not getattr(user, "is_authenticated", False):
@@ -291,3 +304,32 @@ def get_search_history(request):
     ]
 
     return {"success": True, "results": results, "error": None}
+
+
+@api.post("/event", response={200: EventResponse, 400: EventResponse})
+def record_engagement(request, payload: EventPayload):
+    """Beacon endpoint for client-fired engagement events.
+
+    Covers result interactions that have no server round-trip of their own —
+    following an external source link, a PDF download — and attributes them to
+    the originating search via ``search_id``.  Deliberately **not** gated by
+    ``_require_paid_api_access``: tracking applies to all users, anonymous
+    included.  It executes no search, so ``RateLimitMiddleware`` (which only
+    guards ``/search-results/``) leaves it untouched.
+    """
+    from core.events import record_event
+    from core.models import EngagementEvent
+
+    valid = {choice.value for choice in EngagementEvent.EventType}
+    if payload.event_type not in valid:
+        return 400, {"success": False, "error": f"Unknown event_type: {payload.event_type}"}
+
+    record_event(
+        request,
+        event_type=payload.event_type,
+        object_type=payload.object_type,
+        object_id=payload.object_id,
+        search_id=payload.search_id,
+        context=payload.context,
+    )
+    return {"success": True, "error": None}

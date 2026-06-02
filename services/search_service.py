@@ -70,9 +70,12 @@ def run_search(
         )
         logger.info("search service payload: %d results", len(formatted))
 
-        # Step 4: Record search history (non-fatal)
+        # Step 4: Record search history (non-fatal).  The row id is surfaced
+        # so engagement events (provision views, link clicks) can attribute
+        # back to the search that produced them — see core.events.
+        search_history_id: int | None = None
         try:
-            SearchHistory.objects.create(
+            history = SearchHistory.objects.create(
                 user=user,
                 ip_address=ip_address if user is None else None,
                 query=query,
@@ -80,6 +83,7 @@ def run_search(
                 result_count=len(formatted),
                 top_results=search_data.get("top_results_metadata", []),
             )
+            search_history_id = history.pk
         except Exception as e:
             logger.error("Error recording search history: %s", e)
 
@@ -90,6 +94,7 @@ def run_search(
             "applicable_codes": search_data.get("applicable_codes", []),
             "parsed_params": params,
             "top_results_metadata": search_data.get("top_results_metadata", []),
+            "search_history_id": search_history_id,
         }
 
     except Exception as e:

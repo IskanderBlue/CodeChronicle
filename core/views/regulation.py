@@ -10,10 +10,12 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
+from core.events import record_event
 from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    EngagementEvent,
     Regulation,
     RegulationClause,
 )
@@ -384,6 +386,15 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     # _clause_targets: all targets, natural-ordered, indented as a hierarchy.
     for clause in clauses:
         clause.targets = _clause_targets(clause)  # type: ignore[attr-defined]
+    # Engagement: a user landed on this regulation's detail page.  Non-fatal.
+    record_event(
+        request,
+        event_type=EngagementEvent.EventType.REGULATION_VIEW,
+        object_type="Regulation",
+        object_id=regulation.pk,
+        search_id=request.GET.get("search_id"),
+        context={"reg_id": regulation.reg_id, "role": regulation.role},
+    )
     return render(request, "regulation/detail.html", {
         "regulation": regulation,
         "clauses": clauses,
@@ -418,6 +429,24 @@ def provision_permalink(
     )
     anchor_date = target_version.effective_date
     code_name = matched.edition.code_name
+
+    # Engagement: a user opened a specific provision version, typically via a
+    # regulation-clause link.  Pinned to the exact linked version.  Non-fatal.
+    record_event(
+        request,
+        event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
+        object_type="CodeEditionProvisionVersion",
+        object_id=target_version.pk,
+        search_id=request.GET.get("search_id"),
+        context={
+            "code": matched.edition.code.code,
+            "edition_id": matched.edition.edition_id,
+            "division": division,
+            "provision_id": provision_id,
+            "version": version,
+            "surface": "permalink",
+        },
+    )
 
     # Hierarchical navigation: up to the parent, down to the direct children.
     # Each neighbour links to every version whose in-force window overlaps the
