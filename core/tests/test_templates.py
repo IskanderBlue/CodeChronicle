@@ -111,6 +111,7 @@ def test_search_results_partial_initializes_first_result_as_open_accordion_item(
                     "title": "Fire Safety",
                     "score": 0.93,
                     "code": "NBC_2025",
+                    "division": "B",
                     "code_display_name": "National Building Code 2025",
                 },
                 {
@@ -118,13 +119,38 @@ def test_search_results_partial_initializes_first_result_as_open_accordion_item(
                     "title": "Closures",
                     "score": 0.75,
                     "code": "NBC_2025",
+                    "division": "B",
                     "code_display_name": "National Building Code 2025",
                 },
             ],
         },
     )
 
-    assert 'activeResult: "NBC_2025_3.1.1.1"' in html
+    # Accordion key is scoped by division so same code+id in different
+    # divisions can't collide.
+    assert 'activeResult: "NBC_2025_3.1.1.1_B"' in html
+
+
+def test_accordion_keys_distinguish_same_id_across_divisions():
+    """Two provisions with identical code+id in different divisions must get
+    distinct accordion keys, or selecting one opens both."""
+    html = render_to_string(
+        "partials/search_results_partial.html",
+        {
+            "success": True,
+            "meta": {"applicable_codes": ["NBC_2025"]},
+            "results": [
+                {"id": "3.1.1.1", "title": "A-side", "score": 0.9,
+                 "code": "NBC_2025", "division": "A",
+                 "code_display_name": "National Building Code 2025"},
+                {"id": "3.1.1.1", "title": "B-side", "score": 0.8,
+                 "code": "NBC_2025", "division": "B",
+                 "code_display_name": "National Building Code 2025"},
+            ],
+        },
+    )
+    assert "NBC_2025_3.1.1.1_A" in html
+    assert "NBC_2025_3.1.1.1_B" in html
     # Each result has a collapse handler (expanded header → null); the expand
     # handlers (collapsed → key) are distinct strings. One collapse per result.
     assert html.count('@click="activeResult = null"') == 2
@@ -428,3 +454,24 @@ def test_provenance_banner_shows_base_regulation():
     assert "403/97" in html
     assert "Original" in html
     assert "base regulation" in html
+
+
+def test_revoked_version_renders_tombstone_warning():
+    """The document block surfaces the revoked warning iff version.revoked."""
+    from types import SimpleNamespace
+
+    revoked_html = render_to_string(
+        "partials/_result_document_block.html",
+        {"result": {"version": SimpleNamespace(revoked=True), "clause": None}},
+    )
+    assert "has been revoked" in revoked_html
+
+
+def test_non_revoked_version_omits_tombstone_warning():
+    from types import SimpleNamespace
+
+    live_html = render_to_string(
+        "partials/_result_document_block.html",
+        {"result": {"version": SimpleNamespace(revoked=False), "clause": None}},
+    )
+    assert "has been revoked" not in live_html

@@ -425,6 +425,7 @@ class Command(BaseCommand):
                     page_images=ver_data.get("page_images"),
                     keyword_counts=ver_data.get("keyword_counts"),
                     notes=normalize_loaded_notes(ver_data.get("notes")),
+                    revoked=bool(ver_data.get("revoked", False)),
                 )
                 versions_to_create.append(version)
                 version_lookup[(provision_id, division, version_num)] = version

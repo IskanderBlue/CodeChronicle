@@ -19,7 +19,7 @@ sectionContentUrl() in search.html.
     </span>
 </div>
 
-<div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}"{% else %}null{% endif %}, open(key, result) { this.activeResult = key; window.ccRecordView && window.ccRecordView(result); } }' data-results-accordion>
+<div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}_{{ results.0.division|escapejs }}"{% else %}null{% endif %}, open(key, result) { this.activeResult = key; window.ccRecordView && window.ccRecordView(result); } }' data-results-accordion>
 
 {% comment %} ───── Mobile / tablet: inline accordion (today's behaviour, unchanged) ─────
    Rows expand in place. Hidden at `lg` where the master-detail grid takes over.
@@ -28,26 +28,26 @@ sectionContentUrl() in search.html.
 {% for result in results %}
 <div
     class="border-b border-rule border-l-[3px] transition-colors"
-    :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? 'border-l-secondary' : 'border-l-transparent hover:border-l-secondary/50'">
+    :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}' ? 'border-l-secondary' : 'border-l-transparent hover:border-l-secondary/50'">
     {# Header toggles the accordion. Collapsed: click anywhere to expand. Expanded: collapse on whitespace only; text blocks stop propagation so they stay selectable. #}
     {# -- Collapsed: compact one-liner -- #}
     <div class="px-4 py-3 sm:px-5 cursor-pointer" role="button" tabindex="0"
-        x-show="activeResult !== '{{ result.code|escapejs }}_{{ result.id|escapejs }}'"
-        @click="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
-        @keydown.enter="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
-        @keydown.space.prevent="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})">
+        x-show="activeResult !== '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'"
+        @click="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+        @keydown.enter="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+        @keydown.space.prevent="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})">
         {% include "partials/_result_list_row.html" with result=result %}
     </div>
     {# -- Expanded: full header (white panel band) -- #}
     <div class="bg-panel border-b border-rule px-4 py-5 sm:p-6 cursor-pointer" role="button" tabindex="0"
-        x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'" x-cloak
+        x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'" x-cloak
         @click="activeResult = null"
         @keydown.enter="activeResult = null"
         @keydown.space.prevent="activeResult = null">
         {% include "partials/_result_citation_header.html" with result=result %}
     </div>
     {# -- Expanded: body (provenance stacked inline) -- #}
-    <div class="px-4 pb-5 sm:px-6 sm:pb-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
+    <div class="px-4 pb-5 sm:px-6 sm:pb-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'">
         {% include "partials/_result_expanded.html" with result=result query_date=query_date %}
     </div>
 </div>
@@ -66,10 +66,10 @@ sectionContentUrl() in search.html.
     {% for result in results %}
         <div role="button" tabindex="0"
             class="border-b border-rule border-l-[3px] px-4 py-3 cursor-pointer transition-colors"
-            :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? 'border-l-secondary bg-panel' : 'border-l-transparent hover:border-l-secondary/50 hover:bg-surface-2'"
-            @click="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
-            @keydown.enter="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
-            @keydown.space.prevent="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})">
+            :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}' ? 'border-l-secondary bg-panel' : 'border-l-transparent hover:border-l-secondary/50 hover:bg-surface-2'"
+            @click="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+            @keydown.enter="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+            @keydown.space.prevent="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})">
             {% include "partials/_result_list_row.html" with result=result %}
         </div>
     {% endfor %}
@@ -78,7 +78,7 @@ sectionContentUrl() in search.html.
     {# Col 2 — selected provision body (citation header + in-force band + content) #}
     <div class="min-w-0">
     {% for result in results %}
-        <div x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'" x-cloak class="min-w-0">
+        <div x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'" x-cloak class="min-w-0">
             <div class="bg-panel border border-rule px-5 py-5">
                 {% include "partials/_result_citation_header.html" with result=result %}
             </div>
@@ -90,7 +90,7 @@ sectionContentUrl() in search.html.
     {# Col 3 — provenance metadata rail (sticky, fixed width, natural height) #}
     <div class="lg:sticky lg:top-4">
     {% for result in results %}
-        <div x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'" x-cloak>
+        <div x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'" x-cloak>
             {% include "partials/_result_rail.html" with result=result %}
         </div>
     {% endfor %}

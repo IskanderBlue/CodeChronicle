@@ -127,6 +127,35 @@ class TestLoadEdition:
         assert v1.ineffective_date is None
         assert "other than Part 8" in v1.html
 
+    def test_ingests_revoked_flag(self, tmp_path: Path) -> None:
+        """The CCM-derived per-version ``revoked`` boolean round-trips into
+        the model; versions without the key default to False."""
+        data = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+        # Flip the flag on one real version in the fixture.
+        target = None
+        for prov in data["provisions"]:
+            versions = prov.get("versions") or []
+            if versions:
+                versions[-1]["revoked"] = True
+                target = (prov["provision_id"], prov.get("division", ""),
+                          versions[-1]["version"])
+                break
+        assert target is not None
+        out = tmp_path / "OBC_1997.json"
+        out.write_text(json.dumps(data), encoding="utf-8")
+
+        call_command("load_edition", "--source", str(out))
+
+        pid, division, vnum = target
+        revoked_version = CodeEditionProvisionVersion.objects.get(
+            provision__provision_id=pid, provision__division=division, version=vnum,
+        )
+        assert revoked_version.revoked is True
+        # Every other version stays False (key absent in the source JSON).
+        assert CodeEditionProvisionVersion.objects.exclude(
+            pk=revoked_version.pk
+        ).filter(revoked=True).count() == 0
+
     def test_creates_tables(self, edition_json: Path) -> None:
         call_command("load_edition", "--source", str(edition_json))
 

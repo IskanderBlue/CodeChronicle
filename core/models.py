@@ -581,6 +581,11 @@ class CodeEditionProvisionVersion(models.Model):
     # verbatim — see ``core.provision_notes`` for the kind→display-tier map and
     # the ``grouped_notes`` property.
     notes = models.JSONField(default=list, blank=True)
+    # Whole-provision revocation tombstone, derived once by CCM from the
+    # e-Laws "Revoked: O. Reg. …" title marker (clause action can't tell a
+    # full revoke from a substitution).  Absent in the source JSON for the
+    # ~99% of versions that aren't revoked → defaults False on ingest.
+    revoked = models.BooleanField(default=False)
 
     class Meta:
         db_table = "code_edition_provision_versions"
