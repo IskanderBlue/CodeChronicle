@@ -713,20 +713,29 @@ def group_formatted_results(
 def merge_transition_compare_results(
     formatted_results: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    transition_groups: Dict[tuple[str, str, str], Dict[str, Dict[str, Any]]] = {}
+    """Collapse each transition pair into a single ``transition_compare`` card.
+
+    Orchestration (``_group_transitions`` / ``_merge_provision_mapping_transitions``)
+    is the authority on *which* two results form a pair — it stamps both members
+    with a shared ``pair_key`` and an ``is_primary`` flag (True on the newer
+    member).  We group on that token rather than re-deriving the pairing from
+    ``id``/edition, so pairs whose members carry different provision ids
+    (cross- or intra-edition renumbers) group correctly instead of colliding.
+    """
+    # Pass 1: bucket paired members by their upstream pair_key, split by role.
+    pairs: Dict[str, Dict[str, Dict[str, Any]]] = {}
     for result in formatted_results:
         transition_context = result.get("transition_context")
         if not transition_context or result.get("group_type") == "parent_children":
             continue
-        key = (
-            str(result.get("id") or ""),
-            str(transition_context.get("new_edition") or ""),
-            str(transition_context.get("old_edition") or ""),
-        )
-        edition = str(result.get("code") or "")
-        transition_groups.setdefault(key, {})[edition] = result
+        pair_key = transition_context.get("pair_key")
+        if not pair_key:
+            continue
+        role = "new" if transition_context.get("is_primary") else "old"
+        pairs.setdefault(pair_key, {})[role] = result
 
-    consumed_keys: set[tuple[str, str, str]] = set()
+    # Pass 2: emit one card per complete pair, at the first member's position.
+    consumed_keys: set[str] = set()
     output: List[Dict[str, Any]] = []
     for result in formatted_results:
         transition_context = result.get("transition_context")
@@ -734,22 +743,19 @@ def merge_transition_compare_results(
             output.append(result)
             continue
 
-        key = (
-            str(result.get("id") or ""),
-            str(transition_context.get("new_edition") or ""),
-            str(transition_context.get("old_edition") or ""),
-        )
-        grouped_versions = transition_groups.get(key, {})
-        if key in consumed_keys:
-            continue
-
-        new_version = grouped_versions.get(str(transition_context.get("new_edition") or ""))
-        old_version = grouped_versions.get(str(transition_context.get("old_edition") or ""))
-        if not new_version or not old_version:
+        pair_key = transition_context.get("pair_key")
+        members = pairs.get(pair_key, {}) if pair_key else {}
+        new_version = members.get("new")
+        old_version = members.get("old")
+        # Unpaired (only one member surfaced) or degenerate (both roles point at
+        # the same result) -> render plainly rather than compare-to-self.
+        if not new_version or not old_version or new_version is old_version:
             output.append(result)
             continue
+        if pair_key in consumed_keys:
+            continue
 
-        consumed_keys.add(key)
+        consumed_keys.add(pair_key)
         has_renderable_content = bool(
             old_version.get("html_content")
             or old_version.get("page_images")

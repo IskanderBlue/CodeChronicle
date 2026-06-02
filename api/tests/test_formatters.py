@@ -399,8 +399,7 @@ def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch
                 "score": 1.0,
                 "division": "B",
                 "transition_context": {
-                    "old_edition": "BCBC_2018",
-                    "new_edition": "BCBC_2024",
+                    "pair_key": "bcbc-3.2.9",
                     "query_date": "2024-06-01",
                     "new_version_effective_date": "2024-03-08",
                     "old_version_last_date": "2025-03-09",
@@ -420,8 +419,7 @@ def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch
                 "score": 0.94,
                 "division": "B",
                 "transition_context": {
-                    "old_edition": "BCBC_2018",
-                    "new_edition": "BCBC_2024",
+                    "pair_key": "bcbc-3.2.9",
                     "query_date": "2024-06-01",
                     "new_version_effective_date": "2024-03-08",
                     "old_version_last_date": "2025-03-09",
@@ -506,8 +504,7 @@ def test_has_renderable_content_false_when_no_content():
                 "code": "OBC_2024",
                 "score": 0.9,
                 "transition_context": {
-                    "old_edition": "OBC_2012",
-                    "new_edition": "OBC_2024",
+                    "pair_key": "obc-3.1",
                     "is_primary": True,
                 },
             },
@@ -516,8 +513,7 @@ def test_has_renderable_content_false_when_no_content():
                 "code": "OBC_2012",
                 "score": 0.8,
                 "transition_context": {
-                    "old_edition": "OBC_2012",
-                    "new_edition": "OBC_2024",
+                    "pair_key": "obc-3.1",
                     "is_primary": False,
                 },
             },
@@ -537,8 +533,7 @@ def test_has_renderable_content_true_when_one_version_has_content():
                 "score": 0.9,
                 "html_content": "<p>Some text</p>",
                 "transition_context": {
-                    "old_edition": "OBC_2012",
-                    "new_edition": "OBC_2024",
+                    "pair_key": "obc-3.1",
                     "is_primary": True,
                 },
             },
@@ -547,8 +542,7 @@ def test_has_renderable_content_true_when_one_version_has_content():
                 "code": "OBC_2012",
                 "score": 0.8,
                 "transition_context": {
-                    "old_edition": "OBC_2012",
-                    "new_edition": "OBC_2024",
+                    "pair_key": "obc-3.1",
                     "is_primary": False,
                 },
             },
@@ -559,6 +553,64 @@ def test_has_renderable_content_true_when_one_version_has_content():
     assert merged[0]["has_renderable_content"] is True
 
 
+def _pair_member(provision_id, code, is_primary, pair_key, **extra):
+    """A minimal formatted result carrying a transition_context pair member."""
+    return {
+        "id": provision_id,
+        "code": code,
+        "score": 0.9 if is_primary else 0.8,
+        "transition_context": {
+            "pair_key": pair_key,
+            "is_primary": is_primary,
+            "transition_text": "renumbered",
+            **extra,
+        },
+    }
+
+
+def test_same_edition_renumber_merges_into_one_compare_card():
+    """Intra-edition renumber: members share an edition but have different ids.
+
+    Regression for the degenerate self-compare — grouping on pair_key (not
+    id+edition) must unite them into ONE card with the two distinct provisions,
+    not two cards each comparing a provision to itself.
+    """
+    result = formatters.merge_transition_compare_results(
+        [
+            _pair_member("3.2.4.5.", "OBC_2024", True, "map:7", same_edition=True),
+            _pair_member("3.1.2.1.", "OBC_2024", False, "map:7", same_edition=True),
+        ]
+    )
+    merged = [r for r in result if r.get("result_type") == "transition_compare"]
+    assert len(merged) == 1
+    versions = merged[0]["versions"]
+    assert [v["id"] for v in versions] == ["3.1.2.1.", "3.2.4.5."]  # [old, new]
+    assert versions[0] is not versions[1]
+
+
+def test_cross_edition_renumber_merges_into_one_compare_card():
+    """Cross-edition renumber (different ids, different editions) — never
+    grouped under the old id-based key; pair_key now unites it into one card."""
+    result = formatters.merge_transition_compare_results(
+        [
+            _pair_member("3.2.4.5.", "OBC_2024", True, "map:9"),
+            _pair_member("3.1.2.1.", "OBC_2012", False, "map:9"),
+        ]
+    )
+    merged = [r for r in result if r.get("result_type") == "transition_compare"]
+    assert len(merged) == 1
+    assert [v["code"] for v in merged[0]["versions"]] == ["OBC_2012", "OBC_2024"]
+
+
+def test_unpaired_member_renders_plain_not_self_compare():
+    """A member whose partner didn't surface stays a plain result."""
+    result = formatters.merge_transition_compare_results(
+        [_pair_member("3.1", "OBC_2024", True, "map:11")]
+    )
+    assert len(result) == 1
+    assert result[0].get("result_type") != "transition_compare"
+
+
 def test_transition_context_passes_through_formatting(monkeypatch):
     monkeypatch.setattr(
         formatters, "_build_code_display_name",
@@ -566,10 +618,12 @@ def test_transition_context_passes_through_formatting(monkeypatch):
     )
     monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results, query_date=None: {})
 
+    # A single member whose pair partner didn't surface in results: the context
+    # must survive formatting verbatim (and render plainly, not compare-to-self).
     transition_context = {
+        "pair_key": "overlap:8.6.2.2:B",
         "is_primary": True,
         "transition_text": "Transition regulation text",
-        "other_edition": "OBC_2012_v08",
     }
 
     formatted = formatters.format_search_results(
@@ -588,8 +642,10 @@ def test_transition_context_passes_through_formatting(monkeypatch):
     item = formatted[0]
     assert item["transition_context"] is not None
     assert item["transition_context"]["is_primary"] is True
-    assert item["transition_context"]["other_edition"] == "OBC_2012_v08"
+    assert item["transition_context"]["pair_key"] == "overlap:8.6.2.2:B"
     assert item["transition_context"]["transition_text"] == "Transition regulation text"
+    # Unpaired -> plain result, never a degenerate self-compare.
+    assert item.get("result_type") != "transition_compare"
 
 
 def test_nest_child_results_under_parent():

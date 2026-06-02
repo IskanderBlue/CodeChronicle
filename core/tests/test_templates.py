@@ -295,7 +295,7 @@ def test_transition_compare_card_renders_transition_text():
                     "transition_context": {
                         "is_primary": True,
                         "transition_text": "<p>The code as it read on 2023-12-31 applies...</p>",
-                        "other_edition": "BCBC_2018",
+                        "pair_key": "map:1",
                     },
                     "versions": [
                         {
