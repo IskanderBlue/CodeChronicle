@@ -76,3 +76,23 @@ class TestEditionChainView:
     def test_404_for_missing(self, client: Client, regulation_fixtures):
         response = client.get("/edition/99999/chain/")
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestProvisionPermalinkUrl:
+    """``_provision_permalink_url`` must route division-less editions (OBC 1997,
+    division="") to the no-division route — a ``<str:division>`` segment can't
+    be empty, so the normal route raises ``NoReverseMatch``."""
+
+    def test_with_division_uses_full_route(self):
+        from core.views.regulation import _provision_permalink_url
+
+        url = _provision_permalink_url("OBC_2024", "B", "3.1.1.1", 2)
+        assert url == "/provision/OBC_2024/B/3.1.1.1/v2/"
+
+    def test_empty_division_uses_no_division_route(self):
+        from core.views.regulation import _provision_permalink_url
+
+        # Must not raise NoReverseMatch, and must omit the division segment.
+        url = _provision_permalink_url("OBC_1997", "", "3.1.1.1", 1)
+        assert url == "/provision/OBC_1997/3.1.1.1/v1/"

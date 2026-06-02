@@ -42,6 +42,27 @@ _PAREN_RE = re.compile(r"\([^)]*\)")
 _TABLE_LETTER_RE = re.compile(r"[A-Z]\.$")
 
 
+def _provision_permalink_url(
+    code_name: str, division: str, provision_id: str, version: int
+) -> str:
+    """Reverse a provision permalink, routing around empty divisions.
+
+    A ``<str:division>`` path segment can't be empty, so division-less
+    editions (e.g. OBC 1997, ``division=""``) must use the sibling
+    ``provision_permalink_no_division`` route or ``reverse`` raises
+    ``NoReverseMatch``.
+    """
+    if division:
+        return reverse(
+            "core:provision_permalink",
+            args=[code_name, division, provision_id, version],
+        )
+    return reverse(
+        "core:provision_permalink_no_division",
+        args=[code_name, provision_id, version],
+    )
+
+
 def _reduce_target_id(clause: RegulationClause) -> str:
     """Reduce a target_id to the provision_id it lives in (drop sentence/
     clause parts, item numbers, and trailing table letters)."""
@@ -96,9 +117,8 @@ def _fallback_targets(clause: RegulationClause) -> list[dict[str, Any]]:
     )
     return [{
         "label": f"{prov.get_level_display()} {prov.provision_id}".strip(),
-        "url": reverse(
-            "core:provision_permalink",
-            args=[prov.edition.code_name, prov.division, prov.provision_id, chosen.version],
+        "url": _provision_permalink_url(
+            prov.edition.code_name, prov.division, prov.provision_id, chosen.version
         ),
         "level": prov.level,
         "version": chosen.version,
@@ -189,14 +209,8 @@ def _clause_targets(clause: RegulationClause) -> list[dict[str, Any]]:
         label = f"{prov.get_level_display()} {prov.provision_id}".strip()
         targets.append({
             "label": label,
-            "url": reverse(
-                "core:provision_permalink",
-                args=[
-                    prov.edition.code_name,
-                    prov.division,
-                    prov.provision_id,
-                    v.version,
-                ],
+            "url": _provision_permalink_url(
+                prov.edition.code_name, prov.division, prov.provision_id, v.version
             ),
             "level": prov.level,
             "version": v.version,
@@ -283,9 +297,8 @@ def _related_links(
                 "version": v.version,
                 "effective_date": v.effective_date,
                 "ineffective_date": v.ineffective_date,
-                "url": reverse(
-                    "core:provision_permalink",
-                    args=[code_name, provision.division, provision.provision_id, v.version],
+                "url": _provision_permalink_url(
+                    code_name, provision.division, provision.provision_id, v.version
                 ),
             }
             for v in versions
@@ -311,9 +324,8 @@ def _sibling_link(
     return {
         "provision_id": provision.provision_id,
         "version": chosen.version,
-        "url": reverse(
-            "core:provision_permalink",
-            args=[code_name, provision.division, provision.provision_id, chosen.version],
+        "url": _provision_permalink_url(
+            code_name, provision.division, provision.provision_id, chosen.version
         ),
     }
 

@@ -825,7 +825,14 @@ class CorpusCurrency(models.Model):
         if first_eff:
             # The corpus's coverage closes when its latest edition ceased to be
             # in force; None on both means it's still the current edition.
-            end = agg["last_end"]
+            # ``Max`` ignores NULLs, so an open-ended current edition
+            # (ineffective_date IS NULL) sitting alongside older, closed
+            # editions would otherwise report the older end date and mark the
+            # corpus closed — check for any still-open edition first.
+            has_open_edition = prov_editions.filter(
+                ineffective_date__isnull=True
+            ).exists()
+            end = None if has_open_edition else agg["last_end"]
             if end:
                 last_covered = end - timedelta(days=1)  # exclusive boundary
                 span = f"{_fmt(first_eff)} – {_fmt(last_covered)}"
