@@ -3,13 +3,17 @@ Format search results for frontend display.
 """
 
 import difflib
+import logging
 import re
 from datetime import date
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from api.band import compute_band_geometry, parse_iso_date
+from api.search.engine import _ref_parts
 from config.code_metadata import get_code_display_name
-from core.models import CodeEditionProvision
+from core.models import CodeEditionProvision, CodeEditionProvisionVersion
+
+logger = logging.getLogger(__name__)
 
 _HTML_TAG_RE = re.compile(r"(<[^>]+>)")
 # Splits text into words and whitespace runs, preserving both.
@@ -231,6 +235,62 @@ def _build_copy_text(
     return "\n".join(lines)
 
 
+def _join_terms(terms: Sequence[str]) -> str:
+    """Join terms readably: 'a' · 'a and b' · 'a, b, and c'."""
+    items = [t for t in terms if t]
+    if not items:
+        return "your search"
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return ", ".join(items[:-1]) + f", and {items[-1]}"
+
+
+def _reference_label(ref: str) -> str:
+    """Human label for a matched reference: 'table-3.1.4.7' -> 'Table 3.1.4.7'."""
+    is_table, segs = _ref_parts(ref)
+    core = ".".join(segs)
+    return f"Table {core}" if is_table else core
+
+
+def _build_score_explanation(
+    match_type: str | None,
+    matched_terms: Sequence[str],
+    matched_terms_indirect: Sequence[str] = (),
+) -> str:
+    """One plain-English sentence explaining why a result matched.
+
+    Driven by the engine's ``match_type`` so the card can say *why* a provision
+    ranked rather than show an opaque score the user can't calibrate.  Keyword
+    results distinguish *direct* hits (terms the user typed) from *indirect*
+    ones (LLM-added variants and synonyms), so the sentence never claims the
+    user searched for a word they didn't type.
+    """
+    direct = list(matched_terms or [])
+    indirect = list(matched_terms_indirect or [])
+    first = direct[0] if direct else ""
+    if match_type == "exact_id":
+        return f"You referenced {_reference_label(first)} — this is that provision."
+    if match_type == "ancestor_id":
+        return f"A sub-provision of {_reference_label(first)}, which you referenced."
+    if match_type == "table_ref":
+        return f"Contains {_reference_label(first)}, the table you referenced."
+    if match_type == "fuzzy":
+        return f"Close approximate match on {_join_terms(direct or indirect)}."
+    if match_type in ("exact", "synonym"):
+        if direct and indirect:
+            return (
+                f"Directly matched your search for {_join_terms(direct)}; "
+                f"indirectly matched {_join_terms(indirect)}."
+            )
+        if direct:
+            return f"Directly matched your search for {_join_terms(direct)}."
+        if indirect:
+            return f"Indirectly matched {_join_terms(indirect)} (synonym of your search)."
+    return "Matched your search."
+
+
 def _format_single_result(
     result: Dict[str, Any],
     query_date: date | None = None,
@@ -337,6 +397,17 @@ def _format_single_result(
         "parent_id": parent_id,
         "source_date": result.get("source_date"),
         "score": result.get("score", 0),
+        "match_type": result.get("match_type"),
+        "matched_terms": result.get("matched_terms") or [],
+        "matched_terms_indirect": result.get("matched_terms_indirect") or [],
+        # Term chips reinforce keyword matches; for reference matches the
+        # sentence already names the provision/table, so chips are redundant.
+        "show_matched_terms": result.get("match_type") in ("exact", "synonym", "fuzzy"),
+        "score_explanation": _build_score_explanation(
+            result.get("match_type"),
+            result.get("matched_terms") or [],
+            result.get("matched_terms_indirect") or [],
+        ),
         "html_content": html_content,
         "page_images": result.get("page_images") or [],
         "tables": result.get("tables") or [],
@@ -371,8 +442,57 @@ def _build_group_lookup_key(result: Dict[str, Any]) -> tuple[str, str, str] | No
     return str(code), str(parent_id), str(division)
 
 
+def _in_force_title(
+    versions: list[CodeEditionProvisionVersion],
+    query_date: date | None,
+    fallback_id: str,
+    *,
+    log_label: str,
+) -> str:
+    """Title of the version in force on ``query_date`` (for a group label).
+
+    Group labels must read as the provision did on the queried date, not as
+    it ends up — otherwise a provision that is later *revoked* shows its
+    "Revoked: …" sentinel title even when the query lands while it was
+    substantively in force (see ``order_by("-version")`` regression).
+
+    Falls back to the latest version when there's no as-of date, when the
+    provision has no versions, or when *nothing* is in force on the date —
+    the last case is a data anomaly for a provision search just surfaced, so
+    it's logged as an error.  Zero-width "as-filed but superseded same day"
+    versions (``ineffective == effective``) are skipped, mirroring the
+    in-force search filter.
+    """
+    if not versions:
+        return fallback_id
+    latest = max(versions, key=lambda v: v.version)
+    if query_date is None:
+        return latest.title or fallback_id
+    in_force = next(
+        (
+            v
+            for v in versions
+            if v.effective_date <= query_date
+            and (v.ineffective_date is None or query_date < v.ineffective_date)
+            and v.ineffective_date != v.effective_date
+        ),
+        None,
+    )
+    if in_force is None:
+        logger.error(
+            "Group label: no version of %s in force on %s; "
+            "falling back to latest (v%s) title.",
+            log_label,
+            query_date.isoformat(),
+            latest.version,
+        )
+        return latest.title or fallback_id
+    return in_force.title or fallback_id
+
+
 def _load_group_hierarchy(
     formatted_results: Iterable[Dict[str, Any]],
+    query_date: date | None = None,
 ) -> Dict[tuple[str, str, str], Dict[str, Any]]:
     group_keys = {
         key for result in formatted_results if (key := _build_group_lookup_key(result)) is not None
@@ -394,12 +514,16 @@ def _load_group_hierarchy(
             CodeEditionProvision.objects.filter(provision_id=parent_id, **prov_filter)
             .first()
         )
-        # Get the latest version title for the parent
+        # Title the group as the parent read on the query date — not its
+        # latest (possibly "Revoked: …") version. See _in_force_title.
         parent_title = parent_id
         if parent_prov:
-            latest_version = parent_prov.versions.order_by("-version").first()
-            if latest_version:
-                parent_title = latest_version.title or parent_id
+            parent_title = _in_force_title(
+                list(parent_prov.versions.all()),
+                query_date,
+                parent_id,
+                log_label=f"{code_edition} {division} {parent_id}".strip(),
+            )
 
         child_provs = CodeEditionProvision.objects.filter(
             parent=parent_prov, **{
@@ -410,10 +534,14 @@ def _load_group_hierarchy(
 
         child_nodes = []
         for child in child_provs:
-            latest = child.versions.order_by("-version").first()
             child_nodes.append({
                 "node_id": child.provision_id,
-                "title": (latest.title if latest else "") or child.provision_id,
+                "title": _in_force_title(
+                    list(child.versions.all()),
+                    query_date,
+                    child.provision_id,
+                    log_label=f"{code_edition} {division} {child.provision_id}".strip(),
+                ),
                 "page": None,
                 "page_end": None,
             })
@@ -496,9 +624,10 @@ def _build_grouped_result(
 def group_formatted_results(
     formatted_results: List[Dict[str, Any]],
     hierarchy_by_group: Dict[tuple[str, str, str], Dict[str, Any]] | None = None,
+    query_date: date | None = None,
 ) -> List[Dict[str, Any]]:
     if hierarchy_by_group is None:
-        hierarchy_by_group = _load_group_hierarchy(formatted_results)
+        hierarchy_by_group = _load_group_hierarchy(formatted_results, query_date)
 
     matched_results_by_group: Dict[tuple[str, str, str], List[Dict[str, Any]]] = {}
     for result in formatted_results:
@@ -582,6 +711,10 @@ def merge_transition_compare_results(
             old_version["diff_html"] = old_diff
         if new_diff is not None:
             new_version["diff_html"] = new_diff
+        # Explain the pair using whichever version actually earned the score.
+        top_version = max(
+            (old_version, new_version), key=lambda v: v.get("score", 0)
+        )
         output.append(
             {
                 "id": result.get("id"),
@@ -594,6 +727,11 @@ def merge_transition_compare_results(
                 "code_display_name": new_version.get("code_display_name")
                 or result.get("code_display_name"),
                 "score": max(new_version.get("score", 0), old_version.get("score", 0)),
+                "match_type": top_version.get("match_type"),
+                "matched_terms": top_version.get("matched_terms") or [],
+                "matched_terms_indirect": top_version.get("matched_terms_indirect") or [],
+                "show_matched_terms": top_version.get("show_matched_terms", False),
+                "score_explanation": top_version.get("score_explanation"),
                 "result_type": "transition_compare",
                 "transition_context": transition_context,
                 "has_renderable_content": has_renderable_content,
@@ -714,7 +852,7 @@ def format_search_results(
         _format_single_result(result, parsed_query_date, terms) for result in results
     ]
     formatted.sort(key=lambda item: item.get("score", 0), reverse=True)
-    grouped = group_formatted_results(formatted)
+    grouped = group_formatted_results(formatted, query_date=parsed_query_date)
     merged = merge_transition_compare_results(grouped)
     return _nest_child_results(merged)
 

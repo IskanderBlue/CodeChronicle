@@ -40,6 +40,9 @@ def run_search(
     try:
         # Step 1: Parse natural language with LLM
         params = parse_user_query(query)
+        # The raw text lets the scorer tell which keywords the user actually
+        # typed (direct) from those the LLM expanded in (indirect, 0.9 weight).
+        params["raw_query"] = query
 
         # Apply manual overrides
         if date_override:

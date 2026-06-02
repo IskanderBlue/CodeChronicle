@@ -1,13 +1,18 @@
+import logging
+from datetime import date
 from typing import Any
 
+import pytest
+
 from api import formatters
+from core.models import CodeEditionProvisionVersion
 
 
 def test_format_search_results_emits_span_fields_without_bbox(monkeypatch):
     monkeypatch.setattr(
         formatters, "_build_code_display_name", lambda code_edition: "National Building Code 2025"
     )
-    monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results: {})
+    monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results, query_date=None: {})
 
     formatted = formatters.format_search_results(
         [
@@ -222,9 +227,65 @@ def test_group_results_keeps_single_child_match_standalone():
     assert grouped_results[0]["id"] == "Table-9.10.3.1.-A"
 
 
+def _version(version: int, title: str, eff: date, ineff: date | None) -> CodeEditionProvisionVersion:
+    """An unsaved version row carrying only the fields _in_force_title reads."""
+    return CodeEditionProvisionVersion(
+        version=version, title=title, effective_date=eff, ineffective_date=ineff,
+    )
+
+
+def test_in_force_title_uses_version_in_force_not_latest():
+    # v0 is in force 2022-04-26 → 2025-03-31, then the provision is revoked
+    # (v1).  A query inside v0's window must read v0's real title, not the
+    # newest ("Revoked: …") version's sentinel title.
+    versions = [
+        _version(0, "Temporary Health or Residential Facilities", date(2022, 4, 26), date(2025, 3, 31)),
+        _version(1, "Revoked: O. Reg. 434/22, s. 1 (2).", date(2025, 3, 31), None),
+    ]
+    title = formatters._in_force_title(
+        versions, date(2022, 6, 1), "1.3.7.", log_label="OBC_2012 C 1.3.7."
+    )
+    assert title == "Temporary Health or Residential Facilities"
+
+
+def test_in_force_title_without_query_date_uses_latest():
+    versions = [
+        _version(0, "Application", date(2022, 4, 26), date(2024, 3, 28)),
+        _version(1, "Revoked", date(2024, 3, 28), None),
+    ]
+    assert formatters._in_force_title(versions, None, "1.3.7.1.", log_label="x") == "Revoked"
+
+
+def test_in_force_title_logs_error_when_nothing_in_force(caplog):
+    versions = [
+        _version(0, "Application", date(2022, 4, 26), date(2024, 3, 28)),
+        _version(1, "Revoked", date(2024, 3, 28), None),
+    ]
+    # A date before the provision existed → nothing in force → error + latest.
+    with caplog.at_level(logging.ERROR, logger="api.formatters"):
+        title = formatters._in_force_title(
+            versions, date(2000, 1, 1), "1.3.7.1.", log_label="OBC_2012 C 1.3.7.1."
+        )
+    assert title == "Revoked"
+    assert any(
+        "no version of OBC_2012 C 1.3.7.1. in force on 2000-01-01" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+def test_in_force_title_skips_zero_width_version():
+    # A zero-width "as-filed but superseded same day" version is never in
+    # force and must not be chosen as the label.
+    versions = [
+        _version(0, "Zero width", date(2022, 4, 26), date(2022, 4, 26)),
+        _version(1, "Real", date(2022, 4, 26), None),
+    ]
+    assert formatters._in_force_title(versions, date(2022, 6, 1), "x", log_label="x") == "Real"
+
+
 def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch):
     monkeypatch.setattr(formatters, "_build_code_display_name", lambda code_edition: code_edition)
-    monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results: {})
+    monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results, query_date=None: {})
 
     formatted_results = formatters.format_search_results(
         [
@@ -402,7 +463,7 @@ def test_transition_context_passes_through_formatting(monkeypatch):
         formatters, "_build_code_display_name",
         lambda code_edition: "Ontario Building Code 2012 v09",
     )
-    monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results: {})
+    monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results, query_date=None: {})
 
     transition_context = {
         "is_primary": True,
@@ -483,3 +544,84 @@ def test_nest_child_results_cross_edition_no_collision():
     # Children titles should be edition-specific (not overwritten)
     assert obc["children"][0]["title"].startswith("OBC")
     assert nbc["children"][0]["title"].startswith("NBC")
+
+
+class TestScoreExplanation:
+    """Plain-English 'why this matched' phrasing driven by match_type."""
+
+    def test_exact_id_names_the_provision(self):
+        out = formatters._build_score_explanation("exact_id", ["9.10.14"])
+        assert "9.10.14" in out
+        assert "this is that provision" in out
+
+    def test_table_ref_label_is_humanized(self):
+        out = formatters._build_score_explanation("table_ref", ["table-3.1.4.7"])
+        assert "Table 3.1.4.7" in out  # 'table-' prefix → 'Table ', trailing dot gone
+
+    def test_ancestor_id_reads_as_sub_provision(self):
+        out = formatters._build_score_explanation("ancestor_id", ["3.2"])
+        assert out.startswith("A sub-provision of 3.2")
+
+    def test_exact_keywords_listed(self):
+        out = formatters._build_score_explanation("exact", ["fire", "sprinkler"])
+        assert out == "Directly matched your search for fire and sprinkler."
+
+    def test_direct_and_indirect_are_split(self):
+        # The "defined terms" case: typed words are direct, LLM variants indirect.
+        out = formatters._build_score_explanation(
+            "exact", ["defined", "terms"], ["definition", "definitions"]
+        )
+        assert "Directly matched your search for defined and terms" in out
+        assert "indirectly matched definition and definitions" in out
+
+    def test_synonym_only_reads_as_indirect(self):
+        # A synonym-only result carries its terms in the indirect list.
+        out = formatters._build_score_explanation("synonym", [], ["egress"])
+        assert out.startswith("Indirectly matched egress")
+        assert "synonym" in out.lower()
+
+    def test_fuzzy_is_labelled(self):
+        out = formatters._build_score_explanation("fuzzy", ["sprinkler"])
+        assert "approximate" in out.lower()
+
+    def test_three_terms_use_oxford_join(self):
+        out = formatters._build_score_explanation("exact", ["a", "b", "c"])
+        assert "a, b, and c" in out
+
+
+@pytest.mark.django_db
+def test_format_single_result_surfaces_explanation_and_suppresses_ref_chips():
+    """Reference matches get an explanation but no (redundant) term chips."""
+    formatted = formatters._format_single_result(
+        {
+            "id": "3.1.4.7.",
+            "title": "Cooling",
+            "code_edition": "OBC_2024",
+            "division": "B",
+            "score": 3.0,
+            "match_type": "exact_id",
+            "matched_terms": ["3.1.4.7"],
+        },
+        query_date=None,
+    )
+    assert formatted["score_explanation"]
+    assert "3.1.4.7" in formatted["score_explanation"]
+    assert formatted["show_matched_terms"] is False  # reference → chips suppressed
+
+
+@pytest.mark.django_db
+def test_format_single_result_shows_chips_for_keyword_match():
+    formatted = formatters._format_single_result(
+        {
+            "id": "3.1.8.5.",
+            "title": "Fire Sprinkler Systems",
+            "code_edition": "OBC_2024",
+            "division": "B",
+            "score": 0.9,
+            "match_type": "exact",
+            "matched_terms": ["fire", "sprinkler"],
+        },
+        query_date=None,
+    )
+    assert formatted["show_matched_terms"] is True
+    assert formatted["matched_terms"] == ["fire", "sprinkler"]

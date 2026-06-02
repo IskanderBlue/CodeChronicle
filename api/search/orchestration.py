@@ -87,6 +87,7 @@ def execute_search(params: dict[str, Any]) -> dict[str, Any]:
         versions_qs=in_force_qs,
         idf_map=idf_map,
         provision_references=provision_references,
+        raw_query=params.get("raw_query", ""),
     )
 
     results = _group_transitions(results)
