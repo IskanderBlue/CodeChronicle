@@ -345,6 +345,18 @@ class Regulation(models.Model):
     effective_date = models.DateField()
     source_pdf = models.CharField(max_length=200, blank=True, default="")
     source_pages = models.JSONField(null=True, blank=True)
+    commencement = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "CCM-parsed commencement records: the regulation's default "
+            "'comes into force on …' clause plus any staggered exceptions. "
+            "Each record carries {clause, is_default, commencement_clause, "
+            "effective_date, resolved_provisions, …}. The default record's "
+            "date mirrors ``effective_date``; non-default records pin "
+            "later in-force dates for the provisions they name."
+        ),
+    )
 
     class Meta:
         db_table = "regulations"
@@ -412,9 +424,52 @@ class RegulationClause(models.Model):
         ),
     )
     target_reg = models.CharField(max_length=50, blank=True, default="")
+    effective_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "The clause's own commencement date — when this amending "
+            "directive comes into force. Usually equal to the regulation's "
+            "blanket effective_date, but Ontario regs routinely stagger "
+            "commencement so a clause can come into force later (its date "
+            "resolved by CCM from the regulation's commencement records)."
+        ),
+    )
     clause_text = models.TextField(blank=True, default="")
     strike_text = models.TextField(null=True, blank=True)
     sub_text = models.TextField(null=True, blank=True)
+    add_text = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Text inserted by an 'amend by adding' directive, anchored at "
+            "``add_anchor``. Part of recording commencement at provision "
+            "granularity: this is the content the clause brings into force "
+            "on ``effective_date``."
+        ),
+    )
+    add_anchor = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Where ``add_text`` is inserted, e.g. "
+            "'after:CSA C22.2 No. 0.3, …'. The primary directive's anchor "
+            "for a single-directive clause."
+        ),
+    )
+    directives = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Full decomposition of a clause that amends several targets — "
+            "the list of {action, target_level, target_id, target_division, "
+            "strike_text, sub_text, add_text, add_anchor, …} directives. The "
+            "flat target_*/strike_*/sub_*/add_* fields mirror the primary "
+            "(first) directive; this list carries them all so the clause's "
+            "``effective_date`` (commencement) can be pinned onto every "
+            "provision it touches, not just the primary target."
+        ),
+    )
     amended_by = models.JSONField(null=True, blank=True)
     page = models.IntegerField(null=True, blank=True)
     bbox = models.JSONField(null=True, blank=True)

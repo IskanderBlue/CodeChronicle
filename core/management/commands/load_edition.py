@@ -215,6 +215,7 @@ class Command(BaseCommand):
                 ),
                 source_pdf=reg_data.get("source_pdf", ""),
                 source_pages=reg_data.get("source_pages"),
+                commencement=reg_data.get("commencement"),
             )
             reg_lookup[reg_id] = reg
 
@@ -280,9 +281,13 @@ class Command(BaseCommand):
                 target_id=cl_data.get("target_id", ""),
                 target_division=cl_data.get("target_division", ""),
                 target_reg=cl_data.get("target_reg", ""),
+                effective_date=_parse_date(cl_data.get("effective_date")),
                 clause_text=cl_data.get("clause_text", ""),
                 strike_text=cl_data.get("strike_text"),
                 sub_text=cl_data.get("sub_text"),
+                add_text=cl_data.get("add_text", ""),
+                add_anchor=cl_data.get("add_anchor", ""),
+                directives=cl_data.get("directives"),
                 amended_by=cl_data.get("amended_by"),
                 page=cl_data.get("page"),
                 bbox=cl_data.get("bbox"),

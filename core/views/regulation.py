@@ -382,6 +382,47 @@ def _provenance_result(
     }
 
 
+def _commencement_schedule(
+    regulation: Regulation,
+) -> list[dict[str, Any]]:
+    """Shape ``Regulation.commencement`` into display rows — one per parsed
+    commencement record, sorted by in-force date (default first).
+
+    A regulation's blanket ``effective_date`` is only its *default*
+    commencement; Ontario regs routinely stagger later in-force dates for
+    specific provisions.  Each record's ``resolved_provisions`` is a list of
+    ``"<provision_id>|<division>"`` refs (bare-letter division per
+    reference_division_format); we split them for linking-free labelling.
+    The template renders this schedule only when it carries a staggered
+    (non-default) date — otherwise the header's EFFECTIVE date says it all.
+    """
+    rows: list[dict[str, Any]] = []
+    for rec in regulation.commencement or []:
+        provisions = []
+        for ref in rec.get("resolved_provisions") or []:
+            provision_id, _, division = str(ref).partition("|")
+            provisions.append({"provision_id": provision_id, "division": division})
+        rows.append({
+            "date": _parse_iso_date(rec.get("effective_date")),
+            "is_default": bool(rec.get("is_default")),
+            "clause": rec.get("clause", ""),
+            "text": rec.get("commencement_clause", ""),
+            "provisions": provisions,
+        })
+    rows.sort(key=lambda r: (r["date"] or date.min, not r["is_default"]))
+    return rows
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    """Parse an ISO date string from CCM JSON, tolerating None/empty."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     """Show a single regulation with all its clauses."""
     regulation = get_object_or_404(
@@ -396,8 +437,18 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     # Annotate each clause with the full list of provisions it affects
     # (resolved server-side so the template stays logic-free).  See
     # _clause_targets: all targets, natural-ordered, indented as a hierarchy.
+    # Also flag staggered commencement — a clause whose own effective_date
+    # is later than the regulation's blanket date — so the template can mark
+    # it without a date comparison of its own.
     for clause in clauses:
         clause.targets = _clause_targets(clause)  # type: ignore[attr-defined]
+        clause.is_staggered = bool(  # type: ignore[attr-defined]
+            clause.effective_date
+            and clause.effective_date != regulation.effective_date
+        )
+
+    commencement = _commencement_schedule(regulation)
+    has_staggered_commencement = any(not row["is_default"] for row in commencement)
     # Engagement: a user landed on this regulation's detail page.  Non-fatal.
     record_event(
         request,
@@ -410,6 +461,8 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     return render(request, "regulation/detail.html", {
         "regulation": regulation,
         "clauses": clauses,
+        "commencement": commencement,
+        "has_staggered_commencement": has_staggered_commencement,
     })
 
 

@@ -73,6 +73,78 @@ class TestLoadEdition:
         assert cl2.strike_text == "institutional occupancies"
         assert cl2.sub_text == "care or detention occupancies"
 
+    def test_loads_commencement_and_clause_dates(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """The new commencement fields round-trip: the regulation's
+        ``commencement`` record list, and each clause's own
+        ``effective_date`` / ``add_text`` / ``add_anchor`` / ``directives``."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        for reg in data["regulations"]:
+            if reg["reg_id"] == "22/98":
+                reg["commencement"] = [
+                    {
+                        "clause": "5(1)", "is_default": True,
+                        "effective_date": "1998-04-06", "resolved_provisions": [],
+                        "commencement_clause": "Comes into force on April 6, 1998.",
+                    },
+                    {
+                        "clause": "5(2)", "is_default": False,
+                        "effective_date": "1999-01-01",
+                        "resolved_provisions": ["1.1.3.2.|B"],
+                        "commencement_clause": "Article 1.1.3.2. comes into force "
+                                               "on January 1, 1999.",
+                    },
+                ]
+                for cl in reg["clauses"]:
+                    if cl["clause_id"] == "1.(1)":
+                        cl["effective_date"] = "1999-01-01"  # deferred / staggered
+                        cl["add_text"] = "(FT1 Rating)"
+                        cl["add_anchor"] = "after:CSA C22.2 No. 0.3"
+                        cl["directives"] = [
+                            {
+                                "action": "amend_add", "target_level": "sentence",
+                                "target_id": "1.1.3.2.(2)", "target_division": "B",
+                            },
+                        ]
+        out = tmp_path / "OBC_1997_commencement.json"
+        out.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(out))
+
+        reg = Regulation.objects.get(reg_id="22/98")
+        assert reg.commencement is not None
+        assert len(reg.commencement) == 2
+        assert reg.commencement[1]["is_default"] is False
+        assert reg.commencement[1]["effective_date"] == "1999-01-01"
+        assert reg.commencement[1]["resolved_provisions"] == ["1.1.3.2.|B"]
+
+        cl = RegulationClause.objects.get(regulation=reg, clause_id="1.(1)")
+        assert cl.effective_date == date(1999, 1, 1)
+        assert cl.add_text == "(FT1 Rating)"
+        assert cl.add_anchor == "after:CSA C22.2 No. 0.3"
+        assert cl.directives == [
+            {
+                "action": "amend_add", "target_level": "sentence",
+                "target_id": "1.1.3.2.(2)", "target_division": "B",
+            },
+        ]
+
+    def test_commencement_fields_default_when_absent(
+        self, edition_json: Path,
+    ) -> None:
+        """Regulations/clauses without the new keys ingest with safe
+        defaults (None / "") — the fields are optional in the contract."""
+        call_command("load_edition", "--source", str(edition_json))
+
+        base = Regulation.objects.get(reg_id="403/97")
+        assert base.commencement is None
+
+        cl = RegulationClause.objects.get(clause_id="15.(1)")
+        assert cl.effective_date is None
+        assert cl.add_text == ""
+        assert cl.add_anchor == ""
+        assert cl.directives is None
+
     def test_creates_provisions(self, edition_json: Path) -> None:
         call_command("load_edition", "--source", str(edition_json))
 

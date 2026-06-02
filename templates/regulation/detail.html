@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}O. Reg. {{ regulation.reg_id }} — CodeChronicle{% endblock %}
+{% comment %} Match the working surfaces (search, provision permalink): the same
+   max-w-[1700px] content cap so the regulation page doesn't render visibly
+   narrower than the provision pages it links to. {% endcomment %}
+{% block content_width %}max-w-[1700px]{% endblock %}
 {% block content %}
-<div class="max-w-5xl mx-auto px-4 sm:px-8 py-8">
+<div class="px-4 sm:px-8 py-8">
 
     {% comment %} Citation-style header: mono overline (system answer), serif
        title with the reg number in mono, then a mono metadata row.  See
@@ -26,6 +30,47 @@
         </div>
     </div>
 
+    {% comment %} Two-pane body: a sticky clause INDEX (left) for jump-navigation
+       without scrolling the whole regulation, and ALL page content (editorial
+       note, commencement schedule, clause cards) in the right column — so they
+       share one sane reading measure rather than stretching across the full
+       1700px cap.  The index is a scroll-spy: the IntersectionObserver in x-init
+       tracks which clause card is at the top of the viewport and lights up its
+       index entry.  Desktop-only (hidden below lg); on narrow screens content
+       flows normally.  NB: no Django tags inside the x-init JS — see MEMORY
+       template gotcha. {% endcomment %}
+    <div class="mt-6 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8"
+         x-data="{ activeId: null }"
+         x-init="
+            const obs = new IntersectionObserver((entries) => {
+                entries.forEach((e) => { if (e.isIntersecting) activeId = e.target.id; });
+            }, { rootMargin: '-12% 0px -78% 0px', threshold: 0 });
+            $el.querySelectorAll('[data-clause-anchor]').forEach((el) => obs.observe(el));
+         ">
+
+        {% comment %} Clause index — sticky, independently scrollable.  A staggered
+           (deferred-commencement) clause gets a small highlight dot. {% endcomment %}
+        <nav aria-label="Clauses" class="hidden lg:block sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-y-auto pr-1">
+            <div class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3 mb-2">
+                Clauses ({{ clauses|length }})
+            </div>
+            <div class="space-y-0.5">
+                {% for clause in clauses %}
+                <a href="#clause-{{ clause.pk }}"
+                   @click="activeId = 'clause-{{ clause.pk }}'"
+                   :class="activeId === 'clause-{{ clause.pk }}' ? 'border-secondary bg-secondary-soft text-ink' : 'border-transparent text-ink-3 hover:text-ink hover:border-rule'"
+                   class="flex items-center gap-1.5 border-l-2 pl-2.5 pr-1 py-1 font-mono text-[11px] leading-tight transition-colors">
+                    <span class="truncate">cl. {{ clause.clause_id }}</span>
+                    {% if clause.is_staggered %}<span class="ml-auto shrink-0 text-highlight" title="Deferred commencement">&bull;</span>{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+        </nav>
+
+        {% comment %} Content column — every page-level block lives here so it
+           aligns with the clause cards at one width. {% endcomment %}
+        <div class="min-w-0">
+
     {% comment %} A base regulation's enactment isn't stored as clauses — that
        text becomes the v0 provision versions directly. The only clauses it has
        are its self-amending tail (transition / deferred-commencement directives
@@ -41,22 +86,74 @@
     </div>
     {% endif %}
 
-    {% comment %} Clauses — amendment text reads as the main column (serif, with
-       a ruled spine); identifying metadata (clause id, action, targets,
+    {% comment %} Commencement schedule — a regulation's blanket effective_date
+       is only its DEFAULT commencement; Ontario regs routinely stagger later
+       in-force dates for specific provisions.  Shown only when the reg actually
+       has a deferred (non-default) date — otherwise the header's EFFECTIVE date
+       is the whole story.  Rows are shaped in views._commencement_schedule
+       (sorted by date, default first, provisions split from their division). {% endcomment %}
+    {% if has_staggered_commencement %}
+    <div class="mt-6 border border-secondary bg-secondary-soft px-4 py-3">
+        <div class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary mb-1.5">Commencement schedule</div>
+        <p class="text-[12.5px] leading-[1.5] text-ink-2 mb-3">
+            This regulation comes into force in stages — some provisions are deferred past its
+            effective date of {{ regulation.effective_date|date:"j F Y" }}.
+        </p>
+        <ul class="space-y-2.5">
+            {% for row in commencement %}
+            <li class="border-l-2 {% if row.is_default %}border-rule{% else %}border-highlight{% endif %} pl-3">
+                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span class="font-serif text-[15px] font-semibold text-ink">{{ row.date|date:"j F Y" }}</span>
+                    {% if row.is_default %}
+                    <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-ink-3 border border-rule px-1.5 py-0.5">Default</span>
+                    {% else %}
+                    <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-highlight border border-highlight px-1.5 py-0.5">Deferred</span>
+                    {% endif %}
+                    {% if row.provisions %}
+                    <span class="font-sans text-[11.5px] text-ink-2">
+                        {% for p in row.provisions %}<span class="font-mono">{{ p.provision_id }}{% if p.division %}<span class="text-ink-3">&nbsp;Div&nbsp;{{ p.division }}</span>{% endif %}</span>{% if not forloop.last %}<span class="text-ink-3">,</span> {% endif %}{% endfor %}
+                    </span>
+                    {% endif %}
+                </div>
+                {% if row.text %}<p class="mt-1 font-serif text-[12.5px] leading-[1.5] text-ink-3">{{ row.text }}</p>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% comment %} Clause cards — amendment text reads as the main column (serif,
+       with a ruled spine); identifying metadata (clause id, action, targets,
        provenance) sits in a 240px margin note.  The bulky source-document image
        spans full width below both columns, sharing one Alpine toggle. {% endcomment %}
-    {% for clause in clauses %}
-    <div id="clause-{{ clause.pk }}"
-         class="scroll-mt-24 border-b border-rule-2 py-[22px] target:bg-secondary-soft"
-         x-data="{ showSource: false }">
-        <div class="grid gap-7 md:grid-cols-[1fr_240px]">
+        {% for clause in clauses %}
+        <div id="clause-{{ clause.pk }}" data-clause-anchor
+             class="scroll-mt-24 border-b border-rule-2 py-[22px] target:bg-secondary-soft"
+             x-data="{ showSource: false }">
+            <div class="grid gap-7 md:grid-cols-[1fr_240px]">
 
             {% comment %} Main column: the actual amendment text (verbatim
                e-Laws HTML, block-level, so |safe in a div, never a p).  See
-               feedback_no_html_sanitisation.md. {% endcomment %}
+               feedback_no_html_sanitisation.md.  The text is height-capped with a
+               fade + "Show full text" toggle (mirrors _result_document_block) so a
+               long clause doesn't dominate the page, and ``overflow-x-auto`` keeps
+               wide e-Laws tables scrolling INSIDE the column instead of bleeding
+               over the margin note.  The toggle only appears when content actually
+               overflows the cap (measured once in x-init). {% endcomment %}
             <div class="min-w-0 border-l-2 border-rule pl-[18px]">
                 {% if clause.clause_text %}
-                <div class="font-serif text-base leading-[1.6] text-ink-2 provision-content">{{ clause.clause_text|safe }}</div>
+                <div x-data="{ expanded: false, overflowing: false }"
+                     x-init="$nextTick(() => overflowing = $refs.body.scrollHeight > $refs.body.clientHeight + 4)">
+                    <div x-ref="body" class="relative overflow-x-auto overflow-y-hidden"
+                         :style="{ maxHeight: expanded ? 'none' : '24rem' }">
+                        <div class="font-serif text-base leading-[1.6] text-ink-2 provision-content">{{ clause.clause_text|safe }}</div>
+                        <div x-show="!expanded && overflowing" x-cloak
+                             class="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-surface to-transparent"></div>
+                    </div>
+                    <button type="button" x-show="overflowing" x-cloak @click.stop="expanded = !expanded"
+                        class="mt-1.5 font-mono text-[10px] uppercase tracking-[0.06em] text-secondary hover:text-secondary-2 cursor-pointer"
+                        x-text="expanded ? 'Collapse' : 'Show full text'"></button>
+                </div>
                 {% else %}
                 <p class="font-serif text-sm italic text-ink-3">No clause text recorded.</p>
                 {% endif %}
@@ -74,6 +171,19 @@
                         {% if clause.action == 'revoke' or clause.action == 'revoke_and_substitute' %}text-strike border-strike{% elif clause.action == 'amend_add' %}text-insert border-insert{% else %}text-ink-2 border-rule{% endif %}">{{ clause.get_action_display }}</span>
                     {% endif %}
                 </div>
+
+                {% comment %} Clause commencement — the date this directive comes
+                   into force.  When it's later than the regulation's blanket
+                   effective date the clause is "deferred" (staggered): flagged
+                   in highlight.  ``is_staggered`` is computed in the view so the
+                   template makes no date comparison of its own. {% endcomment %}
+                {% if clause.effective_date %}
+                <div class="mb-[10px] flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3">In force</span>
+                    <span class="font-mono text-[11.5px] {% if clause.is_staggered %}font-semibold text-highlight{% else %}text-ink-2{% endif %}">{{ clause.effective_date|date:"Y-m-d" }}</span>
+                    {% if clause.is_staggered %}<span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-highlight border border-highlight px-1 py-0.5">Deferred</span>{% endif %}
+                </div>
+                {% endif %}
 
                 {% comment %} The strike→substitute redline sits in the margin
                    note with the other metadata (not the main column).  Still
@@ -164,10 +274,12 @@
         </div>
         {% endif %}
     </div>
-    {% empty %}
-    <div class="text-center py-8 text-ink-3">
-        <p>No clauses recorded for this regulation.</p>
-    </div>
-    {% endfor %}
+        {% empty %}
+        <div class="text-center py-8 text-ink-3">
+            <p>No clauses recorded for this regulation.</p>
+        </div>
+        {% endfor %}
+        </div>{# /content column #}
+    </div>{# /index + content grid #}
 </div>
 {% endblock %}

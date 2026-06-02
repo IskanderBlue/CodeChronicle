@@ -56,6 +56,123 @@ class TestRegulationDetailView:
         assert response.status_code == 404
 
 
+@pytest.fixture
+def staggered_reg(db):
+    """A regulation with staggered commencement: a default in-force date plus
+    a deferred record, and one on-time + one deferred clause."""
+    code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    edition = CodeEdition.objects.create(
+        code=code, edition_id="2012", year=2012,
+        effective_date=date(2014, 1, 1),
+    )
+    reg = Regulation.objects.create(
+        reg_id="332/12", edition=edition, role="base",
+        effective_date=date(2014, 1, 1),
+        commencement=[
+            {
+                "clause": "4.4.1.1(1)", "is_default": True,
+                "effective_date": "2014-01-01", "resolved_provisions": [],
+                "commencement_clause": "This Regulation comes into force on "
+                                       "January 1, 2014.",
+            },
+            {
+                "clause": "4.4.1.1(2)", "is_default": False,
+                "effective_date": "2016-01-01",
+                "resolved_provisions": ["4.2.1.1.(1).|C", "4.2.1.1.(4).|C"],
+                "commencement_clause": "Sentences 4.2.1.1.(1) and (4) come into "
+                                       "force on January 1, 2016.",
+            },
+        ],
+    )
+    RegulationClause.objects.create(
+        regulation=reg, clause_id="0_on_time", target_id="1.1.1.1.",
+        effective_date=date(2014, 1, 1), clause_text="on-time clause",
+    )
+    RegulationClause.objects.create(
+        regulation=reg, clause_id="1_deferred", target_id="4.2.1.1.",
+        effective_date=date(2016, 1, 1), clause_text="deferred clause",
+        add_text="(FT1 Rating)", add_anchor="after:CSA",
+        directives=[{"action": "amend_add", "target_id": "1.10.2.3.(2)"}],
+    )
+    return reg
+
+
+@pytest.mark.django_db
+class TestCommencementDisplay:
+    """The regulation's staggered commencement schedule and each clause's
+    own in-force date surface on the detail page."""
+
+    def test_schedule_renders_when_staggered(self, client: Client, staggered_reg):
+        response = client.get(f"/regulation/{staggered_reg.pk}/")
+        content = response.content.decode()
+        assert "Commencement schedule" in content
+        assert "1 January 2016" in content          # the deferred in-force date
+        assert "Deferred" in content
+        assert "4.2.1.1.(1)." in content            # a resolved provision
+        assert "Div&nbsp;C" in content              # its division, split from the ref
+
+    def test_clause_shows_own_in_force_date(self, client: Client, staggered_reg):
+        response = client.get(f"/regulation/{staggered_reg.pk}/")
+        content = response.content.decode()
+        assert "In force" in content
+        assert "2016-01-01" in content              # deferred clause's date
+        # The deferred clause is flagged in highlight; the on-time one is not.
+        assert "text-highlight" in content
+
+    def test_no_schedule_when_only_default(self, client: Client, db):
+        code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+        edition = CodeEdition.objects.create(
+            code=code, edition_id="2012", year=2012,
+            effective_date=date(2014, 1, 1),
+        )
+        reg = Regulation.objects.create(
+            reg_id="999/12", edition=edition, role="base",
+            effective_date=date(2014, 1, 1),
+            commencement=[
+                {
+                    "clause": "x(1)", "is_default": True,
+                    "effective_date": "2014-01-01", "resolved_provisions": [],
+                    "commencement_clause": "Comes into force on January 1, 2014.",
+                },
+            ],
+        )
+        RegulationClause.objects.create(
+            regulation=reg, clause_id="1", target_id="1.1.1.1.",
+            effective_date=date(2014, 1, 1), clause_text="c",
+        )
+        response = client.get(f"/regulation/{reg.pk}/")
+        content = response.content.decode()
+        # No deferred record → the header's EFFECTIVE date is the whole story.
+        assert "Commencement schedule" not in content
+
+
+@pytest.mark.django_db
+class TestClauseIndexAndOverflow:
+    """The detail page carries a sticky scroll-spy clause index (jump
+    navigation) and caps long clause text behind an expand toggle."""
+
+    def test_index_lists_each_clause(self, client: Client, staggered_reg):
+        response = client.get(f"/regulation/{staggered_reg.pk}/")
+        content = response.content.decode()
+        assert 'aria-label="Clauses"' in content
+        # One jump link in the index per clause card.
+        assert content.count('href="#clause-') == 2
+        for clause in staggered_reg.clauses.all():
+            assert f'href="#clause-{clause.pk}"' in content
+        # Cards are observable, and the scroll-spy is wired.
+        assert "data-clause-anchor" in content
+        assert "IntersectionObserver" in content
+
+    def test_long_content_is_collapsible_and_scrollable(
+        self, client: Client, staggered_reg,
+    ):
+        response = client.get(f"/regulation/{staggered_reg.pk}/")
+        content = response.content.decode()
+        # Expand toggle + horizontal-scroll containment for wide e-Laws tables.
+        assert "Show full text" in content
+        assert "overflow-x-auto" in content
+
+
 @pytest.mark.django_db
 class TestEditionChainView:
     def test_renders_chain(self, client: Client, regulation_fixtures):
