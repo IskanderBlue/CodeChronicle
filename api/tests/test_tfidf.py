@@ -21,7 +21,7 @@ def edition_with_provisions(db):
     ProvinceCode.objects.create(province="ON", code=code)
     edition = CodeEdition.objects.create(
         code=code, edition_id="2024", year=2024,
-        effective_date=date(2024, 1, 1), map_codes=[],
+        effective_date=date(2024, 1, 1),
     )
     prov_a = CodeEditionProvision.objects.create(
         edition=edition, provision_id="3.1.1.1.", level="article",
@@ -129,7 +129,7 @@ def test_raw_query_splits_direct_from_llm_added_terms():
     ProvinceCode.objects.create(province="ON", code=code)
     edition = CodeEdition.objects.create(
         code=code, edition_id="2024", year=2024,
-        effective_date=date(2024, 1, 1), map_codes=[],
+        effective_date=date(2024, 1, 1),
     )
     prov = CodeEditionProvision.objects.create(
         edition=edition, provision_id="1.4.1.", level="article",
@@ -167,7 +167,7 @@ def test_full_typed_match_not_diluted_by_llm_variants():
     ProvinceCode.objects.create(province="ON", code=code)
     edition = CodeEdition.objects.create(
         code=code, edition_id="2024", year=2024,
-        effective_date=date(2024, 1, 1), map_codes=[],
+        effective_date=date(2024, 1, 1),
     )
     prov = CodeEditionProvision.objects.create(
         edition=edition, provision_id="1.4.2.", level="article",

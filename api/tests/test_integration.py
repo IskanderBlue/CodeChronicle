@@ -21,8 +21,6 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
-    CodeMap,
-    CodeMapNode,
     ProvinceCode,
     SearchHistory,
 )
@@ -39,29 +37,8 @@ def _create_obc_fixtures():
         code=system,
         edition_id="2024",
         year=2024,
-        map_codes=["OBC_2024"],
         effective_date=date(2024, 1, 1),
         source="e-Laws",
-        source_url="https://www.ontario.ca/laws/regulation/120332",
-    )
-    code_map = CodeMap.objects.create(code_name="OBC_2024", map_code="OBC_2024")
-    CodeMapNode.objects.create(
-        code_map=code_map,
-        node_id="3.2.7.1.",
-        title="Fire Separations in Buildings Used for Major Occupancies",
-        html="<p>Every <em>building</em> shall have <strong>fire separations</strong>…</p>",
-        keyword_counts={"fire": 1, "separations": 1, "major": 1, "occupancy": 1},
-        parent_id="3.2.7.",
-        division="B",
-    )
-    CodeMapNode.objects.create(
-        code_map=code_map,
-        node_id="3.2.7.2.",
-        title="Minimum Fire-Resistance Rating",
-        html="<p>The minimum fire-resistance rating required…</p>",
-        keyword_counts={"fire": 1, "resistance": 1, "rating": 1},
-        parent_id="3.2.7.",
-        division="B",
     )
 
     # Provision + version records for the new search pipeline
@@ -102,7 +79,7 @@ def _create_obc_fixtures():
         keyword_counts={"fire": 1, "resistance": 1, "rating": 1},
     )
 
-    return system, edition, code_map
+    return system, edition
 
 
 def _create_nbc_fixtures():
@@ -115,23 +92,7 @@ def _create_nbc_fixtures():
         code=system,
         edition_id="2025",
         year=2025,
-        map_codes=["NBC"],
         effective_date=date(2025, 3, 21),
-        pdf_files={"NBC": "NBC2025p1.pdf"},
-        download_url="https://nrc-publications.canada.ca/nbc2025",
-    )
-    code_map = CodeMap.objects.create(code_name="NBC_2025", map_code="NBC")
-    CodeMapNode.objects.create(
-        code_map=code_map,
-        node_id="9.10.14.1.",
-        title="Application",
-        page=710,
-        page_end=710,
-        initial_page_top=112.5,
-        final_page_bottom=305.2,
-        keyword_counts={"application": 1, "housing": 1, "small": 1, "buildings": 1},
-        parent_id="9.10.14.",
-        division="B",
     )
 
     # Provision + version records for the new search pipeline
@@ -156,7 +117,7 @@ def _create_nbc_fixtures():
         keyword_counts={"application": 1, "housing": 1, "small": 1, "buildings": 1},
     )
 
-    return system, edition, code_map
+    return system, edition
 
 
 @pytest.mark.integration
@@ -255,32 +216,17 @@ class TestTransitionContextInOverlapWindow:
             code=system,
             edition_id="2018",
             year=2018,
-            map_codes=["BCBC_2018"],
             effective_date=date(2018, 12, 10),
-            superseded_date=date(2025, 3, 10),
+            ineffective_date=date(2025, 3, 10),
         )
         new_edition = CodeEdition.objects.create(
             code=system,
             edition_id="2024",
             year=2024,
-            map_codes=["BCBC_2024"],
             effective_date=date(2024, 3, 8),
         )
 
-        old_map = CodeMap.objects.create(code_name="BCBC_2018", map_code="BCBC_2018")
-        new_map = CodeMap.objects.create(code_name="BCBC_2024", map_code="BCBC_2024")
-
-        for code_map in (old_map, new_map):
-            CodeMapNode.objects.create(
-                code_map=code_map,
-                node_id="3.2.9.",
-                title="Fire Separations",
-                keyword_counts={"fire": 1, "separations": 1},
-                parent_id="3.2.",
-                division="B",
-            )
-
-        # Provision + version for old edition (in force until superseded_date)
+        # Provision + version for old edition (in force until ineffective_date)
         old_provision = CodeEditionProvision.objects.create(
             edition=old_edition,
             provision_id="3.2.9.",

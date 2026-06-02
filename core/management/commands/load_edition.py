@@ -44,8 +44,7 @@ class Command(BaseCommand):
     help = "Load a CCM consolidated edition JSON into provenance models."
 
     #: Default location of CCM's consolidated edition JSON output, mirroring
-    #: load_maps/sync_images.  A bare ``load_edition`` loads DEFAULT_FILE from
-    #: here.
+    #: sync_images.  A bare ``load_edition`` loads DEFAULT_FILE from here.
     DEFAULT_SOURCE_DIR = Path("..") / "CodeChronicleMapping" / "data" / "outputs"
     #: The only edition currently in scope to load (OBC 2012).
     DEFAULT_FILE = "OBC_2012.json"
@@ -180,7 +179,6 @@ class Command(BaseCommand):
                 "effective_date": _require_date(data.get("effective_date"), "effective_date"),
                 "ineffective_date": _parse_date(data.get("ineffective_date")),
                 "amendment_chain_complete": data.get("amendment_chain_complete", False),
-                "map_codes": data.get("map_codes", []),
             },
         )
 

@@ -8,15 +8,14 @@
        not a filled pill.  See design handoff README §"Regulation CHAIN". {% endcomment %}
     <div class="border-b border-rule pb-[18px] mb-7">
         <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary">
-            {{ edition.code.code }} {{ edition.edition_id }}{% if edition.regulation %}
-            <span class="text-ink-3">&middot; {{ edition.regulation }}</span>{% endif %}
+            {{ edition.code.code }} {{ edition.edition_id }}
         </div>
         <h1 class="mt-2 font-serif text-[30px] font-bold tracking-[-0.01em] text-ink">Amendment chain</h1>
         <div class="mt-2 flex flex-wrap items-center gap-x-[14px] gap-y-1 font-mono text-[11px] tracking-[0.04em] text-ink-3">
             <span>EFFECTIVE &middot; {{ edition.effective_date|date:"Y-m-d" }}</span>
-            {% if edition.superseded_date %}
+            {% if edition.ineffective_date %}
             <span class="text-rule">&middot;</span>
-            <span>SUPERSEDED &middot; {{ edition.superseded_date|date:"Y-m-d" }}</span>
+            <span>SUPERSEDED &middot; {{ edition.ineffective_date|date:"Y-m-d" }}</span>
             {% endif %}
             <span class="text-rule">&middot;</span>
             {% if edition.amendment_chain_complete %}
@@ -63,11 +62,11 @@
         {% endfor %}
 
         {# Revocation marker at the foot, if the edition is superseded. #}
-        {% if edition.superseded_date %}
+        {% if edition.ineffective_date %}
         <div class="relative pl-[34px] pt-0.5">
             <div class="absolute left-0 top-[5px] w-[11px] h-[11px] rounded-full bg-strike border-2 border-strike box-border"></div>
             <div class="font-mono text-xs font-semibold uppercase tracking-[0.04em] text-strike">
-                Superseded &middot; {{ edition.superseded_date|date:"Y-m-d" }}
+                Superseded &middot; {{ edition.ineffective_date|date:"Y-m-d" }}
             </div>
         </div>
         {% endif %}

@@ -5,8 +5,6 @@ from .models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
-    CodeMap,
-    CodeMapNode,
     EngagementEvent,
     ProvinceCode,
     ProvisionMapping,
@@ -50,8 +48,6 @@ class EngagementEventAdmin(admin.ModelAdmin):
 
 admin.site.register(Code)
 admin.site.register(CodeEdition)
-admin.site.register(CodeMap)
-admin.site.register(CodeMapNode)
 admin.site.register(ProvinceCode)
 admin.site.register(Regulation)
 admin.site.register(RegulationClause)

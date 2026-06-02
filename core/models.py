@@ -5,9 +5,7 @@ Core models for CodeChronicle.
 from typing import TYPE_CHECKING
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from django.contrib.postgres.fields import ArrayField
-from django.contrib.postgres.indexes import GinIndex
-from django.db import connection, models
+from django.db import models
 from django.utils import timezone
 
 from core.provision_notes import GroupedNotes, group_notes
@@ -242,67 +240,6 @@ class EngagementEvent(models.Model):
         return f"{who}: {self.event_type} {self.object_type}#{self.object_id}"
 
 
-class CodeMap(models.Model):
-    """
-    Top-level map record that stores map identity for a specific code edition.
-    """
-
-    code_name = models.CharField(max_length=100)
-    map_code = models.CharField(max_length=100, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "code_maps"
-        verbose_name = "Code Map"
-        verbose_name_plural = "Code Maps"
-
-    def __str__(self):
-        return f"{self.map_code} ({self.code_name})"
-
-
-class CodeMapNode(models.Model):
-    """
-    Disaggregated map content for a specific section node.
-    """
-
-    code_map = models.ForeignKey(CodeMap, on_delete=models.CASCADE, related_name="nodes")
-    node_id = models.CharField(max_length=200)
-    title = models.CharField(max_length=500)
-    page = models.IntegerField(null=True, blank=True)
-    page_end = models.IntegerField(null=True, blank=True)
-    initial_page_top = models.FloatField(null=True, blank=True)
-    final_page_bottom = models.FloatField(null=True, blank=True)
-    html = models.TextField(null=True, blank=True)
-    notes_html = models.TextField(null=True, blank=True)
-    keyword_counts = models.JSONField(
-        null=True,
-        blank=True,
-        help_text='{"keyword": count} — term frequency per node',
-    )
-    parent_id = models.CharField(max_length=200, null=True, blank=True)
-    division = models.CharField(max_length=10, default="", blank=True)
-    provision_transitions = models.JSONField(null=True, blank=True)
-
-    class Meta:
-        db_table = "code_map_nodes"
-        verbose_name = "Code Map Node"
-        verbose_name_plural = "Code Map Nodes"
-        indexes = [
-            models.Index(fields=["node_id"], name="code_mapnode_node_id_idx"),
-            GinIndex(fields=["keyword_counts"], name="code_mapnode_kwcounts_gin"),
-        ]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["code_map", "node_id", "division"], name="code_map_node_unique"
-            ),
-        ]
-
-    def __str__(self):
-        prefix = f"{self.division}-" if self.division else ""
-        return f"{self.code_map.map_code}:{prefix}{self.node_id}"
-
-
 class Code(models.Model):
     """
     A building code system (e.g., OBC, NBC).
@@ -339,19 +276,11 @@ class CodeEdition(models.Model):
     code = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="editions")
     edition_id = models.CharField(max_length=50)
     year = models.IntegerField()
-    map_codes = ArrayField(models.CharField(max_length=100))
     effective_date = models.DateField()
-    superseded_date = models.DateField(null=True, blank=True)
     ineffective_date = models.DateField(null=True, blank=True)
     amendment_chain_complete = models.BooleanField(default=False)
-    pdf_files = models.JSONField(null=True, blank=True)
-    download_url = models.CharField(max_length=500, blank=True, default="")
-    amendments = models.JSONField(null=True, blank=True)
-    regulation = models.CharField(max_length=200, blank=True, default="")
     version_number = models.IntegerField(null=True, blank=True)
     source = models.CharField(max_length=50, blank=True, default="")
-    source_url = models.CharField(max_length=500, blank=True, default="")
-    amendments_applied = models.JSONField(null=True, blank=True)
     is_guide = models.BooleanField(default=False)
 
     class Meta:
@@ -811,25 +740,6 @@ class ProvisionMapping(models.Model):
         return f"{self.old_provision} → {self.new_provision} ({self.mapping_type})"
 
 
-class KeywordIDF(models.Model):
-    """Unmanaged model backed by the keyword_idf materialized view."""
-
-    map_code = models.CharField(max_length=100)
-    keyword = models.CharField(max_length=100)
-    doc_count = models.IntegerField()
-    total_docs = models.IntegerField()
-    idf = models.FloatField()
-
-    class Meta:
-        managed = False
-        db_table = "keyword_idf"
-
-    @classmethod
-    def refresh(cls) -> None:
-        with connection.cursor() as cursor:
-            cursor.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY keyword_idf;")
-
-
 class CorpusCurrency(models.Model):
     """Precomputed masthead provenance stamp — one row (a singleton).
 
@@ -906,7 +816,6 @@ class CorpusCurrency(models.Model):
         agg = prov_editions.aggregate(
             first_eff=Min("effective_date"),
             last_end=Max("ineffective_date"),
-            last_superseded=Max("superseded_date"),
         )
         first_eff = agg["first_eff"]
 
@@ -916,7 +825,7 @@ class CorpusCurrency(models.Model):
         if first_eff:
             # The corpus's coverage closes when its latest edition ceased to be
             # in force; None on both means it's still the current edition.
-            end = agg["last_end"] or agg["last_superseded"]
+            end = agg["last_end"]
             if end:
                 last_covered = end - timedelta(days=1)  # exclusive boundary
                 span = f"{_fmt(first_eff)} – {_fmt(last_covered)}"

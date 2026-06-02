@@ -307,7 +307,7 @@ def test_format_single_result_marks_structural_headings(monkeypatch):
     system = Code.objects.create(code="OBC", display_name="OBC", is_national=False)
     edition = CodeEdition.objects.create(
         code=system, edition_id="2024", year=2024,
-        map_codes=["OBC_2024"], effective_date=date(2024, 1, 1), source="e-Laws",
+        effective_date=date(2024, 1, 1), source="e-Laws",
     )
     subsection = CodeEditionProvision.objects.create(
         edition=edition, provision_id="1.3.7.", level="subsection", division="C",

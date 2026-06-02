@@ -22,7 +22,6 @@ def obc_setup(db):
         code=code,
         edition_id="2024",
         year=2024,
-        map_codes=["OBC_Vol1"],
         effective_date=date(2024, 1, 1),
     )
 
@@ -184,7 +183,6 @@ class TestExecuteSearchTransitions:
             code=code,
             edition_id="2024",
             year=2024,
-            map_codes=["BCBC"],
             effective_date=date(2024, 1, 1),
         )
 
@@ -257,7 +255,6 @@ class TestExecuteSearchDateFiltering:
             code=code,
             edition_id="2025",
             year=2025,
-            map_codes=["NBC"],
             effective_date=date(2025, 1, 1),
         )
 
@@ -293,7 +290,6 @@ class TestExecuteSearchDateFiltering:
             code=code,
             edition_id="2020",
             year=2020,
-            map_codes=["NBC"],
             effective_date=date(2020, 1, 1),
         )
 

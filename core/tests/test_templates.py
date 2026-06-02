@@ -26,7 +26,7 @@ def elaws_version(db):
     code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
     edition = CodeEdition.objects.create(
         code=code, edition_id="2012", year=2012,
-        effective_date=date(2012, 1, 1), map_codes=[],
+        effective_date=date(2012, 1, 1),
     )
     provision = CodeEditionProvision.objects.create(
         edition=edition,
@@ -329,22 +329,41 @@ def test_transition_compare_card_renders_transition_text():
 
 
 def test_provenance_banner_shows_amendment_info():
-    """When a result has a clause, the provenance banner shows amendment details."""
+    """An amended provision's banner shows the in-force band plus the amendment
+    chain: the amending clause (from the chain entry's last_contributing_clause)
+    and the base regulation."""
     from datetime import date
 
     class MockRegulation:
+        pk = None  # falsy → template renders plain text, no url reversal
         reg_id = "22/98"
         effective_date = date(1998, 4, 6)
 
     class MockClause:
+        pk = 1
         regulation = MockRegulation()
         clause_id = "1.(1)"
 
     class MockBaseReg:
+        pk = None
         reg_id = "403/97"
 
-    class MockVersion:
+    class MockBaseEntry:
+        pk = 10
+        version = 0
+        effective_date = date(1997, 11, 20)
+        last_contributing_clause = None  # base entry has no amending clause
+
+    class MockAmendedEntry:
+        pk = 11
+        version = 1
         effective_date = date(1998, 4, 6)
+        last_contributing_clause = MockClause()
+
+    class MockVersion:
+        pk = 11  # matches the amended chain entry → highlighted as current
+        effective_date = date(1998, 4, 6)
+        ineffective_date = None
 
     html = render_to_string(
         "partials/_provenance_banner.html",
@@ -354,8 +373,10 @@ def test_provenance_banner_shows_amendment_info():
                 "is_base": False,
                 "version": MockVersion(),
                 "base_regulation": MockBaseReg(),
+                "amendment_chain": [MockBaseEntry(), MockAmendedEntry()],
+                "next_version": None,
+                "division": "",  # falsy → skip per-version permalink cross-links
                 "code_display_name": "Ontario Building Code 1997",
-                "division": "Division A",
                 "id": "1.1.3.2.",
                 "title": "Definitions",
             },
@@ -364,7 +385,7 @@ def test_provenance_banner_shows_amendment_info():
 
     assert "22/98" in html
     assert "1.(1)" in html
-    assert "Amended" in html
+    assert "amended" in html  # band label: "In force · amended"
     assert "In force" in html
     assert "403/97" in html
 

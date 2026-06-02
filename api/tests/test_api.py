@@ -29,7 +29,6 @@ class TestApiEndpoints:
             code=nbc,
             edition_id="2025",
             year=2025,
-            map_codes=["NBC"],
             effective_date=date(2025, 1, 1),
         )
 

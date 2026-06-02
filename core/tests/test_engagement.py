@@ -24,7 +24,7 @@ def provision_fixtures(db):
     code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
     edition = CodeEdition.objects.create(
         code=code, edition_id="1997", year=1997,
-        effective_date=date(1998, 4, 6), map_codes=[],
+        effective_date=date(1998, 4, 6),
     )
     provision = CodeEditionProvision.objects.create(
         edition=edition, provision_id="1.1.1.1.", level="article", division="",

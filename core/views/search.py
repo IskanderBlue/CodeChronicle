@@ -10,12 +10,7 @@ from django.shortcuts import render
 from django.views.decorators.http import require_POST
 
 from api.formatters import _code_order_key, highlight_terms
-from config.code_metadata import (
-    get_code_display_name,
-    get_download_url,
-    get_pdf_filename,
-    get_source_url,
-)
+from config.code_metadata import get_code_display_name
 from core.events import record_event
 from core.ip_utils import extract_client_ip
 from core.models import (
@@ -97,9 +92,6 @@ def _build_viewer_url_params(
         ),
         "edition_id": edition.edition_id,
         "division": provision.division,
-        "pdf_filename": get_pdf_filename(code_name, "") or "",
-        "pdf_download_url": get_download_url(code_name) or "",
-        "source_url": get_source_url(code_name) or "",
         "query_date": query_date,
         "query_code": query_code,
     }
@@ -208,9 +200,6 @@ def viewer_edition_dates(request: HttpRequest):
                 edition.ineffective_date.isoformat()
                 if edition.ineffective_date else None
             )
-            # Legacy field kept for template compatibility; will drop with
-            # the load_maps cleanup card.
-            edition_info["superseded_date"] = edition_info["ineffective_date"]
             edition_info["code_name"] = code
             edition_info["code_display_name"] = (
                 f"{get_code_display_name(edition.code.code)} {edition.edition_id}".strip()

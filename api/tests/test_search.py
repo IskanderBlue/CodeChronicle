@@ -21,7 +21,6 @@ def _create_obc_fixtures():
         code=obc,
         edition_id="2024",
         year=2024,
-        map_codes=["OBC_Vol1", "OBC_Vol2"],
         effective_date=date(2024, 1, 1),
     )
 
@@ -69,7 +68,6 @@ def test_execute_search_doors_fire_safety():
         code=obc,
         edition_id="2024",
         year=2024,
-        map_codes=["OBC_Vol1", "OBC_Vol2"],
         effective_date=date(2024, 1, 1),
     )
 
@@ -127,14 +125,12 @@ def test_get_applicable_codes_ontario_2026():
         code=obc,
         edition_id="2024",
         year=2024,
-        map_codes=["OBC_Vol1", "OBC_Vol2"],
         effective_date=date(2025, 1, 1),
     )
     CodeEdition.objects.create(
         code=nbc,
         edition_id="2025",
         year=2025,
-        map_codes=["NBC"],
         effective_date=date(2025, 1, 1),
     )
 
@@ -155,9 +151,7 @@ def test_get_applicable_codes_ontario_2010():
         code=obc,
         edition_id="2006_v01",
         year=2006,
-        map_codes=["OBC_2006_v01"],
         effective_date=date(2006, 1, 1),
-        superseded_date=date(2012, 1, 1),
         source="elaws",
     )
 

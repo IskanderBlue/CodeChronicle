@@ -118,7 +118,7 @@ Cross-edition:
 2. [Ingestion: load rewrite + image pipeline](2-ingestion.md)
 3. [Code paths: search, API, applicable codes](3-code-paths.md)
 4. [Display: provision view, provenance, regulation browsing](4-display.md)
-5. [Cleanup: drop old models and fields](5-cleanup.md)
+5. [Cleanup: drop old models and fields](5-cleanup.md) — ✅ done 2026-06-02
 
 CCM output contract: [ccm-output-contract.md](ccm-output-contract.md)
 

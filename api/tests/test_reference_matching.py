@@ -75,7 +75,7 @@ def edition_with_table(db):
     ProvinceCode.objects.create(province="ON", code=code)
     edition = CodeEdition.objects.create(
         code=code, edition_id="2024", year=2024,
-        effective_date=date(2024, 1, 1), map_codes=[],
+        effective_date=date(2024, 1, 1),
     )
     provision = CodeEditionProvision.objects.create(
         edition=edition, provision_id="3.1.4.", level="article",

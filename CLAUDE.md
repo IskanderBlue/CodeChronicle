@@ -34,13 +34,8 @@ ruff check --fix .
 python manage.py migrate
 python manage.py makemigrations
 
-# Load code metadata (DB-backed)
-python manage.py load_code_metadata --source config/metadata.json
-
-# Export code metadata to JSON
-
-# Load map JSONs into DB
-python manage.py load_maps --source ../CodeChronicleMapping/data/outputs
+# Load a CCM consolidated edition (provenance models) into the DB
+python manage.py load_edition --source ../CodeChronicleMapping/data/outputs
 
 # Start PostgreSQL
 docker-compose up -d
