@@ -31,17 +31,6 @@ def edition_json(tmp_path: Path) -> Path:
     return out
 
 
-def test_norm_clause_id_bridges_id_forms() -> None:
-    """The dotted ``resolved_clauses`` form, the ``s.``-prefixed source form,
-    and the bare ``clause_id`` form all collapse to one match key."""
-    from core.management.commands.load_edition import _norm_clause_id
-
-    assert _norm_clause_id("4.2.1.1.(1)") == _norm_clause_id("4.2.1.1(1)")
-    assert _norm_clause_id("s. 1.(1)") == _norm_clause_id("1(1)")
-    assert _norm_clause_id("Subsection 2 (2)") == _norm_clause_id("2(2)")
-    assert _norm_clause_id("161(2)") == "161(2)"  # already-bare unchanged
-
-
 @pytest.mark.django_db
 class TestLoadEdition:
     def test_creates_code_and_edition(self, edition_json: Path) -> None:
@@ -143,10 +132,10 @@ class TestLoadEdition:
     def test_resolves_clause_commencement_provenance(
         self, edition_json: Path, tmp_path: Path,
     ) -> None:
-        """Each clause is linked to the commencement entry that set its date,
-        matched through ``_norm_clause_id`` (resolved_clauses uses a dotted /
-        ``s.``-prefixed form the bare clause_id doesn't), with the default
-        entry covering clauses no deferred entry claims."""
+        """Each clause is linked to the commencement entry that set its date
+        (CCM normalises ``resolved_clauses`` to the ``clause_id`` form, so the
+        ids match directly), with the default entry covering clauses no
+        deferred entry claims."""
         data = json.loads(edition_json.read_text(encoding="utf-8"))
         for reg in data["regulations"]:
             if reg["reg_id"] == "22/98":
@@ -160,8 +149,8 @@ class TestLoadEdition:
                     {
                         "clause": "5(2)", "is_default": False,
                         "effective_date": "1999-01-01",
-                        # Prefixed + dotted form of clause_id "1.(1)".
-                        "resolved_clauses": ["s. 1.(1)"],
+                        # Normalised to the clause_id form CCM now emits.
+                        "resolved_clauses": ["1.(1)"],
                         "source": "parsed",
                         "commencement_clause": "Clause 1 in force on Jan 1, 1999.",
                     },
@@ -174,7 +163,7 @@ class TestLoadEdition:
         call_command("load_edition", "--source", str(out))
 
         reg = Regulation.objects.get(reg_id="22/98")
-        # Deferred clause linked to the non-default entry despite the id-form gap.
+        # Deferred clause linked to the non-default entry by its resolved id.
         deferred = RegulationClause.objects.get(regulation=reg, clause_id="1.(1)")
         assert deferred.commencement is not None
         assert deferred.commencement["is_default"] is False
