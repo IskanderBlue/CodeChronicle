@@ -156,15 +156,22 @@ def _group_transitions(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if newer_version and newer_version.transition_provision:
             transition_text = newer_version.transition_provision.html
 
+        # Both members carry the SAME new/old edition keys so the formatter
+        # groups them into one bucket and distinguishes them by their own
+        # ``code`` (== ``code_edition``).
+        new_edition = newer.get("code_edition", "")
+        old_edition = older.get("code_edition", "")
         newer["transition_context"] = {
             "is_primary": True,
             "transition_text": transition_text,
-            "other_edition": older.get("code_edition", ""),
+            "new_edition": new_edition,
+            "old_edition": old_edition,
         }
         older["transition_context"] = {
             "is_primary": False,
             "transition_text": transition_text,
-            "other_edition": newer.get("code_edition", ""),
+            "new_edition": new_edition,
+            "old_edition": old_edition,
         }
         output.append(newer)
         output.append(older)
@@ -259,17 +266,21 @@ def _merge_provision_mapping_transitions(
                 if tp:
                     transition_text = tp.html
 
+        new_edition = new_result.get("code_edition", "")
+        old_edition = old_result.get("code_edition", "")
         new_result["transition_context"] = {
             "is_primary": True,
             "transition_text": transition_text,
-            "other_edition": old_result.get("code_edition", ""),
+            "new_edition": new_edition,
+            "old_edition": old_edition,
             "same_edition": same_edition,
             "mapping_type": mapping.mapping_type,
         }
         old_result["transition_context"] = {
             "is_primary": False,
             "transition_text": transition_text,
-            "other_edition": new_result.get("code_edition", ""),
+            "new_edition": new_edition,
+            "old_edition": old_edition,
             "same_edition": same_edition,
             "mapping_type": mapping.mapping_type,
         }

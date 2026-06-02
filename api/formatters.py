@@ -822,7 +822,7 @@ def _nest_child_results(
     results_by_key: Dict[tuple[str, str, str], Dict[str, Any]] = {}
     for result in results:
         key = _nest_result_key(result)
-        if key[2]:  # has an id
+        if key[1]:  # has an id
             results_by_key[key] = result
 
     # Collect children per parent (only when the parent itself is also a result)
