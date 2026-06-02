@@ -28,6 +28,9 @@
 </p>
 {% endif %}
 
+{# Provenance & legal notes for this version (no permalink — already here). #}
+{% include "partials/_version_notes.html" with version=version %}
+
 {# Tables hang off the version. #}
 {% with version.tables.all as tables %}
 {% if tables %}

@@ -1,0 +1,92 @@
+{% comment %} Per-version provenance & legal notes.
+
+   Context:
+     version         — CodeEditionProvisionVersion (read via .grouped_notes)
+     show_permalink  — truthy on search results: offer a click-through to the
+                       standalone provision record (omitted on the record itself)
+     code_edition / division / provision_id — permalink params (search only)
+
+   Tiers (core/provision_notes.py): integrity caveat (prominent, strike-red),
+   reader annotation (prominent, serif), record (forensic, default-collapsed),
+   sourcing (one badge for the bulk e-Laws-snapshot notes).
+
+   NB: multi-line {# #} comments leak as literal text (tokenizer isn't
+   re.DOTALL) — use {% comment %} for anything spanning lines. {% endcomment %}
+{% with g=version.grouped_notes %}
+{% if g.has_any %}
+<div class="mt-4 space-y-2">
+
+    {% comment %} Integrity caveat — a directive the consolidation could not
+       apply, so the text above may be incomplete.  Strongest signal here:
+       strike-red ruled box + warning glyph, deliberately distinct from the
+       revoke band (circle-slash) so "incomplete" ≠ "revoked". {% endcomment %}
+    {% for note in g.integrity %}
+    <div class="border border-strike bg-surface-2">
+        <div class="flex items-center gap-2 border-b border-strike/40 bg-strike/10 px-3 py-1.5">
+            <svg class="h-4 w-4 shrink-0 text-strike" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a1 1 0 0 0 .86 1.5h18.64a1 1 0 0 0 .86-1.5L13.71 3.86a1 1 0 0 0-1.72 0z"/>
+            </svg>
+            <span class="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-strike">Record integrity &middot; may be incomplete</span>
+        </div>
+        <p class="px-3 py-2 font-mono text-[11px] leading-[1.6] text-ink-2">{{ note.text|safe }}</p>
+    </div>
+    {% endfor %}
+
+    {% comment %} Reader-facing legal annotation — an e-Laws consolidation note
+       (e.g. a scheduled future revocation).  Serif footnote in a secondary band,
+       the way the official consolidation prints its notes. {% endcomment %}
+    {% if g.annotation %}
+    <div class="border-l-[3px] border-secondary bg-secondary-soft px-3 py-2">
+        <p class="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-[0.1em] text-secondary">{{ g.annotation|length|pluralize:"Note,Notes" }}</p>
+        <div class="space-y-1.5 font-serif text-[13px] leading-[1.55] text-ink-2">
+            {% for note in g.annotation %}<p>{{ note.text|safe }}</p>{% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% comment %} Forensic record notes — editorial normalisations, gazette↔source
+       reconciliations, consolidation-method deferrals.  Default-collapsed; mono;
+       each tagged with its kind so an auditor can scan them. {% endcomment %}
+    {% if g.record %}
+    <div x-data="{ openNotes: false }">
+        <button type="button" @click.stop="openNotes = !openNotes"
+            class="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3 hover:text-ink">
+            <span class="text-[9px]" x-text="openNotes ? '▾' : '▸'"></span>
+            Record notes ({{ g.record|length }})
+        </button>
+        <div x-show="openNotes" x-cloak class="mt-1.5 space-y-1.5 border-l border-rule pl-3">
+            {% for note in g.record %}
+            <div class="font-mono text-[11px] leading-[1.55]">
+                <span class="mr-1.5 inline-block border border-rule px-1 py-px text-[8.5px] uppercase tracking-[0.06em] text-ink-3">{{ note.label }}</span>
+                <span class="text-ink-2">{{ note.text|safe }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% comment %} Sourcing badge — the displayed text was taken verbatim from the
+       e-Laws consolidated snapshot (text-equivalent to the gazette reconstruction).
+       Collapses thousands of identical machine notes to one chip. {% endcomment %}
+    {% if g.sourced %}
+    <p class="inline-flex items-center gap-1.5 border border-rule px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.06em] text-ink-3">
+        <span class="inline-block h-1.5 w-1.5 rounded-full bg-secondary"></span>
+        Text &middot; e-Laws consolidated snapshot
+    </p>
+    {% endif %}
+
+    {% comment %} Click-through to the standalone provision record (search only;
+       on the record itself we are already here). {% endcomment %}
+    {% if show_permalink and division %}
+    <p>
+        <a href="{% url 'core:provision_permalink' code_edition division provision_id version.version %}" @click.stop
+           class="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.06em] text-secondary hover:text-secondary-2 hover:underline">
+            Open full provision record
+            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17 17 7M9 7h8v8"/></svg>
+        </a>
+    </p>
+    {% endif %}
+
+</div>
+{% endif %}
+{% endwith %}

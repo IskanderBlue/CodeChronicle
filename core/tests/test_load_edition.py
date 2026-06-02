@@ -177,6 +177,72 @@ class TestLoadEdition:
         tbl = ProvisionVersionTable.objects.get(table_id="Table-3.1.4.7.")
         assert tbl.html == ""
 
+    def test_version_notes_stored_on_ingest(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """Producer-tagged ``{kind, text}`` notes are validated and stored."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        injected = False
+        for prov in data["provisions"]:
+            if prov["provision_id"] == "3.1.4.7.":
+                prov["versions"][0]["notes"] = [
+                    {"kind": "annotation", "text": "Note: a legal annotation."},
+                    {"kind": "sourcing", "text": "html replaced with snapshot."},
+                    {"kind": "sourcing", "text": "   "},  # blank text — dropped
+                ]
+                injected = True
+        assert injected, "fixture missing expected provision"
+
+        with_notes = tmp_path / "OBC_1997_with_notes.json"
+        with_notes.write_text(json.dumps(data), encoding="utf-8")
+
+        call_command("load_edition", "--source", str(with_notes))
+
+        version = CodeEditionProvision.objects.get(
+            provision_id="3.1.4.7.", division="Division B",
+        ).versions.get(version=0)
+        assert version.notes == [
+            {"kind": "annotation", "text": "Note: a legal annotation."},
+            {"kind": "sourcing", "text": "html replaced with snapshot."},
+        ]
+        # The model property buckets them for rendering.
+        grouped = version.grouped_notes
+        assert len(grouped["annotation"]) == 1
+        assert grouped["sourced"] is True
+
+    def test_legacy_string_notes_rejected_on_ingest(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """A pre-classification ``list[str]`` artifact fails the load loudly."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        for prov in data["provisions"]:
+            if prov["provision_id"] == "3.1.4.7.":
+                prov["versions"][0]["notes"] = ["elaws-note: legacy string"]
+        legacy = tmp_path / "OBC_1997_legacy_notes.json"
+        legacy.write_text(json.dumps(data), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="tagged"):
+            call_command("load_edition", "--source", str(legacy))
+
+    def test_version_notes_default_empty(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """Versions without a ``notes`` key ingest with ``notes == []``."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        for prov in data["provisions"]:
+            for ver in prov.get("versions", []):
+                ver.pop("notes", None)
+        stripped = tmp_path / "OBC_1997_no_notes.json"
+        stripped.write_text(json.dumps(data), encoding="utf-8")
+
+        call_command("load_edition", "--source", str(stripped))
+
+        version = CodeEditionProvision.objects.get(
+            provision_id="3.1.4.7.", division="Division B",
+        ).versions.get(version=0)
+        assert version.notes == []
+        assert version.grouped_notes["has_any"] is False
+
     def test_version_count_updated(self, edition_json: Path) -> None:
         call_command("load_edition", "--source", str(edition_json))
 

@@ -23,6 +23,7 @@ from core.models import (
     RegulationAsset,
     RegulationClause,
 )
+from core.provision_notes import normalize_loaded_notes
 
 logger = Logger(__name__)
 
@@ -425,6 +426,7 @@ class Command(BaseCommand):
                     html=ver_data.get("html", ""),
                     page_images=ver_data.get("page_images"),
                     keyword_counts=ver_data.get("keyword_counts"),
+                    notes=normalize_loaded_notes(ver_data.get("notes")),
                 )
                 versions_to_create.append(version)
                 version_lookup[(provision_id, division, version_num)] = version

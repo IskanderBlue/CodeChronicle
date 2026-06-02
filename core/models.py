@@ -10,6 +10,8 @@ from django.contrib.postgres.indexes import GinIndex
 from django.db import connection, models
 from django.utils import timezone
 
+from core.provision_notes import GroupedNotes, group_notes
+
 
 class UserManager(BaseUserManager["User"]):
     """
@@ -575,6 +577,11 @@ class CodeEditionProvisionVersion(models.Model):
     html = models.TextField(blank=True, default="")
     page_images = models.JSONField(null=True, blank=True)
     keyword_counts = models.JSONField(null=True, blank=True)
+    # Provenance/annotation notes, shipped by CCM already tagged as
+    # ``[{"kind": ..., "text": ...}]`` (CCM owns the kind taxonomy) and stored
+    # verbatim — see ``core.provision_notes`` for the kind→display-tier map and
+    # the ``grouped_notes`` property.
+    notes = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "code_edition_provision_versions"
@@ -611,6 +618,17 @@ class CodeEditionProvisionVersion(models.Model):
             .last()
         )
         return last.clause if last else None
+
+    @property
+    def grouped_notes(self) -> GroupedNotes:
+        """Notes bucketed into display tiers for ``_version_notes.html``.
+
+        Cheap derivation over the small, pre-parsed ``notes`` list — the prefix
+        parsing itself ran once at load time (see ``core.provision_notes``), so
+        this only fans the tagged entries into annotation / integrity / record
+        / sourcing for rendering.
+        """
+        return group_notes(self.notes)
 
 
 class CodeEditionProvisionVersionClause(models.Model):

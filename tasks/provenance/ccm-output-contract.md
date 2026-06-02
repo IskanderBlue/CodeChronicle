@@ -223,6 +223,10 @@ Provision bboxes encompass the provision text plus any associated tables.
       "html": "<p>In this Code,</p><p>...amended...</p>",
       "page_images": [],
       "keyword_counts": {"fire": 3, "safety": 1, "sewage": 2},
+      "notes": [
+        {"kind": "annotation", "text": "Note: On March 31, 2023, ... is revoked. (See: O. Reg. 434/22, s. 1 (2))"},
+        {"kind": "sourcing", "text": "html replaced with e-Laws snapshot value (effective 1998-04-06); text-equivalent fingerprint match."}
+      ],
 
       "tables": []
     }
@@ -237,6 +241,32 @@ date (common: day-zero amendments filed simultaneously with the
 base regulation). Preserves the "as-filed" snapshot without
 claiming it was ever in force. Consumers that only want in-force
 windows can filter `v.ineffective_date == v.effective_date`.
+
+### `versions[].notes` (optional)
+
+Editorial annotations and provenance notes that accumulated on the
+source — pointers, not regulation text. Each entry is a tagged object
+`{"kind": <NoteKind>, "text": str}`; the list is omitted or `[]` when a
+version has none. **CCM owns the `kind` taxonomy** (it classifies every
+note at its consolidated-edition write boundary); CodeChronicle stores
+the list verbatim and maps `kind` → display tier. Consumers MUST route
+by `kind`, never by parsing the `text`.
+
+`kind` values:
+
+| `kind` | meaning | CC display tier |
+| --- | --- | --- |
+| `annotation` | reader-facing e-Laws consolidation note (e.g. a scheduled revocation) | prominent serif band |
+| `unapplied` | an amendment directive the applicator could **not** apply — the consolidated text may be incomplete | prominent integrity caveat |
+| `editorial` | CCM editorial normalisation / manual editor's note | forensic (collapsed) |
+| `reconciliation` | gazette↔source text/anchor reconciliation | forensic (collapsed) |
+| `presentation` | italics / presentation / table-layout drift | forensic (collapsed) |
+| `method` | consolidation-method diagnostic / deferral (un-prefixed divergence notes) | forensic (collapsed) |
+| `sourcing` | displayed text taken verbatim from the e-Laws snapshot (bulk) | one sourcing badge |
+
+An unrecognised future `kind` is rendered in the forensic tier rather
+than dropped. The bare-string form (`"elaws-note: …"`) is the legacy
+pre-classification shape and is **rejected** at ingest.
 
 ### Appendix provision example
 

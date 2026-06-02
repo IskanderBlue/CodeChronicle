@@ -88,6 +88,11 @@
 </div>
 {% endif %}
 
+{# Provenance & legal notes — caveats/annotations sit directly under the text. #}
+{% if result.version %}
+{% include "partials/_version_notes.html" with version=result.version show_permalink=True code_edition=result.code_edition division=result.division provision_id=result.id %}
+{% endif %}
+
 {# Tables — HTML form when available (e-Laws source), else image form. #}
 {% for table in result.tables %}
 <div class="mt-4 border-t border-rule pt-3" x-data="{ open: {% if shared_expand %}true{% else %}false{% endif %} }">
