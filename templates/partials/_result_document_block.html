@@ -91,7 +91,23 @@
 
 {# Provenance & legal notes — caveats/annotations sit directly under the text. #}
 {% if result.version %}
-{% include "partials/_version_notes.html" with version=result.version show_permalink=True code_edition=result.code_edition division=result.division provision_id=result.id %}
+{% include "partials/_version_notes.html" with version=result.version %}
+{% comment %} Click-through to the standalone provision record.  A search-result
+   navigation affordance, independent of whether the provision has notes, so
+   every result (grouped child included) can open its full record.  Division-
+   less editions reverse the no-division route ("" can't be a path segment). {% endcomment %}
+{% if result.division %}
+{% url 'core:provision_permalink' result.code_edition result.division result.id result.version.version as permalink_url %}
+{% else %}
+{% url 'core:provision_permalink_no_division' result.code_edition result.id result.version.version as permalink_url %}
+{% endif %}
+<p class="mt-3">
+    <a href="{{ permalink_url }}" @click.stop
+       class="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.06em] text-secondary hover:text-secondary-2 hover:underline">
+        Open full provision record
+        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 17 17 7M9 7h8v8"/></svg>
+    </a>
+</p>
 {% endif %}
 
 {# Tables — HTML form when available (e-Laws source), else image form. #}

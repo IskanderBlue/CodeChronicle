@@ -29,5 +29,14 @@ urlpatterns = [
         views.provision_permalink,
         name="provision_permalink",
     ),
+    # Division-less editions (e.g. OBC 1997) store division="" — a <str>
+    # path segment can't be empty, so they get a sibling route that omits the
+    # division segment entirely (no sentinel in the URL).
+    path(
+        "provision/<str:code_edition>/<str:provision_id>/v<int:version>/",
+        views.provision_permalink,
+        name="provision_permalink_no_division",
+        kwargs={"division": ""},
+    ),
     path("edition/<int:pk>/chain/", views.edition_chain, name="edition_chain"),
 ]
