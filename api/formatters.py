@@ -205,32 +205,46 @@ def _build_copy_text(
     Per ``tasks/provenance/4-display.md`` §"Copy Button"::
 
         OBC 1997, Div B, S 3.1.4.7. -- Fire Separations
-        In force: 1998-04-06 (O. Reg. 403/97)
+        Base: O. Reg. 403/97
         Amended by: O. Reg. 22/98, cl. 1.(1) (1998-04-06)
         Next amendment: O. Reg. 152/99 (1999-04-01) -- not in force at query date
+
+    The in-force date sits with whatever regulation is currently *operative*:
+    the amending clause when the provision has been amended, otherwise the base
+    regulation. The base reg is always shown for provenance, labelled ``Base:``
+    (undated unless it is itself the operative one).
     """
     code_display = _build_code_display_name(code_edition).strip() or code_edition
     div_label = f"Div {division}, " if division else ""
     header = f"{code_display}, {div_label}S {provision_id} -- {title}".strip()
 
     lines = [header]
-    if version and version.effective_date:
-        in_force = version.effective_date.isoformat()
-        if base_regulation:
-            lines.append(
-                f"In force: {in_force} (O. Reg. {base_regulation.reg_id})"
-            )
-        else:
-            lines.append(f"In force: {in_force}")
+    in_force = (
+        version.effective_date.isoformat()
+        if version and version.effective_date else None
+    )
+    in_force_suffix = f" ({in_force})" if in_force else ""
+
     if most_recent_clause and most_recent_clause.regulation:
+        # Amended: the current text was put in force by this clause, so the
+        # in-force date belongs on the "Amended by" line (not the regulation's
+        # own filing date, which is a different event). The base reg is still
+        # shown for provenance, labelled and undated — it isn't operative now.
+        if base_regulation:
+            lines.append(f"Base: O. Reg. {base_regulation.reg_id}")
         reg = most_recent_clause.regulation
-        date_part = (
-            f" ({reg.effective_date.isoformat()})"
-            if getattr(reg, "effective_date", None) else ""
-        )
         lines.append(
-            f"Amended by: O. Reg. {reg.reg_id}, cl. {most_recent_clause.clause_id}{date_part}"
+            f"Amended by: O. Reg. {reg.reg_id}, "
+            f"cl. {most_recent_clause.clause_id}{in_force_suffix}"
         )
+    elif base_regulation:
+        # Unamended: the base regulation is what's currently in force, so the
+        # in-force date sits with it.
+        lines.append(f"Base: O. Reg. {base_regulation.reg_id}{in_force_suffix}")
+    elif in_force:
+        # No linked regulation (e.g. a base-enactment gap): the date has no
+        # operative reg to attach to, so it stands alone.
+        lines.append(f"In force: {in_force}")
     if next_version and next_version.contributing_clauses.exists():
         first_clause = next_version.contributing_clauses.all()[0]
         if first_clause and first_clause.regulation:
