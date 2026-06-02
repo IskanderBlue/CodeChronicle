@@ -3,18 +3,18 @@
    `contributing_clauses`, `next_version`, `base_regulation`,
    `code_display_name`, `division`, `id`, `title`, `copy_text`. {% endcomment %}
 {% load static %}
-<div class="rounded-md border-l-2
-            {% if result.most_recent_clause %}border-amended{% else %}border-primary-400 dark:border-primary-600{% endif %}
-            bg-neutral-50/70 dark:bg-neutral-900/40 px-3 py-2.5 text-xs"
+<div class="border-l-2
+            {% if result.most_recent_clause %}border-amended{% else %}border-secondary{% endif %}
+            bg-surface-2 px-3 py-2.5 text-xs"
      x-data="{ chainOpen: false }">
     <div class="flex justify-between items-start gap-3">
         <div class="flex-1 min-w-0">
-            <p class="font-mono text-neutral-500 dark:text-neutral-400">
+            <p class="font-mono text-ink-3">
                 {% if result.division %}{{ result.division }} &middot; {% endif %}<span class="font-semibold">{{ result.id }}</span>
             </p>
-            <p class="text-sm font-semibold text-neutral-700 dark:text-neutral-200 mt-0.5">{{ result.title }}</p>
+            <p class="text-sm font-semibold text-ink-2 mt-0.5">{{ result.title }}</p>
             {% if result.version %}
-            <p class="text-neutral-500 dark:text-neutral-500 mt-1">
+            <p class="text-ink-3 mt-1">
                 In force <span class="font-mono">{{ result.version.effective_date|date:"Y-m-d" }}</span>
                 {% if result.base_regulation %}
                 &middot; O. Reg. <span class="font-mono">{{ result.base_regulation.reg_id }}</span>
@@ -22,22 +22,22 @@
             </p>
             {% endif %}
             {% if result.most_recent_clause %}
-            <p class="text-neutral-700 dark:text-neutral-300 mt-1">
+            <p class="text-ink-2 mt-1">
                 Amended by O. Reg. <span class="font-mono">{{ result.most_recent_clause.regulation.reg_id }}</span>,
                 cl. <span class="font-mono">{{ result.most_recent_clause.clause_id }}</span>
-                <span class="text-neutral-500 dark:text-neutral-500">
+                <span class="text-ink-3">
                     &middot; <span class="font-mono">{{ result.most_recent_clause.regulation.effective_date|date:"Y-m-d" }}</span>
                 </span>
             </p>
             {% if result.contributing_clauses|length > 1 %}
             <button @click="chainOpen = !chainOpen"
-                    class="text-primary-600 dark:text-primary-400 hover:underline mt-1">
+                    class="text-secondary hover:underline mt-1">
                 <span x-show="!chainOpen">{{ result.contributing_clauses|length|add:"-1" }} earlier amendment{{ result.contributing_clauses|length|add:"-1"|pluralize }} &raquo;</span>
                 <span x-show="chainOpen">Hide earlier amendments</span>
             </button>
-            <div x-show="chainOpen" x-collapse class="mt-1 pl-3 border-l border-neutral-200 dark:border-neutral-700 space-y-0.5">
+            <div x-show="chainOpen" x-collapse class="mt-1 pl-3 border-l border-rule space-y-0.5">
                 {% for cl in result.contributing_clauses %}{% if not forloop.last %}
-                <p class="text-neutral-600 dark:text-neutral-400">
+                <p class="text-ink-2">
                     O. Reg. <span class="font-mono">{{ cl.regulation.reg_id }}</span>,
                     cl. <span class="font-mono">{{ cl.clause_id }}</span>
                     &middot; <span class="font-mono">{{ cl.regulation.effective_date|date:"Y-m-d" }}</span>
@@ -47,17 +47,17 @@
             {% endif %}
             {% endif %}
             {% if result.next_version %}
-            <p class="text-neutral-500 dark:text-neutral-500 mt-1 italic">
+            <p class="text-ink-3 mt-1 italic">
                 Next: <span class="font-mono">{{ result.next_version.effective_date|date:"Y-m-d" }}</span>
                 &mdash; not in force at query date
             </p>
             {% endif %}
         </div>
         <button type="button"
-                class="shrink-0 text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 transition"
+                class="shrink-0 text-ink-3 hover:text-secondary transition"
                 title="Copy reference"
                 data-copy-text="{{ result.copy_text }}"
-                onclick="navigator.clipboard.writeText(this.dataset.copyText); this.classList.add('text-primary-600'); setTimeout(() => this.classList.remove('text-primary-600'), 1500);">
+                onclick="navigator.clipboard.writeText(this.dataset.copyText); this.classList.add('text-secondary'); setTimeout(() => this.classList.remove('text-secondary'), 1500);">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                       d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>

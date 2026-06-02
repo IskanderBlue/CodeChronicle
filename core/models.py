@@ -740,3 +740,115 @@ class KeywordIDF(models.Model):
     def refresh(cls) -> None:
         with connection.cursor() as cursor:
             cursor.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY keyword_idf;")
+
+
+class CorpusCurrency(models.Model):
+    """Precomputed masthead provenance stamp — one row (a singleton).
+
+    The masthead's job is to say *what corpus you're querying* (left) and
+    *how current the consolidation is* (right).  The currency date is a real
+    selling point for a forensic tool, so it must be genuine — never faked or
+    hardcoded (design handoff README §"Masthead fix").  Deriving it means a
+    ``MAX(effective_date)`` aggregate over the whole corpus; running that on
+    every request would be wasteful, so we snapshot it whenever data is
+    (re)loaded via :meth:`refresh` (called at the end of ``load_edition``).
+    The context processor then serves it with a single PK read.
+    """
+
+    #: This model only ever holds one row; we pin it to this PK.
+    SINGLETON_PK = 1
+
+    corpus_label = models.CharField(max_length=200, default="Ontario Building Code")
+    corpus_span = models.CharField(max_length=50, blank=True, default="")
+    data_current_to = models.DateField(null=True, blank=True)
+    refreshed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "corpus_currency"
+        verbose_name = "Corpus Currency"
+        verbose_name_plural = "Corpus Currency"
+
+    def __str__(self) -> str:
+        return f"{self.corpus_label} (current to {self.data_current_to})"
+
+    @classmethod
+    def get_solo(cls) -> "CorpusCurrency | None":
+        """Return the singleton row, or ``None`` before the first load."""
+        return cls.objects.filter(pk=cls.SINGLETON_PK).first()
+
+    @classmethod
+    def refresh(cls) -> "CorpusCurrency":
+        """Recompute the masthead stamp from the *provenance* corpus and persist it.
+
+        Scope is editions that actually carry regulation data — the
+        version-tracked provenance system (currently OBC only).  The shared
+        ``code_editions`` table also holds search-metadata-only editions for
+        other codes (NBC, Quebec, …, back to 1997); those have no regulations
+        and must NOT widen the corpus the regulation/provenance pages describe.
+
+        - ``corpus_span`` = the precise window we cover: first in-force date →
+          last covered date (``ineffective``/``superseded`` is exclusive, so we
+          step back a day), or ``… – present`` if still current.  Full dates,
+          derived from ``effective_date`` — not the edition-label ``year``.
+        - ``data_current_to`` = how current the consolidation is.  Only set
+          while the corpus is still in force (the most recent amendment we've
+          ingested); for a closed/superseded corpus the span already states the
+          end date, so this stays None and the masthead drops the redundant
+          "current to" endpoint.
+        - ``corpus_label`` = a provenance code's display name, else the Ontario
+          default.
+        """
+        from datetime import date, timedelta
+
+        from django.db.models import Count, Max, Min
+
+        def _fmt(d: date) -> str:
+            # Match Django's "j M Y" (e.g. "1 Jan 2014"), cross-platform.
+            return f"{d.day} {d:%b} {d.year}"
+
+        prov_editions = CodeEdition.objects.annotate(
+            _reg_count=Count("regulations")
+        ).filter(_reg_count__gt=0)
+
+        agg = prov_editions.aggregate(
+            first_eff=Min("effective_date"),
+            last_end=Max("ineffective_date"),
+            last_superseded=Max("superseded_date"),
+        )
+        first_eff = agg["first_eff"]
+
+        span = ""
+        data_current_to = None
+        if first_eff:
+            # The corpus's coverage closes when its latest edition ceased to be
+            # in force; None on both means it's still the current edition.
+            end = agg["last_end"] or agg["last_superseded"]
+            if end:
+                last_covered = end - timedelta(days=1)  # exclusive boundary
+                span = f"{_fmt(first_eff)} – {_fmt(last_covered)}"
+            else:
+                span = f"{_fmt(first_eff)} – present"
+                data_current_to = Regulation.objects.filter(
+                    edition__in=prov_editions
+                ).aggregate(mx=Max("effective_date"))["mx"]
+
+        label = "Ontario Building Code"
+        code = (
+            Code.objects.filter(editions__in=prov_editions)
+            .exclude(display_name="")
+            .order_by("id")
+            .distinct()
+            .first()
+        )
+        if code:
+            label = code.display_name
+
+        obj, _ = cls.objects.update_or_create(
+            pk=cls.SINGLETON_PK,
+            defaults={
+                "corpus_label": label,
+                "corpus_span": span,
+                "data_current_to": data_current_to,
+            },
+        )
+        return obj

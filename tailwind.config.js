@@ -47,6 +47,11 @@ module.exports = {
           DEFAULT: 'rgb(var(--highlight) / <alpha-value>)',
           soft: 'var(--highlight-soft)',
         },
+        // Legal-redline functional colours (deletions / additions). Resolve
+        // against --strike / --insert in base.html; .dark flips them. Use only
+        // on amendment redlines + action tags, never as UI chrome.
+        strike: 'rgb(var(--strike) / <alpha-value>)',
+        insert: 'rgb(var(--insert) / <alpha-value>)',
       },
       fontFamily: {
         serif: ['"Source Serif 4"', 'Literata', 'Georgia', 'serif'],

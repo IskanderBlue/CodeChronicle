@@ -3,10 +3,10 @@
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="text-center mb-12">
-        <h1 class="text-4xl font-extrabold text-neutral-900 dark:text-white sm:text-5xl">
+        <h1 class="font-serif text-4xl font-bold text-ink sm:text-5xl">
             Choose your plan
         </h1>
-        <p class="mt-4 text-xl text-neutral-500 dark:text-neutral-400">
+        <p class="mt-4 text-xl text-ink-2">
             Simple pricing for individuals and professionals.
         </p>
     </div>
@@ -14,18 +14,24 @@
     <div
         class="mt-12 space-y-4 sm:mt-16 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0">
         {% for plan in plans %}
-        <div
-            class="border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-sm divide-y divide-neutral-200 dark:divide-neutral-700 bg-neutral-100 dark:bg-neutral-800">
+        {% comment %} Current plan gets accent-ruled emphasis, not a coloured
+           ribbon; price figure is serif. {% endcomment %}
+        <div class="border {% if plan.is_current %}border-secondary{% else %}border-rule{% endif %} divide-y divide-rule bg-surface-2">
             <div class="p-6">
-                <h2 class="text-xl leading-6 font-semibold text-neutral-900 dark:text-white">{{ plan.name }}</h2>
+                <div class="flex items-center justify-between gap-2">
+                    <h2 class="font-serif text-xl font-semibold text-ink">{{ plan.name }}</h2>
+                    {% if plan.is_current %}
+                    <span class="border border-secondary px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary">Current</span>
+                    {% endif %}
+                </div>
                 <p class="mt-8">
-                    <span class="text-4xl font-extrabold text-neutral-900 dark:text-white">${{ plan.price }}</span>
-                    <span class="text-base font-medium text-neutral-500 dark:text-neutral-400">/mo</span>
+                    <span class="font-serif text-4xl font-bold text-ink">${{ plan.price }}</span>
+                    <span class="text-base font-medium text-ink-3">/mo</span>
                 </p>
 
                 {% if plan.id == 'free' %}
                 <a href="{% url 'account_signup' %}"
-                    class="mt-8 block w-full bg-neutral-200 dark:bg-neutral-700 border border-neutral-300 dark:border-neutral-600 rounded-md py-2 text-sm font-semibold text-neutral-700 dark:text-neutral-200 text-center hover:bg-neutral-300 dark:hover:bg-neutral-600">
+                    class="mt-8 block w-full border border-ink-2 py-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 text-center hover:bg-surface">
                     {% if plan.is_current %}Current Plan{% else %}Choose Free{% endif %}
                 </a>
                 {% else %}
@@ -33,7 +39,7 @@
                     <form action="{% url 'core:stripe_portal' %}" method="POST">
                         {% csrf_token %}
                         <button type="submit"
-                            class="mt-8 block w-full bg-neutral-200 dark:bg-neutral-700 border border-neutral-300 dark:border-neutral-600 rounded-md py-2 text-sm font-semibold text-neutral-700 dark:text-neutral-200 text-center hover:bg-neutral-300 dark:hover:bg-neutral-600">
+                            class="mt-8 block w-full border border-ink-2 py-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 text-center hover:bg-surface">
                             Manage Subscription
                         </button>
                     </form>
@@ -41,31 +47,31 @@
                     <form action="{% url 'core:create_checkout_session' %}" method="POST">
                         {% csrf_token %}
                         <button type="submit"
-                            class="mt-8 block w-full bg-primary-600 border border-transparent rounded-md py-2 text-sm font-semibold text-white text-center hover:bg-primary-700">
+                            class="mt-8 block w-full bg-secondary border border-transparent py-2 text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast text-center hover:bg-secondary-2">
                             Upgrade to Pro
                         </button>
                     </form>
                     {% else %}
                     <a href="{% url 'account_signup' %}"
-                        class="mt-8 block w-full bg-primary-600 border border-transparent rounded-md py-2 text-sm font-semibold text-white text-center hover:bg-primary-700">
+                        class="mt-8 block w-full bg-secondary border border-transparent py-2 text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast text-center hover:bg-secondary-2">
                         Sign up to upgrade
                     </a>
                     {% endif %}
                 {% endif %}
             </div>
             <div class="pt-6 pb-8 px-6">
-                <h3 class="text-xs font-medium text-neutral-900 dark:text-neutral-300 uppercase tracking-wide">What's
+                <h3 class="font-mono text-[11px] font-semibold text-ink-2 uppercase tracking-[0.08em]">What's
                     included</h3>
                 <ul role="list" class="mt-6 space-y-4">
                     {% for feature in plan.features %}
                     <li class="flex space-x-3">
-                        <svg class="flex-shrink-0 h-5 w-5 text-success-500 dark:text-success-400"
+                        <svg class="flex-shrink-0 h-5 w-5 text-secondary"
                             xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd"
                                 d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
                                 clip-rule="evenodd" />
                         </svg>
-                        <span class="text-sm text-neutral-500 dark:text-neutral-400">{{ feature }}</span>
+                        <span class="text-sm text-ink-2">{{ feature }}</span>
                     </li>
                     {% endfor %}
                 </ul>

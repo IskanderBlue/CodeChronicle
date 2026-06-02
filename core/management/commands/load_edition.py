@@ -15,6 +15,7 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     CodeEditionProvisionVersionClause,
+    CorpusCurrency,
     ProvinceCode,
     ProvisionMapping,
     ProvisionVersionTable,
@@ -139,9 +140,16 @@ class Command(BaseCommand):
                 code, version_lookup, data.get("provision_mappings", []),
             )
 
+        # Refresh the masthead provenance stamp once per load — outside the
+        # atomic block, so it snapshots committed data.  (Computing the
+        # corpus span / consolidation-currency date per request would be
+        # wasteful; the context processor just reads this singleton.)
+        currency = CorpusCurrency.refresh()
+
         logger.info(
             "Loaded %s %s: %d regulations, %d clauses, %d assets, %d provisions, "
-            "%d versions, %d version-clause links, %d tables, %d mappings",
+            "%d versions, %d version-clause links, %d tables, %d mappings; "
+            "corpus current to %s",
             code_str,
             edition_str,
             len(reg_lookup),
@@ -152,6 +160,7 @@ class Command(BaseCommand):
             clause_link_count,
             table_count,
             mapping_count,
+            currency.data_current_to,
         )
 
     def _load_edition(self, data: dict[str, Any]) -> tuple[Code, CodeEdition]:

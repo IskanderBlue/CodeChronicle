@@ -207,16 +207,16 @@ with the results-card highlight). Read by sectionContentUrl() in search.html.
 </div>
 {% else %}
 {# -- Generic error -- #}
-<div class="border-l-4 border-danger-400 bg-danger-50 p-4 dark:bg-danger-900/20">
+<div class="border-l-[3px] border-strike bg-surface-2 p-4">
     <div class="flex">
         <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-danger-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="h-5 w-5 text-strike" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
         </div>
         <div class="ml-3">
-            <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-danger-800 dark:text-danger-200">Search error</h3>
-            <div class="mt-2 text-sm text-danger-700 dark:text-danger-400">{{ error }}</div>
+            <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-strike">Search error</h3>
+            <div class="mt-2 text-sm text-strike">{{ error }}</div>
         </div>
     </div>
 </div>

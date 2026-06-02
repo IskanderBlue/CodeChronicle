@@ -50,7 +50,7 @@
 
         {# Verification cell — only when a query date was parsed #}
         {% if result.band and result.band.covered is not None %}
-        <div class="flex shrink-0 items-center border-l border-secondary/40 px-3 py-2 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.06em] {% if result.band.covered %}text-secondary{% else %}text-danger-500{% endif %}">
+        <div class="flex shrink-0 items-center border-l border-secondary/40 px-3 py-2 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.06em] {% if result.band.covered %}text-secondary{% else %}text-strike{% endif %}">
             {% if result.band.covered %}&#10003; Covers {{ query_date }}{% else %}&#10007; Not in force {{ query_date }}{% endif %}
         </div>
         {% endif %}
@@ -74,7 +74,7 @@
     {# Provenance metadata row: base reg, amendment, chain, next version #}
     <div class="space-y-1 border-t border-secondary/40 px-4 py-2 font-mono text-[11px] text-ink-2">
         {% if result.base_regulation %}
-        <p class="flex items-baseline justify-between gap-2 {% if result.version.pk == result.amendment_chain.0.pk %}rounded bg-secondary-soft px-1.5 py-0.5 font-semibold text-ink ring-1 ring-secondary/40{% endif %}">
+        <p class="flex items-baseline justify-between gap-2 {% if result.version.pk == result.amendment_chain.0.pk %}bg-secondary-soft px-1.5 py-0.5 font-semibold text-ink ring-1 ring-secondary/40{% endif %}">
             <span><span class="text-ink-3">Base &middot;</span> {% if result.base_regulation.pk %}<a href="{% url 'core:regulation_detail' result.base_regulation.pk %}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ result.base_regulation.reg_id }}</a>{% else %}O. Reg. {{ result.base_regulation.reg_id }}{% endif %}{% if result.version.pk == result.amendment_chain.0.pk %}<span class="ml-1 font-mono text-[9px] uppercase tracking-[0.08em] text-secondary">&larr; current</span>{% endif %}</span>
             {% if result.amendment_chain.0 and result.version.pk != result.amendment_chain.0.pk and result.division %}<a href="{% url 'core:provision_permalink' result.code_edition result.division result.id result.amendment_chain.0.version %}" @click.stop class="shrink-0 font-mono text-[10px] text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ result.amendment_chain.0.version }} &rarr;</a>{% endif %}
         </p>
@@ -101,7 +101,7 @@
                 {% with entry_clause=entry.last_contributing_clause %}
                 {% if not forloop.first and entry_clause %}
                 {% if entry.pk == result.version.pk %}
-                <p class="rounded bg-secondary-soft px-1.5 py-0.5 text-[11px] font-semibold text-ink ring-1 ring-secondary/40"
+                <p class="bg-secondary-soft px-1.5 py-0.5 text-[11px] font-semibold text-ink ring-1 ring-secondary/40"
                     x-show="showChain"
                     x-transition:enter="transition ease-out"
                     x-transition:enter-start="opacity-0 translate-y-1"

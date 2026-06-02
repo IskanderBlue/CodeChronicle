@@ -45,6 +45,13 @@
         --secondary-contrast: 251 248 241;  /* text on accent fill (paper) */
         --highlight: 26 23 20;              /* user input: ink (shown in a ruled box) */
         --highlight-soft: #f4ecd1;          /* matched-term underlay (paper-yellow) */
+        /* Legal-redline functional colours — the ONE sanctioned exception to
+           the single-accent rule.  Red=deletion/revoke, green=insertion is a
+           legal convention (semantic, not decorative); use ONLY on amendment
+           redlines and action tags, never as UI chrome.  See handoff README
+           §"Two new functional-color tokens". */
+        --strike: 154 40 32;                /* deletions / revoke — deep red */
+        --insert: 47 109 79;                /* additions — forest green */
       }
       .dark {
         --ink: 230 232 236;
@@ -61,6 +68,8 @@
         --secondary-contrast: 13 14 16;     /* text on accent fill (bg) */
         --highlight: 245 198 74;            /* amber — user input */
         --highlight-soft: rgba(245, 198, 74, 0.18);
+        --strike: 224 133 124;              /* desaturated for dark bg */
+        --insert: 111 202 160;
       }
       /* Matched query terms in provision body (wrapped server-side by
          api.formatters.highlight_terms). The `highlight` role = "what the
@@ -126,6 +135,10 @@
                             DEFAULT: 'rgb(var(--highlight) / <alpha-value>)',
                             soft: 'var(--highlight-soft)',
                         },
+                        // Legal-redline functional colours (deletions / additions).
+                        // Use only on amendment redlines + action tags.
+                        strike: 'rgb(var(--strike) / <alpha-value>)',
+                        insert: 'rgb(var(--insert) / <alpha-value>)',
                     },
                     fontFamily: {
                         serif: ['"Source Serif 4"', 'Literata', 'Georgia', 'serif'],
@@ -199,12 +212,20 @@
 
 <body class="bg-surface text-ink font-sans flex flex-col min-h-screen">
     <header class="bg-surface-2 border-b border-rule" x-data="{ open: false }">
-        <!-- Top bar: volume / edition / dated stamp (masthead affectation) -->
+        {% comment %} Provenance strip: what corpus you're querying (left) and
+           how current the consolidation is (right).  Both are REAL signal,
+           precomputed once per data load (core.context_processors.masthead_currency
+           → CorpusCurrency).  Never fake the currency date — a stale "current to"
+           stamp is worse than none, so the right side only renders when the data
+           exists.  See design handoff README §"Masthead fix". {% endcomment %}
         <div class="hidden sm:flex items-center justify-between px-8 py-2 border-b border-rule-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
-            <span>VOL. XXVI &middot; NO. 117</span>
-            <span class="uppercase">Forensic Edition</span>
-            {% now "D · j M Y · H:i" as masthead_stamp %}
-            <span>{{ masthead_stamp|upper }}</span>
+            <span>{{ corpus_label|default:"Ontario Building Code" }}{% if corpus_span %} <span class="text-rule">&middot;</span> {{ corpus_span }}{% endif %}</span>
+            {% if data_current_to %}
+            <span class="flex items-center gap-[7px]">
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-secondary"></span>
+                Consolidation current to {{ data_current_to|date:"j M Y" }}
+            </span>
+            {% endif %}
         </div>
 
         <!-- Nameplate + navigation -->
@@ -318,11 +339,13 @@
         </div>
     </header>
 
+    {% comment %} Flash messages as left-ruled callouts (the editorial-note
+       pattern): square, no shadow, body in readable ink-2, state signalled by
+       the redline border — strike (red) for errors, insert (green) otherwise. {% endcomment %}
     {% if messages %}
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
         {% for message in messages %}
-        <div
-            class="p-4 rounded-md border {% if message.tags == 'error' %}bg-danger-50 dark:bg-danger-900/20 text-danger-700 dark:text-danger-400 border-danger-200 dark:border-danger-800{% else %}bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-400 border-success-200 dark:border-success-800{% endif %}">
+        <div class="border-l-[3px] bg-surface-2 px-4 py-3 font-sans text-sm text-ink-2 {% if message.tags == 'error' %}border-strike{% else %}border-insert{% endif %}">
             {{ message }}
         </div>
         {% endfor %}

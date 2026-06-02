@@ -1,85 +1,91 @@
 {% extends "base.html" %}
 {% block title %}O. Reg. {{ regulation.reg_id }} — CodeChronicle{% endblock %}
 {% block content %}
-<div class="max-w-5xl mx-auto px-4 py-8">
-    {# Header #}
-    <div class="mb-8">
-        <h1 class="text-2xl font-bold font-ref">O. Reg. {{ regulation.reg_id }}</h1>
-        {% if regulation.amends %}
-        <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-            Amending <span class="font-ref">O. Reg. {{ regulation.amends.reg_id }}</span>
-            ({{ regulation.edition.code.code }} {{ regulation.edition.edition_id }})
-        </p>
-        {% else %}
-        <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-            Base regulation for {{ regulation.edition.code.code }} {{ regulation.edition.edition_id }}
-        </p>
-        {% endif %}
-        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-500">
-            {% if regulation.filed_date %}Filed: <span class="font-ref">{{ regulation.filed_date|date:"Y-m-d" }}</span> | {% endif %}Effective: <span class="font-ref">{{ regulation.effective_date|date:"Y-m-d" }}</span>
-        </p>
-        {% comment %} A base regulation's enactment isn't stored as clauses — that
-           text becomes the v0 provision versions directly. The only clauses it has
-           are its self-amending tail (transition / deferred-commencement directives
-           that amend its own earlier sections). Say so, or readers expect the Code. {% endcomment %}
-        {% if not regulation.amends %}
-        <div class="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800
-                    dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-200">
-            This page lists only the amending clauses within O.&nbsp;Reg.&nbsp;{{ regulation.reg_id }} —
-            its transition and commencement directives that amend its own earlier sections. The enacted text of the
-            {{ regulation.edition.code.code }} {{ regulation.edition.edition_id }} itself is not shown here;
-            follow a clause's target link to read the relevant provision.
+<div class="max-w-5xl mx-auto px-4 sm:px-8 py-8">
+
+    {% comment %} Citation-style header: mono overline (system answer), serif
+       title with the reg number in mono, then a mono metadata row.  See
+       design handoff README §"Regulation DETAIL". {% endcomment %}
+    <div class="border-b border-rule pb-[18px] mb-2">
+        <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary">
+            {% if regulation.amends %}Amending O. Reg. {{ regulation.amends.reg_id }}{% else %}Base regulation for{% endif %}
+            <span class="text-ink-3">&middot; {{ regulation.edition.code.code }} {{ regulation.edition.edition_id }}</span>
         </div>
-        {% endif %}
+        <h1 class="mt-2 font-serif text-[30px] font-bold tracking-[-0.01em] text-ink">
+            O. Reg. <span class="font-mono text-[26px] font-semibold">{{ regulation.reg_id }}</span>
+        </h1>
+        <div class="mt-2 flex flex-wrap items-center gap-x-[18px] gap-y-1 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+            {% if regulation.filed_date %}<span>FILED &middot; {{ regulation.filed_date|date:"Y-m-d" }}</span>
+            <span class="text-rule">&middot;</span>{% endif %}
+            <span>EFFECTIVE &middot; <span class="text-ink font-semibold">{{ regulation.effective_date|date:"Y-m-d" }}</span></span>
+            <span class="text-rule">&middot;</span>
+            <span>{{ clauses|length }} CLAUSE{{ clauses|length|pluralize|upper }}</span>
+            <span class="text-rule">&middot;</span>
+            <a href="{% url 'core:edition_chain' regulation.edition.pk %}"
+               class="text-secondary border-b border-secondary hover:text-secondary-2">VIEW AMENDMENT CHAIN →</a>
+        </div>
     </div>
 
-    {% comment %} Clauses — the amendment text reads as the main column;
-       identifying metadata (clause id, action, target, provenance) sits in a
-       side "margin note".  The bulky source-document image spans full width
-       below both columns, sharing one Alpine toggle. {% endcomment %}
+    {% comment %} A base regulation's enactment isn't stored as clauses — that
+       text becomes the v0 provision versions directly. The only clauses it has
+       are its self-amending tail (transition / deferred-commencement directives
+       that amend its own earlier sections). It's information, not a warning, so
+       it's a ruled editorial note (no amber). {% endcomment %}
+    {% if not regulation.amends %}
+    <div class="mt-6 border border-rule-2 bg-surface-2 px-4 py-3 text-sm text-ink-2">
+        <div class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary mb-1">Editorial note</div>
+        This page lists only the amending clauses within O.&nbsp;Reg.&nbsp;{{ regulation.reg_id }} —
+        its transition and commencement directives that amend its own earlier sections. The enacted text of the
+        {{ regulation.edition.code.code }} {{ regulation.edition.edition_id }} itself is not shown here;
+        follow a clause's target link to read the relevant provision.
+    </div>
+    {% endif %}
+
+    {% comment %} Clauses — amendment text reads as the main column (serif, with
+       a ruled spine); identifying metadata (clause id, action, targets,
+       provenance) sits in a 240px margin note.  The bulky source-document image
+       spans full width below both columns, sharing one Alpine toggle. {% endcomment %}
     {% for clause in clauses %}
     <div id="clause-{{ clause.pk }}"
-         class="mb-8 scroll-mt-24 border-l-2 border-neutral-200 dark:border-neutral-700 pl-4
-                target:border-amber-400 target:bg-amber-50 dark:target:bg-amber-900/20"
+         class="scroll-mt-24 border-b border-rule-2 py-[22px] target:bg-secondary-soft"
          x-data="{ showSource: false }">
-        <div class="md:flex md:gap-6">
+        <div class="grid gap-7 md:grid-cols-[1fr_240px]">
+
             {% comment %} Main column: the actual amendment text (verbatim
                e-Laws HTML, block-level, so |safe in a div, never a p).  See
                feedback_no_html_sanitisation.md. {% endcomment %}
-            <div class="md:flex-1 md:min-w-0">
+            <div class="min-w-0 border-l-2 border-rule pl-[18px]">
                 {% if clause.clause_text %}
-                <div class="text-sm text-neutral-700 dark:text-neutral-300 provision-content">{{ clause.clause_text|safe }}</div>
+                <div class="font-serif text-base leading-[1.6] text-ink-2 provision-content">{{ clause.clause_text|safe }}</div>
                 {% else %}
-                <p class="text-sm italic text-neutral-400 dark:text-neutral-500">No clause text recorded.</p>
+                <p class="font-serif text-sm italic text-ink-3">No clause text recorded.</p>
                 {% endif %}
             </div>
 
-            {# Margin note: identifier, action, target, provenance. #}
-            <aside class="mt-3 space-y-2 text-xs text-neutral-500 dark:text-neutral-400
-                          md:mt-0 md:w-56 md:shrink-0 md:border-l md:border-neutral-200 md:dark:border-neutral-700 md:pl-4">
-                <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-base font-bold font-ref text-neutral-800 dark:text-neutral-200">{{ clause.clause_id }}</span>
-                    {% if clause.action == 'revoke_and_substitute' %}
-                    <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">{{ clause.get_action_display }}</span>
-                    {% elif clause.action == 'amend_add' %}
-                    <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">{{ clause.get_action_display }}</span>
-                    {% elif clause.action == 'amend_strike_sub' %}
-                    <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300">{{ clause.get_action_display }}</span>
-                    {% elif clause.action == 'revoke' %}
-                    <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-red-200 text-red-900 dark:bg-red-900/60 dark:text-red-200">{{ clause.get_action_display }}</span>
-                    {% elif clause.action %}
-                    <span class="inline-block rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300">{{ clause.get_action_display }}</span>
+            {# Margin note: identifier, action, change, targets, provenance. #}
+            <aside class="border-l border-rule pl-[18px] font-sans text-[11.5px] leading-[1.55] text-ink-2">
+                <div class="flex flex-wrap items-center gap-[10px] mb-[10px]">
+                    <span class="font-mono text-[15px] font-bold text-ink">cl. {{ clause.clause_id }}</span>
+                    {% if clause.action %}
+                    {% comment %} Square ruled action tag — only revoke* gets the
+                       danger (strike) hue; additions get insert; the rest are
+                       neutral.  We don't rainbow the page. {% endcomment %}
+                    <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.06em] border px-1.5 py-0.5
+                        {% if clause.action == 'revoke' or clause.action == 'revoke_and_substitute' %}text-strike border-strike{% elif clause.action == 'amend_add' %}text-insert border-insert{% else %}text-ink-2 border-rule{% endif %}">{{ clause.get_action_display }}</span>
                     {% endif %}
                 </div>
 
+                {% comment %} The strike→substitute redline sits in the margin
+                   note with the other metadata (not the main column).  Still
+                   serif — it's legal text — but sized to the aside. {% endcomment %}
                 {% if clause.strike_text %}
-                <div>
-                    <p class="text-[10px] uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Change</p>
-                    <p class="mt-0.5 text-neutral-600 dark:text-neutral-400">
-                        <del class="text-red-600 dark:text-red-400">{{ clause.strike_text|safe }}</del>
-                        <span class="text-neutral-400 dark:text-neutral-500 mx-1">&rarr;</span>
-                        <span class="text-green-700 dark:text-green-400">{{ clause.sub_text|safe }}</span>
-                    </p>
+                <div class="mb-[10px]">
+                    <div class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3 mb-1">Change</div>
+                    <div class="font-serif text-[13px] leading-[1.5]">
+                        <del class="text-strike line-through decoration-strike">{{ clause.strike_text|safe }}</del>
+                        <span class="text-ink-3 mx-1.5">→</span>
+                        <span class="text-insert">{{ clause.sub_text|safe }}</span>
+                    </div>
                 </div>
                 {% endif %}
 
@@ -88,36 +94,36 @@
                    show; the rest collapse behind a toggle.  ``indent`` (set in
                    _clause_targets) nests descendants under their ancestors. {% endcomment %}
                 {% if clause.targets or clause.target_reg %}
-                <div x-data="{ showTargets: false }">
-                    <p class="text-[10px] uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{% if clause.targets|length > 1 %}Targets{% else %}Target{% endif %}</p>
+                <div class="mb-[10px]" x-data="{ showTargets: false }">
+                    <div class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3 mb-1">{% if clause.targets|length > 1 %}Targets{% else %}Target{% endif %}</div>
                     {% if clause.targets %}
-                    <ul class="mt-0.5 space-y-0.5">
+                    <ul class="space-y-[3px]">
                         {% for t in clause.targets %}
                         <li{% if forloop.counter > 3 %} x-show="showTargets" x-cloak{% endif %} style="padding-left: {{ t.indent }}px">
-                            {% if t.url %}<a href="{{ t.url }}" class="font-ref text-primary-600 dark:text-primary-400 hover:underline">{{ t.label }}</a>{% else %}<span class="font-ref">{{ t.label }}</span>{% endif %}{% if t.version is not None %} <span class="text-neutral-400 dark:text-neutral-500">v{{ t.version }}</span>{% endif %}
+                            {% if t.url %}<a href="{{ t.url }}" class="font-mono text-[11.5px] text-secondary border-b border-secondary hover:text-secondary-2">{{ t.label }}</a>{% else %}<span class="font-mono text-[11.5px]">{{ t.label }}</span>{% endif %}{% if t.version is not None %} <span class="font-mono text-[10px] text-ink-3 ml-1.5">v{{ t.version }}</span>{% endif %}
                         </li>
                         {% endfor %}
                     </ul>
                     {% if clause.targets|length > 3 %}
-                    <button type="button" @click.stop="showTargets = !showTargets" class="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500 cursor-pointer">
-                        <span x-text="showTargets ? '&#9662;' : '&#9656;'" class="text-[10px]"></span>
+                    <button type="button" @click.stop="showTargets = !showTargets" class="mt-1 flex items-center gap-1 font-mono text-[10.5px] text-ink-3 hover:text-ink cursor-pointer">
+                        <span x-text="showTargets ? '&#9662;' : '&#9656;'" class="text-[9px]"></span>
                         <span x-show="!showTargets">+{{ clause.targets|length|add:"-3" }} more</span>
                         <span x-show="showTargets" x-cloak>Show fewer</span>
                     </button>
                     {% endif %}
                     {% endif %}
-                    {% if clause.target_reg %}<p class="mt-0.5 text-neutral-400 dark:text-neutral-500">in O. Reg. {{ clause.target_reg }}</p>{% endif %}
+                    {% if clause.target_reg %}<p class="mt-1 text-ink-3">in O. Reg. {{ clause.target_reg }}</p>{% endif %}
                 </div>
                 {% endif %}
 
                 {% if clause.amended_by %}
-                <div>
-                    <p class="text-[10px] uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Subsequently amended by</p>
-                    <ul class="mt-0.5 space-y-1">
+                <div class="mb-[10px]">
+                    <div class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3 mb-1">Subsequently amended by</div>
+                    <ul class="space-y-1">
                         {% for entry in clause.amended_by %}
-                        <li>
-                            <span class="font-ref text-neutral-700 dark:text-neutral-300">O. Reg. {{ entry.reg_id }}</span>, cl. <span class="font-ref">{{ entry.clause_id }}</span>
-                            {% if entry.effective_date %}<br><span class="text-neutral-400 dark:text-neutral-500">eff. {{ entry.effective_date }}</span>{% endif %}
+                        <li class="font-mono text-[11px]">
+                            <span class="text-ink-2">O. Reg. {{ entry.reg_id }}</span>, cl. {{ entry.clause_id }}
+                            {% if entry.effective_date %}<div class="text-[10px] text-ink-3">eff. {{ entry.effective_date }}</div>{% endif %}
                         </li>
                         {% endfor %}
                     </ul>
@@ -126,18 +132,20 @@
 
                 {% if clause.page and regulation.source_pdf %}
                 <button type="button" @click.stop="showSource = !showSource"
-                    class="flex items-center gap-1 text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500 cursor-pointer">
-                    <span x-text="showSource ? '&#9662;' : '&#9656;'" class="text-[10px]"></span>
-                    Source document
+                    class="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-ink-3 hover:text-ink cursor-pointer">
+                    <span x-text="showSource ? '&#9662;' : '&#9656;'" class="text-[9px]"></span>
+                    Source &middot; p.{{ clause.page }}
                 </button>
                 {% endif %}
             </aside>
         </div>
 
-        {# Gazette page image — full width below both columns. #}
+        {% comment %} Gazette page image — full width below both columns.  The
+           amber bbox overlay is functional (it marks where the clause sits on
+           the scanned page), so it stays per the README. {% endcomment %}
         {% if clause.page and regulation.source_pdf %}
         <div x-show="showSource" x-cloak class="mt-3 accordion-content">
-            <div class="rounded-md overflow-hidden paper-container" style="border-style: dashed;">
+            <div class="overflow-hidden paper-container" style="border-style: dashed;">
                 {% with img_entry_image="documents/"|add:regulation.source_pdf|add:"/"|add:clause.page|add:".webp" %}
                 <div class="relative">
                     <img src="{{ img_entry_image }}" alt="Gazette page {{ clause.page }}"
@@ -150,14 +158,14 @@
                 </div>
                 {% endwith %}
             </div>
-            <p class="mt-1 text-[11px] text-neutral-400 dark:text-neutral-500 font-ref">
+            <p class="mt-1 font-mono text-[11px] text-ink-3">
                 {{ regulation.source_pdf }} &middot; p.{{ clause.page }}
             </p>
         </div>
         {% endif %}
     </div>
     {% empty %}
-    <div class="text-center py-8 text-neutral-500 dark:text-neutral-400">
+    <div class="text-center py-8 text-ink-3">
         <p>No clauses recorded for this regulation.</p>
     </div>
     {% endfor %}

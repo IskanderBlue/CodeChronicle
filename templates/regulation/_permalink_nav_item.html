@@ -13,7 +13,7 @@
     <span class="font-mono font-semibold text-ink">{{ item.provision_id }}</span>
     <span class="flex flex-wrap gap-1">
         {% for v in item.versions %}
-        <a href="{{ v.url }}" class="rounded bg-secondary-soft px-1.5 font-mono text-[11px] text-secondary hover:underline"
+        <a href="{{ v.url }}" class="bg-secondary-soft px-1.5 font-mono text-[11px] text-secondary hover:underline"
            title="in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}">v{{ v.version }}</a>
         {% endfor %}
     </span>
