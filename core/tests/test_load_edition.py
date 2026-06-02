@@ -186,9 +186,10 @@ class TestLoadEdition:
         for prov in data["provisions"]:
             if prov["provision_id"] == "3.1.4.7.":
                 prov["versions"][0]["notes"] = [
-                    {"kind": "annotation", "text": "Note: a legal annotation."},
-                    {"kind": "sourcing", "text": "html replaced with snapshot."},
-                    {"kind": "sourcing", "text": "   "},  # blank text — dropped
+                    {"kind": "elaws-note", "text": "Note: a legal annotation."},
+                    {"kind": "elaws-html-substitution", "text": "html replaced with snapshot."},
+                    {"kind": "elaws-html-substitution", "text": "   "},  # blank text — dropped
+                    {"kind": "pdf-rejoin", "text": "hyphenation rejoined."},  # noise — dropped
                 ]
                 injected = True
         assert injected, "fixture missing expected provision"
@@ -202,8 +203,8 @@ class TestLoadEdition:
             provision_id="3.1.4.7.", division="Division B",
         ).versions.get(version=0)
         assert version.notes == [
-            {"kind": "annotation", "text": "Note: a legal annotation."},
-            {"kind": "sourcing", "text": "html replaced with snapshot."},
+            {"kind": "elaws-note", "text": "Note: a legal annotation."},
+            {"kind": "elaws-html-substitution", "text": "html replaced with snapshot."},
         ]
         # The model property buckets them for rendering.
         grouped = version.grouped_notes

@@ -224,8 +224,8 @@ Provision bboxes encompass the provision text plus any associated tables.
       "page_images": [],
       "keyword_counts": {"fire": 3, "safety": 1, "sewage": 2},
       "notes": [
-        {"kind": "annotation", "text": "Note: On March 31, 2023, ... is revoked. (See: O. Reg. 434/22, s. 1 (2))"},
-        {"kind": "sourcing", "text": "html replaced with e-Laws snapshot value (effective 1998-04-06); text-equivalent fingerprint match."}
+        {"kind": "elaws-note", "text": "Note: On March 31, 2023, ... is revoked. (See: O. Reg. 434/22, s. 1 (2))"},
+        {"kind": "elaws-html-substitution", "text": "html replaced with e-Laws snapshot value (effective 1998-04-06); text-equivalent fingerprint match."}
       ],
 
       "tables": []
@@ -246,27 +246,52 @@ windows can filter `v.ineffective_date == v.effective_date`.
 
 Editorial annotations and provenance notes that accumulated on the
 source — pointers, not regulation text. Each entry is a tagged object
-`{"kind": <NoteKind>, "text": str}`; the list is omitted or `[]` when a
-version has none. **CCM owns the `kind` taxonomy** (it classifies every
-note at its consolidated-edition write boundary); CodeChronicle stores
-the list verbatim and maps `kind` → display tier. Consumers MUST route
-by `kind`, never by parsing the `text`.
+`{"kind": <NoteKind>, "text": str}` with an optional `"scope"` qualifier
+(e.g. `"definition 'building'"`); the list is omitted or `[]` when a
+version has none. **CCM owns the `kind` taxonomy** — it tags every note
+with a fine-grained `NoteKind` at its emission site (CCM impl-139), not
+by string-sniffing. CodeChronicle stores the list verbatim and maps
+`kind` → display tier. Consumers MUST route by `kind`, never by parsing
+the `text`.
 
-`kind` values:
+CCM emits **16 consumer-facing kinds** (its three Path-A-internal kinds —
+`elaws-future-amendment`, `italics-drift`, `presentation-drift` — never
+reach the consolidated edition). CodeChronicle (`core/provision_notes.py`)
+maps them as:
 
 | `kind` | meaning | CC display tier |
 | --- | --- | --- |
-| `annotation` | reader-facing e-Laws consolidation note (e.g. a scheduled revocation) | prominent serif band |
-| `unapplied` | an amendment directive the applicator could **not** apply — the consolidated text may be incomplete | prominent integrity caveat |
-| `editorial` | CCM editorial normalisation / manual editor's note | forensic (collapsed) |
-| `reconciliation` | gazette↔source text/anchor reconciliation | forensic (collapsed) |
-| `presentation` | italics / presentation / table-layout drift | forensic (collapsed) |
-| `method` | consolidation-method diagnostic / deferral (un-prefixed divergence notes) | forensic (collapsed) |
-| `sourcing` | displayed text taken verbatim from the e-Laws snapshot (bulk) | one sourcing badge |
+| `elaws-note` | reader-facing e-Laws Pnote annotation (e.g. a scheduled revocation) | annotation (serif band) |
+| `editor` | manual curator's editor's note | annotation (serif band) |
+| `elaws-editorial-correction-accepted` | curator-accepted snapshot↔filing correction | annotation (serif band) |
+| `unapplied-directive` | a strike/amend directive the applicator could **not** apply — text may be incomplete | integrity caveat (*may be incomplete*) |
+| `revoke-target-missing` | a revoke whose target was absent from the prior version (structural anomaly) | integrity caveat (*structural anomaly*) |
+| `elaws-html-substitution` | field replaced with the snapshot value (fingerprint match) | sourcing badge |
+| `elaws-html-substitution-forced` | field deferred to the snapshot (Path B could not compute) | sourcing badge |
+| `elaws-defer-difficult-directive` | formula/equation/image directive deferred to the snapshot | sourcing badge |
+| `payload-heading-correction` | subsection-wrapper id normalised from source | record (collapsed) |
+| `elaws-table-header-merge` | e-Laws merged-column-header table layout | record (collapsed) |
+| `strike-text-override` | body strike matched via manual override | record (collapsed) |
+| `strike-text-override-title` | title strike matched via manual override | record (collapsed) |
+| `strike-case-insensitive` | strike matched case-insensitively | record (collapsed) |
+| `amend-add-anchor-override` | amend-add anchor matched via manual override | record (collapsed) |
 
-An unrecognised future `kind` is rendered in the forensic tier rather
-than dropped. The bare-string form (`"elaws-note: …"`) is the legacy
-pre-classification shape and is **rejected** at ingest.
+Two further consumer-facing kinds are **not** rendered — CodeChronicle
+handles them at the load boundary:
+
+| `kind` | CC handling |
+| --- | --- |
+| `snapshot-divergence` | **Rejected at ingest.** A ready edition must carry no unreviewed snapshot divergences; CC raises so the producer resolves/gates them upstream. |
+| `pdf-rejoin` | **Dropped at ingest.** Base-extraction noise (line-end hyphenation rejoined); not worth surfacing or storing. |
+
+> Upstream follow-up: because `snapshot-divergence` and `pdf-rejoin` are
+> never consumer-rendered, the *effective* consumer-facing set is 14. The
+> clean fix is CCM gating both at assembly (as it already internalised
+> italics/presentation-drift); CC's raise/drop is the backstop.
+
+An unrecognised future `kind` is rendered in the forensic `record` tier
+rather than dropped. The bare-string form (`"elaws-note: …"`) is the
+legacy pre-classification shape and is **rejected** at ingest.
 
 ### Appendix provision example
 
