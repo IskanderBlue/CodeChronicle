@@ -375,7 +375,10 @@ def test_provenance_banner_shows_amendment_info():
                 "base_regulation": MockBaseReg(),
                 "amendment_chain": [MockBaseEntry(), MockAmendedEntry()],
                 "next_version": None,
-                "division": "",  # falsy → skip per-version permalink cross-links
+                # Division-less edition (OBC 1997): cross-links must reverse the
+                # no-division permalink route, not be suppressed.
+                "division": "",
+                "code_edition": "OBC_1997",
                 "code_display_name": "Ontario Building Code 1997",
                 "id": "1.1.3.2.",
                 "title": "Definitions",
@@ -388,6 +391,8 @@ def test_provenance_banner_shows_amendment_info():
     assert "amended" in html  # band label: "In force · amended"
     assert "In force" in html
     assert "403/97" in html
+    # The base-version cross-link routes through the no-division permalink.
+    assert "/provision/OBC_1997/1.1.3.2./v0/" in html
 
 
 def test_provenance_banner_shows_base_regulation():

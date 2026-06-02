@@ -3,8 +3,8 @@
    extracted from _provenance_banner.html for the right rail of the master-detail
    layout (search + permalink). Renders in its own neutral bordered box: it no
    longer inherits the in-force band's `secondary-soft` fill, so that token stays
-   exclusive to the band itself. All version cross-links require `result.division`
-   (the no-division permalink route isn't reachable from here).
+   exclusive to the band itself. Version cross-links fall back to the
+   no-division permalink route when `result.division` is empty (OBC 1997 et al.).
 {% endcomment %}
 <div class="border border-rule">
     <p class="border-b border-rule bg-surface-2 px-4 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">
@@ -14,7 +14,7 @@
         {% if result.base_regulation %}
         <p class="flex items-baseline justify-between gap-2 {% if result.version.pk == result.amendment_chain.0.pk %}bg-secondary-soft px-1.5 py-0.5 font-semibold text-ink ring-1 ring-secondary/40{% endif %}">
             <span><span class="text-ink-3">Base &middot;</span> {% if result.base_regulation.pk %}<a href="{% url 'core:regulation_detail' result.base_regulation.pk %}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ result.base_regulation.reg_id }}</a>{% else %}O. Reg. {{ result.base_regulation.reg_id }}{% endif %}{% if result.version.pk == result.amendment_chain.0.pk %}<span class="ml-1 font-mono text-[9px] uppercase tracking-[0.08em] text-secondary">&larr; current</span>{% endif %}</span>
-            {% if result.amendment_chain.0 and result.version.pk != result.amendment_chain.0.pk and result.division %}<a href="{% url 'core:provision_permalink' result.code_edition result.division result.id result.amendment_chain.0.version %}" @click.stop class="shrink-0 font-mono text-[10px] text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ result.amendment_chain.0.version }} &rarr;</a>{% endif %}
+            {% if result.amendment_chain.0 and result.version.pk != result.amendment_chain.0.pk %}<a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.amendment_chain.0.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.amendment_chain.0.version %}{% endif %}" @click.stop class="shrink-0 font-mono text-[10px] text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ result.amendment_chain.0.version }} &rarr;</a>{% endif %}
         </p>
         {% endif %}
 
@@ -46,7 +46,7 @@
                 <p class="flex items-baseline justify-between gap-2 text-[11px] text-ink-3">
                     <span>{% if entry_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}{% endif %}
                     &middot; {{ entry.effective_date|date:"Y-m-d" }}</span>
-                    {% if result.division %}<a href="{% url 'core:provision_permalink' result.code_edition result.division result.id entry.version %}" @click.stop class="shrink-0 font-mono text-[10px] text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ entry.version }} &rarr;</a>{% endif %}
+                    <a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id entry.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id entry.version %}{% endif %}" @click.stop class="shrink-0 font-mono text-[10px] text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ entry.version }} &rarr;</a>
                 </p>
                 {% endif %}
                 {% endif %}
@@ -60,7 +60,7 @@
         {% with next_clause=result.next_version.last_contributing_clause %}
         <p class="flex items-baseline justify-between gap-2 italic text-ink-3">
             <span>Next: {% if next_clause %}{% if next_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' next_clause.regulation.pk %}#clause-{{ next_clause.pk }}" @click.stop class="not-italic text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</a> {% else %}O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }} {% endif %}{% endif %}(not in force until {{ result.next_version.effective_date|date:"Y-m-d" }})</span>
-            {% if result.division %}<a href="{% url 'core:provision_permalink' result.code_edition result.division result.id result.next_version.version %}" @click.stop class="shrink-0 font-mono text-[10px] not-italic text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ result.next_version.version }} &rarr;</a>{% endif %}
+            <a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.next_version.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.next_version.version %}{% endif %}" @click.stop class="shrink-0 font-mono text-[10px] not-italic text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ result.next_version.version }} &rarr;</a>
         </p>
         {% endwith %}
         {% endif %}
