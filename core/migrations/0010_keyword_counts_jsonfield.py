@@ -2,26 +2,21 @@
 
 Three-step migration:
 1. Add keyword_counts JSONField
-2. Convert existing keywords lists to {kw: 1} dicts
+2. (Data conversion — intentionally a no-op; see below)
 3. Remove old keywords field and swap GIN index
+
+Step 2 once back-filled ``keyword_counts`` from the old ``keywords`` list,
+one CodeMapNode row at a time.  The whole CodeMapNode table is dropped in
+0024, so that data is discarded a few migrations later — and on a populated
+corpus (~250k nodes) the per-row loop turns a from-scratch ``migrate`` into a
+multi-hour, cross-region stall before the app can even start.  Neutralised to
+a no-op: the column still exists for 0011-0023 (which only need its schema,
+not its contents), then 0024 removes the table entirely.  Final schema is
+identical.
 """
 
 from django.contrib.postgres.indexes import GinIndex
 from django.db import migrations, models
-
-
-def convert_keywords_to_counts(apps, schema_editor):
-    CodeMapNode = apps.get_model("core", "CodeMapNode")
-    for node in CodeMapNode.objects.filter(keywords__isnull=False).iterator(chunk_size=500):
-        node.keyword_counts = {kw: 1 for kw in node.keywords}
-        node.save(update_fields=["keyword_counts"])
-
-
-def convert_counts_to_keywords(apps, schema_editor):
-    CodeMapNode = apps.get_model("core", "CodeMapNode")
-    for node in CodeMapNode.objects.filter(keyword_counts__isnull=False).iterator(chunk_size=500):
-        node.keywords = sorted(node.keyword_counts.keys())
-        node.save(update_fields=["keywords"])
 
 
 class Migration(migrations.Migration):
@@ -41,8 +36,10 @@ class Migration(migrations.Migration):
                 null=True,
             ),
         ),
-        # 2. Migrate data: keywords list -> keyword_counts dict
-        migrations.RunPython(convert_keywords_to_counts, convert_counts_to_keywords),
+        # 2. Data conversion — no-op: keyword_counts is dropped with the whole
+        #    CodeMapNode table in 0024, so back-filling 250k rows here (a
+        #    cross-region per-row loop) is pure waste that stalls migrate.
+        migrations.RunPython(migrations.RunPython.noop, migrations.RunPython.noop),
         # 3. Drop old GIN index on keywords ArrayField
         migrations.RemoveIndex(
             model_name="codemapnode",
