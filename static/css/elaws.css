@@ -12,24 +12,33 @@
  * renders identically to plain text.
  */
 
-/* Structural headings — Part / Section / Subsection / Article / Sentence */
+/* Structural headings — Part / Section / Subsection.
+ *
+ * e-Laws conveys this hierarchy with WEIGHT and INDENT, never font-size: in
+ * ontario.ca's own stylesheet (laws/static/css/main.*.css) every regulation
+ * body class renders at one base size.  `.Psection-e`/`.Psubsection-e` are
+ * just `font-weight:700` (the numbering in the text — "3.6.3.5." vs "(1)" —
+ * and the indent of the sentences beneath carry the level), and a Part is
+ * `partnum-e`: bold, centred, upper-cased.  Earlier this shim invented a
+ * 1.5/1.25/1.1rem size ramp, which made an amending instruction line
+ * ("91. Sentence … is amended by …", tagged Psection-e in source regs) read
+ * as a giant heading.  Removed, to match the source.
+ *
+ * `.Ppart-e` is kept only as an alias of the real Part class — our ingested
+ * HTML uses `partnum-e` (Parts are never tagged Ppart-e). */
+.partnum-e,
 .Ppart-e {
-  font-size: 1.5rem;
   font-weight: 700;
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
-}
-.Psection-e {
-  font-size: 1.25rem;
-  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
   margin-top: 1.25rem;
   margin-bottom: 0.5rem;
 }
+.Psection-e,
 .Psubsection-e {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-top: 1rem;
-  margin-bottom: 0.5rem;
+  font-weight: 700;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
 }
 .subsection-e {
   display: block;

@@ -19,7 +19,7 @@ from core.models import (
     RegulationClause,
 )
 
-FIXTURE_PATH = Path(__file__).resolve().parent.parent.parent / ".tmp" / "test_edition.json"
+FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "test_edition.json"
 
 
 @pytest.fixture
