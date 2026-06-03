@@ -1,5 +1,5 @@
 from django.contrib.postgres.fields import ArrayField
-from django.contrib.postgres.indexes import GinIndex
+# from django.contrib.postgres.indexes import GinIndex
 from django.db import migrations, models
 
 
@@ -35,7 +35,7 @@ class Migration(migrations.Migration):
                 ('page_end', models.IntegerField(blank=True, null=True)),
                 ('html', models.TextField(blank=True, null=True)),
                 ('notes_html', models.TextField(blank=True, null=True)),
-                ('keywords', ArrayField(base_field=models.CharField(max_length=100), blank=True, null=True, size=None)),
+                ('keywords', models.JSONField(blank=True, null=True)),
                 ('bbox', models.JSONField(blank=True, null=True)),
                 ('parent_id', models.CharField(blank=True, max_length=200, null=True)),
                 (
@@ -77,7 +77,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('edition_id', models.CharField(max_length=50)),
                 ('year', models.IntegerField()),
-                ('map_codes', ArrayField(base_field=models.CharField(max_length=100), size=None)),
+                ('map_codes', models.JSONField(blank=True, null=True)),
                 ('effective_date', models.DateField()),
                 ('superseded_date', models.DateField(blank=True, null=True)),
                 ('pdf_files', models.JSONField(blank=True, null=True)),
@@ -126,7 +126,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='codemapnode',
-            index=GinIndex(fields=['keywords'], name='code_mapnode_keywords_gin'),
+            index=models.Index(fields=['keywords'], name='code_mapnode_keywords_idx'),
         ),
         migrations.AddConstraint(
             model_name='codeedition',

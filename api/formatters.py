@@ -8,6 +8,8 @@ import re
 from datetime import date
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
+from django.utils.html import escape
+
 from api.band import compute_band_geometry, parse_iso_date
 from api.search.engine import _ref_parts
 from config.code_metadata import get_code_display_name
@@ -63,7 +65,7 @@ def highlight_terms(html: str, terms: Iterable[str]) -> str:
     CSS rule in base.html (paper-yellow in light, amber in dark).
     """
     cleaned = sorted(
-        {t.strip() for t in terms if t and t.strip()},
+        {escape(t.strip()) for t in terms if t and t.strip()},
         key=len,
         reverse=True,
     )

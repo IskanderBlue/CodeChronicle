@@ -5,6 +5,7 @@ between core/views.py (HTMX) and api/views.py (Django Ninja).
 
 from typing import Any
 
+import anthropic
 from coloured_logger import Logger
 
 from api.formatters import format_search_results
@@ -97,10 +98,12 @@ def run_search(
             "search_history_id": search_history_id,
         }
 
-    except Exception as e:
+    except (ValueError, anthropic.APIError) as e:
         error_msg = str(e)
         # Surface a friendlier message for Anthropic auth failures
-        if "401" in error_msg and "invalid x-api-key" in error_msg.lower():
+        if isinstance(e, anthropic.AuthenticationError) or (
+            "401" in error_msg and "invalid x-api-key" in error_msg.lower()
+        ):
             error_msg = (
                 "Search engine authentication failure. "
                 "Please check the ANTHROPIC_API_KEY in .env settings."
@@ -108,6 +111,13 @@ def run_search(
         logger.error("Search service error: %s", error_msg)
         return {
             "success": False,
-            "error": f"An unexpected error occurred: {error_msg}",
+            "error": error_msg,
+            "results": [],
+        }
+    except Exception as e:
+        logger.error("Unexpected search service error: %s", e, exc_info=True)
+        return {
+            "success": False,
+            "error": f"An unexpected error occurred: {str(e)}",
             "results": [],
         }

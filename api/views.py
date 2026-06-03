@@ -185,7 +185,16 @@ def _extract_search_params_from_request(request) -> dict[str, str | None]:
 
     Returns a dict with keys ``query``, ``date``, and ``province``.
     ``query`` is an empty string when absent; the other two are ``None``.
+    Validation:
+      - ``date``: must match YYYY-MM-DD
+      - ``province``: must be a known 2-letter Canadian province code
     """
+    from datetime import datetime
+
+    VALID_PROVINCES = {
+        "ON", "BC", "AB", "QC", "MB", "SK", "NS", "NB", "NL", "PE", "YT", "NT", "NU"
+    }
+
     params: dict[str, str | None] = {"query": "", "date": None, "province": None}
 
     # Form-encoded body takes priority (matches UI behaviour)
@@ -194,31 +203,39 @@ def _extract_search_params_from_request(request) -> dict[str, str | None]:
         params["query"] = form_query.strip()
         params["date"] = request.POST.get("date") or None
         params["province"] = request.POST.get("province") or None
-        return params
+    else:
+        raw_body = request.body.decode("utf-8").strip() if request.body else ""
+        if raw_body:
+            try:
+                body = json.loads(raw_body)
+                if isinstance(body, dict):
+                    query = body.get("query")
+                    if isinstance(query, str):
+                        params["query"] = query.strip()
+                    params["date"] = body.get("date")
+                    params["province"] = body.get("province")
+            except json.JSONDecodeError:
+                pass
 
-    raw_body = request.body.decode("utf-8").strip() if request.body else ""
-    if not raw_body:
-        return params
+    # Strict Validation
+    if isinstance(params["date"], str) and params["date"].strip():
+        date_str = params["date"].strip()
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+            params["date"] = date_str
+        except ValueError:
+            params["date"] = None
+    else:
+        params["date"] = None
 
-    try:
-        body = json.loads(raw_body)
-    except json.JSONDecodeError:
-        return params
-
-    if not isinstance(body, dict):
-        return params
-
-    query = body.get("query")
-    if isinstance(query, str):
-        params["query"] = query.strip()
-
-    date = body.get("date")
-    if isinstance(date, str) and date.strip():
-        params["date"] = date.strip()
-
-    province = body.get("province")
-    if isinstance(province, str) and province.strip():
-        params["province"] = province.strip()
+    if isinstance(params["province"], str) and params["province"].strip():
+        prov_str = params["province"].strip().upper()
+        if prov_str in VALID_PROVINCES:
+            params["province"] = prov_str
+        else:
+            params["province"] = None
+    else:
+        params["province"] = None
 
     return params
 

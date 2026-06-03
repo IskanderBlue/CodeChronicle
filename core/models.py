@@ -11,6 +11,14 @@ from django.utils import timezone
 from core.provision_notes import GroupedNotes, group_notes
 
 
+def _json_default_dict():
+    return {}
+
+
+def _json_default_list():
+    return []
+
+
 class UserManager(BaseUserManager["User"]):
     """
     Custom manager for the email-only User model.
@@ -150,9 +158,9 @@ class SearchHistory(models.Model):
     )
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     query = models.TextField()
-    parsed_params = models.JSONField(default=dict)
+    parsed_params = models.JSONField(default=_json_default_dict)
     result_count = models.IntegerField(default=0)
-    top_results = models.JSONField(default=list)  # Store minimal metadata for quick links
+    top_results = models.JSONField(default=_json_default_list)  # Store minimal metadata for quick links
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -221,7 +229,7 @@ class EngagementEvent(models.Model):
     )
     # Free-form target detail (provision_id, division, reg_id, query_date,
     # source surface, …) so reports don't need to re-resolve object_id.
-    context = models.JSONField(default=dict, blank=True)
+    context = models.JSONField(default=_json_default_dict, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -580,7 +588,7 @@ class CodeEditionProvisionVersion(models.Model):
     # ``[{"kind": ..., "text": ...}]`` (CCM owns the kind taxonomy) and stored
     # verbatim — see ``core.provision_notes`` for the kind→display-tier map and
     # the ``grouped_notes`` property.
-    notes = models.JSONField(default=list, blank=True)
+    notes = models.JSONField(default=_json_default_list, blank=True)
 
     class Meta:
         db_table = "code_edition_provision_versions"
@@ -673,7 +681,7 @@ class ProvisionVersionTable(models.Model):
     )
     table_id = models.CharField(max_length=200)
     caption = models.CharField(max_length=500, blank=True, default="")
-    images = models.JSONField(default=list)
+    images = models.JSONField(default=_json_default_list)
     html = models.TextField(blank=True, default="")
     notes = models.TextField(blank=True, default="")
     order = models.PositiveSmallIntegerField(default=0)
@@ -749,7 +757,7 @@ class CorpusCurrency(models.Model):
     hardcoded (design handoff README §"Masthead fix").  Deriving it means a
     ``MAX(effective_date)`` aggregate over the whole corpus; running that on
     every request would be wasteful, so we snapshot it whenever data is
-    (re)loaded via :meth:`refresh` (called at the end of ``load_edition``).
+    (re)loaded via :meth:`refresh` (called at the end of ``load_edition`\").
     The context processor then serves it with a single PK read.
     """
 
