@@ -107,3 +107,19 @@ def test_table_reference_resolves_through_score_versions(edition_with_table):
     assert results[0]["id"] == "3.1.4."
     assert results[0]["score"] == 3.0
     assert results[0]["match_type"] == "table_ref"
+
+
+@pytest.mark.django_db
+def test_refs_only_all_unparseable_returns_empty_without_scanning(
+    edition_with_table, django_assert_num_queries
+):
+    """A refs-only query whose references all normalize to no segments must
+    return [] without touching the DB.  Before the early-return guard, the
+    empty Q matched the entire corpus and every in-force version was fetched
+    and scored only to be discarded."""
+    qs = CodeEditionProvisionVersion.objects.all()
+    # "A-" -> (False, ()) : a division prefix with no dotted core, so the
+    # engine skips it and the filter Q stays empty.
+    with django_assert_num_queries(0):
+        results = score_versions("", qs, {}, provision_references=["A-"])
+    assert results == []

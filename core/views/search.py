@@ -222,6 +222,9 @@ def viewer_edition_dates(request: HttpRequest):
                     Q(ineffective_date__isnull=True)
                     | Q(ineffective_date__gt=this_start)
                 )
+                # Stable order so the rendered transitions list doesn't
+                # reshuffle between identical requests (DB heap order otherwise).
+                .order_by("effective_date", "edition_id")
             )
             for other in overlapping:
                 other_start = max(this_start, other.effective_date)
@@ -357,22 +360,28 @@ def viewer_section_content(request: HttpRequest):
     # Pin the event to the version in force on the query date (the last one
     # grouped for the matched provision), attributed to the originating search
     # via ``search_id`` threaded through from the results partial.  Non-fatal.
-    matched_active = by_provision.get(matched.pk, [])
-    record_event(
-        request,
-        event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
-        object_type="CodeEditionProvisionVersion",
-        object_id=matched_active[-1].pk if matched_active else None,
-        search_id=_query_value(request, "search_id"),
-        context={
-            "code": code,
-            "edition_id": edition_id,
-            "division": matched.division,
-            "provision_id": matched.provision_id,
-            "query_date": query_date.isoformat(),
-            "surface": "search_viewer",
-        },
-    )
+    #
+    # Only count genuine HTMX drill-ins.  This partial is always loaded via
+    # htmx; a request without the ``HX-Request`` header is a crawler, a link
+    # prefetch, or a direct/refreshed URL hit — counting those inflates the
+    # click-through metric with views the user never initiated.
+    if request.headers.get("HX-Request") == "true":
+        matched_active = by_provision.get(matched.pk, [])
+        record_event(
+            request,
+            event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
+            object_type="CodeEditionProvisionVersion",
+            object_id=matched_active[-1].pk if matched_active else None,
+            search_id=_query_value(request, "search_id"),
+            context={
+                "code": code,
+                "edition_id": edition_id,
+                "division": matched.division,
+                "provision_id": matched.provision_id,
+                "query_date": query_date.isoformat(),
+                "surface": "search_viewer",
+            },
+        )
 
     # Build depth-first ordered list rooted at subtree_root.
     by_pk: dict[int, CodeEditionProvision] = {p.pk: p for p in all_provisions}
@@ -460,7 +469,13 @@ def search_results(request):
         return render(
             request,
             "partials/search_results_partial.html",
-            {"success": False, "error": result["error"]},
+            {
+                "success": False,
+                "error": result["error"],
+                # Present -> render the date-specific validation message and
+                # echo the bad value back to the user (see the partial).
+                "invalid_date": result.get("invalid_date"),
+            },
         )
 
     return render(

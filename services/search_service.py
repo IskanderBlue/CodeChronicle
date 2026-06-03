@@ -3,6 +3,7 @@ HTTP-agnostic search service that consolidates the shared logic
 between core/views.py (HTMX) and api/views.py (Django Ninja).
 """
 
+from datetime import date
 from typing import Any
 
 from coloured_logger import Logger
@@ -44,8 +45,25 @@ def run_search(
         # typed (direct) from those the LLM expanded in (indirect, 0.9 weight).
         params["raw_query"] = query
 
-        # Apply manual overrides
+        # Apply manual overrides. The date override is the one piece of raw
+        # user input that reaches the date math, so validate it here and return
+        # a specific, correctable message rather than letting
+        # ``date.fromisoformat`` raise deep in execute_search (which would
+        # surface as a cryptic "unexpected error"). ``invalid_date`` lets the
+        # template point the user back at the date selector.
         if date_override:
+            try:
+                date.fromisoformat(date_override)
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": (
+                        f'"{date_override}" is not a valid date. Please pick a '
+                        "date with the date selector (YYYY-MM-DD) and search again."
+                    ),
+                    "results": [],
+                    "invalid_date": date_override,
+                }
             params["date"] = date_override
         if province_override:
             params["province"] = province_override

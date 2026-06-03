@@ -319,7 +319,7 @@
         {% if clause.page and regulation.source_pdf %}
         <div x-show="showSource" x-cloak class="mt-3 accordion-content">
             <div class="overflow-hidden paper-container" style="border-style: dashed;">
-                {% with img_entry_image="documents/"|add:regulation.source_pdf|add:"/"|add:clause.page|add:".webp" %}
+                {% with img_entry_image="/documents/"|add:regulation.source_pdf|add:"/"|add:clause.page|add:".webp" %}
                 <div class="relative">
                     <img src="{{ img_entry_image }}" alt="Gazette page {{ clause.page }}"
                         class="w-full fade-in-image" loading="lazy">

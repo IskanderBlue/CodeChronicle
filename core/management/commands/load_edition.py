@@ -40,6 +40,30 @@ def _require_date(value: str | None, field: str) -> date:
     return date.fromisoformat(value)
 
 
+def _max_concurrent_in_force(intervals: list[tuple[date, date | None]]) -> int:
+    """Largest number of versions in force on any single day.
+
+    Each interval is ``[effective_date, ineffective_date)`` — half-open, matching
+    the in-force search filter (a version is in force on ``d`` iff
+    ``effective_date <= d < ineffective_date``).  An ``ineffective_date`` of
+    ``None`` means open-ended.  At a shared boundary the ending interval is
+    already out of force, so end events (-1) must be processed before start
+    events (+1); sorting the ``(date, delta)`` tuples does that since -1 < 1.
+    """
+    events: list[tuple[date, int]] = []
+    for start, end in intervals:
+        events.append((start, 1))
+        events.append((end or date.max, -1))
+    events.sort()
+
+    depth = 0
+    peak = 0
+    for _, delta in events:
+        depth += delta
+        peak = max(peak, depth)
+    return peak
+
+
 class Command(BaseCommand):
     help = "Load a CCM consolidated edition JSON into provenance models."
 
@@ -415,6 +439,13 @@ class Command(BaseCommand):
 
         # Second pass: set parent and appendix_of FKs
         provs_to_update: list[CodeEditionProvision] = []
+        # Index by bare provision_id for the appendix_of fallback below: a
+        # cross-division appendix target becomes an O(1) lookup instead of a
+        # linear scan of prov_lookup per unresolved appendix provision.  First
+        # insertion wins, matching the previous "first match in iteration order".
+        provs_by_id: dict[str, CodeEditionProvision] = {}
+        for (pid, _division), candidate in prov_lookup.items():
+            provs_by_id.setdefault(pid, candidate)
         for prov_data in provisions:
             provision_id = prov_data["provision_id"]
             division = prov_data.get("division", "")
@@ -436,10 +467,7 @@ class Command(BaseCommand):
                 if not appendix_target:
                     appendix_target = prov_lookup.get((appendix_of_id, ""))
                 if not appendix_target:
-                    for key, candidate in prov_lookup.items():
-                        if key[0] == appendix_of_id:
-                            appendix_target = candidate
-                            break
+                    appendix_target = provs_by_id.get(appendix_of_id)
                 if appendix_target:
                     prov.appendix_of = appendix_target
                     changed = True
@@ -487,10 +515,49 @@ class Command(BaseCommand):
                 versions_to_create.append(version)
                 version_lookup[(provision_id, division, version_num)] = version
 
+        self._check_in_force_overlaps(versions_to_create)
+
         if versions_to_create:
             CodeEditionProvisionVersion.objects.bulk_create(versions_to_create)
 
         return version_lookup
+
+    def _check_in_force_overlaps(
+        self, versions: list[CodeEditionProvisionVersion]
+    ) -> None:
+        """Reject data where a provision has 3+ versions in force at once.
+
+        The transition model is pairwise: during a commencement window at most
+        two versions of a provision (the outgoing and the incoming one) overlap,
+        and the search grouping (:func:`api.search.orchestration._group_transitions`)
+        only ever pairs two.  A third concurrently-in-force version is malformed
+        upstream data that would be silently dropped at query time, so we fail
+        the load loudly here rather than serve a corpus that hides versions.
+        """
+        by_provision: dict[tuple[str, str], list[tuple[date, date | None]]] = {}
+        provisions: dict[tuple[str, str], CodeEditionProvision] = {}
+        for v in versions:
+            # Zero-width "as-filed but superseded same day" rows are never in
+            # force, so they can't contribute to an overlap — skip them, the
+            # same way the in-force search filter excludes them.
+            if v.ineffective_date is not None and v.ineffective_date == v.effective_date:
+                continue
+            key = (v.provision.provision_id, v.provision.division)
+            by_provision.setdefault(key, []).append(
+                (v.effective_date, v.ineffective_date)
+            )
+            provisions[key] = v.provision
+
+        for key, intervals in by_provision.items():
+            peak = _max_concurrent_in_force(intervals)
+            if peak >= 3:
+                prov = provisions[key]
+                raise CommandError(
+                    f"Provision {prov.provision_id!r} (division {prov.division!r}) "
+                    f"has {peak} versions in force simultaneously; the transition "
+                    f"model supports at most 2. Fix the upstream "
+                    f"effective_date/ineffective_date ranges."
+                )
 
     def _load_version_clause_links(
         self,

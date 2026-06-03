@@ -89,10 +89,12 @@ class User(AbstractBaseUser, PermissionsMixin):
 
         customer = Customer.objects.filter(subscriber=self).first()
         if not customer and self.stripe_customer_id:
+            # Fall back to the raw Stripe id when dj-stripe hasn't linked the
+            # Customer.subscriber yet.  Read-only on purpose: a property getter
+            # must not write — the subscriber back-link is established in the
+            # checkout/webhook path (see core.views.billing), not here, so a
+            # plain GET render never triggers a DB write.
             customer = Customer.objects.filter(id=self.stripe_customer_id).first()
-            if customer and not customer.subscriber:
-                customer.subscriber = self
-                customer.save(update_fields=["subscriber"])
         if not customer:
             return False
         return Subscription.objects.filter(
@@ -126,6 +128,12 @@ class QueryCache(models.Model):
     prompt = models.ForeignKey(QueryPrompt, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
     hits = models.IntegerField(default=1)
+    # True when ``parsed_params["date"]`` was the LLM's "no date mentioned ->
+    # use today" default (i.e. equalled today at parse time).  Such a parse is
+    # only valid for that day, so the parser treats the row as stale once the
+    # date rolls (see ``api.llm_parser.parse_user_query``).  An explicit /
+    # historical date is stable and stays cached indefinitely.
+    date_is_relative = models.BooleanField(default=False)
 
     class Meta:
         db_table = "query_cache"
@@ -682,16 +690,38 @@ class CodeEditionProvisionVersion(models.Model):
         (empty) ``Meta.ordering`` and so is non-deterministic — ``[-1]`` and
         ``.last()`` can disagree across queries (Postgres heap order vs.
         ``ORDER BY pk``).  The canonical order lives on the through model
-        ``CodeEditionProvisionVersionClause.apply_order``; ``.last()`` against
-        its reverse set (apply_order DESC) yields the last-applied clause
-        consistently for the header, amendment chain, and next-version rows.
+        ``CodeEditionProvisionVersionClause.apply_order`` (its ``Meta.ordering``),
+        so the last row of its reverse set is the last-applied clause —
+        consistent across the header, amendment chain, and next-version rows.
+
+        Reads ``.all()`` and takes the last element in Python rather than
+        ``.last()``: ``.last()`` reverses the queryset, which discards any
+        prefetched cache and fires a fresh ``ORDER BY apply_order DESC LIMIT 1``
+        per call — an N+1 across the amendment chain (``_provenance_rail.html``
+        renders one row per version).  The search path prefetches this reverse
+        set with ``clause__regulation`` (see ``api.search.orchestration``), so
+        the list access below hits the cache and the ``.clause`` joins are warm.
         """
-        last = (
-            self.codeeditionprovisionversionclause_set
-            .select_related("clause__regulation")
-            .last()
-        )
-        return last.clause if last else None
+        rows = list(self.codeeditionprovisionversionclause_set.all())
+        return rows[-1].clause if rows else None
+
+    @property
+    def first_contributing_clause(self) -> "RegulationClause | None":
+        """The first clause applied to produce this version, in apply order.
+
+        Symmetric to :attr:`last_contributing_clause`.  ``apply_order`` on the
+        through model is the 0-indexed position within the contract ordering
+        ``(regulation.filed_date, clause_id)`` (see
+        ``CodeEditionProvisionVersionClause`` and ``load_edition``'s
+        ``_load_version_clause_links``), so the first row is the
+        earliest-*filed* contributing regulation's clause — the right "this is
+        what next brings in" anchor for the copy-reference line, and stable
+        rather than the heap-order ``contributing_clauses.all()[0]`` it
+        replaces.  Uses ``.all()[0]`` (not ``.first()``) so a prefetched
+        through set is reused instead of firing a query per call.
+        """
+        rows = list(self.codeeditionprovisionversionclause_set.all())
+        return rows[0].clause if rows else None
 
     @property
     def grouped_notes(self) -> GroupedNotes:

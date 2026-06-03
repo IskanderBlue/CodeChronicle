@@ -11,12 +11,31 @@ from django.db.models import Prefetch, Q
 
 from core.models import (
     CodeEditionProvisionVersion,
+    CodeEditionProvisionVersionClause,
     ProvinceCode,
     ProvisionMapping,
     RegulationClause,
 )
 
 from .engine import SEARCH_RESULT_LIMIT, compute_idf, score_versions
+
+
+def _clause_through_prefetch() -> Prefetch:
+    """Prefetch the apply_order-ordered clause through set, warmed with
+    ``clause__regulation``.
+
+    Lets ``CodeEditionProvisionVersion.first_contributing_clause`` /
+    ``last_contributing_clause`` read from the prefetch cache instead of firing
+    a query per version (an N+1 across the amendment chain and the per-result
+    "Next amendment" copy line).  Returns a fresh object per call so it can be
+    attached at several depths without sharing prefetch state.
+    """
+    return Prefetch(
+        "codeeditionprovisionversionclause_set",
+        queryset=CodeEditionProvisionVersionClause.objects.select_related(
+            "clause__regulation"
+        ),
+    )
 
 
 def execute_search(params: dict[str, Any]) -> dict[str, Any]:
@@ -62,17 +81,28 @@ def execute_search(params: dict[str, Any]) -> dict[str, Any]:
     ).prefetch_related(
         "tables",
         "contributing_clauses__regulation",
+        # Through-set (apply_order ordered) so the result version's
+        # last_contributing_clause reads from cache rather than re-querying.
+        _clause_through_prefetch(),
+        # Full chain for the amendment-chain rail; each entry's
+        # last_contributing_clause needs the through set too.
         Prefetch(
             "provision__versions",
             queryset=CodeEditionProvisionVersion.objects
-                .prefetch_related("contributing_clauses__regulation")
+                .prefetch_related(
+                    "contributing_clauses__regulation",
+                    _clause_through_prefetch(),
+                )
                 .order_by("version"),
         ),
-        # Next-version-not-in-force lookup for the "Next amendment" line.
+        # Next-version-not-in-force lookup for the "Next amendment" line; its
+        # first_contributing_clause names the upcoming regulation, so warm the
+        # through set here too (else one query per result).
         Prefetch(
             "provision__versions",
             queryset=CodeEditionProvisionVersion.objects
                 .filter(effective_date__gt=search_date)
+                .prefetch_related(_clause_through_prefetch())
                 .order_by("effective_date")[:1],
             to_attr="next_versions",
         ),
