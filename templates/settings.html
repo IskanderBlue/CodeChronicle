@@ -11,12 +11,23 @@
         const clearButton = document.querySelector('[data-pdf-clear-cache]');
         if (!clearButton) return;
 
+        // Toggle `hidden` and `inline-flex` together: with both on the element
+        // at once, `.inline-flex` out-cascades `.hidden` in the built CSS
+        // (later source order, equal specificity), so `hidden` alone can never
+        // hide the button. Keeping them mutually exclusive avoids that.
+        const show = () => { clearButton.classList.add('inline-flex'); clearButton.classList.remove('hidden'); };
+        const hide = () => { clearButton.classList.remove('inline-flex'); clearButton.classList.add('hidden'); };
+
         await restorePdfMappings();
-        if (getPdfMappingCount() > 0) clearButton.classList.remove('hidden');
+        if (getPdfMappingCount() > 0) show();
 
         clearButton.addEventListener('click', async () => {
-            await clearAllPdfMappings();
-            clearButton.classList.add('hidden');
+            try {
+                await clearAllPdfMappings();
+                hide();
+            } catch (e) {
+                console.error('Failed to clear cached PDFs:', e);
+            }
         });
     });
 </script>
@@ -28,7 +39,7 @@
         <h1 class="font-serif text-2xl font-bold text-ink">Settings</h1>
         <button type="button" data-pdf-clear-cache
             title="These locally cached PDFs are obsolete — CodeChronicle no longer uses them. Clear them to free up browser storage."
-            class="hidden inline-flex items-center px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.04em] border border-ink-2 text-ink-2 hover:bg-surface-2">
+            class="hidden items-center px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.04em] border border-ink-2 text-ink-2 hover:bg-surface-2">
             Clear cached PDFs
         </button>
     </div>
