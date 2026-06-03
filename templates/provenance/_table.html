@@ -28,7 +28,7 @@
         <div class="overflow-y-auto table-container max-w-none provision-table-html"
              style="max-height: 500px;">
             {% for entry in table.images %}
-            {% include "partials/_document_image.html" with image=entry %}
+            {% include "partials/_document_image.html" with img_entry=entry alt_text=table.table_id %}
             {% endfor %}
         </div>
         {% else %}

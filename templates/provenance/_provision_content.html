@@ -9,7 +9,7 @@
 {% if version.page_images %}
 <div class="mt-3 space-y-2">
     {% for entry in version.page_images %}
-    {% include "partials/_document_image.html" with image=entry %}
+    {% include "partials/_document_image.html" with img_entry=entry alt_text=version.title %}
     {% endfor %}
 </div>
 {% endif %}

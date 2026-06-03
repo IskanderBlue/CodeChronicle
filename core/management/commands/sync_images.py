@@ -231,7 +231,10 @@ class Command(BaseCommand):
         copied = 0
         skipped = 0
         verified = 0
-        mismatches: list[str] = []
+        mismatches: set[str] = set()
+        # Every source key walked this run; manifest keys never seen are the
+        # "absent from source" set, computed without a per-asset HEAD below.
+        seen: set[str] = set()
         missing: list[str] = []
 
         with log_path.open("a", encoding="utf-8") as log_f:
@@ -244,20 +247,28 @@ class Command(BaseCommand):
                     if not src.is_file():
                         continue
                     key = src.relative_to(source_root).as_posix()
+                    seen.add(key)
                     expected_sha = manifest.get(key)
 
                     action = self._decide(backend, src, key, expected_sha)
                     if action == "copy":
                         backend.put(src, key, sha256=expected_sha or _sha256_of_file(src))
                         copied += 1
+                        # Confirm the freshly written asset matches the manifest.
+                        if expected_sha:
+                            if backend.verify(src, key, expected_sha):
+                                verified += 1
+                            else:
+                                mismatches.add(key)
                     else:
                         skipped += 1
-
-                    if expected_sha:
-                        if backend.verify(src, key, expected_sha):
+                        # A skip means _decide already found the stored sha equals
+                        # the manifest sha, so the asset is verified by
+                        # construction.  Re-hashing src here (R2.verify) is what
+                        # made reruns O(total bytes) instead of the promised
+                        # O(diff); trust the decision instead.
+                        if expected_sha:
                             verified += 1
-                        else:
-                            mismatches.append(key)
 
                     log_f.write(json.dumps({
                         "ts": datetime.now(timezone.utc).isoformat(),
@@ -267,18 +278,21 @@ class Command(BaseCommand):
                         "verified": bool(expected_sha) and key not in mismatches,
                     }) + "\n")
 
-        # Report manifest entries we never saw at the destination.
+        # Manifest entries with no corresponding source file this run.  Derived
+        # from the keys already walked, so no per-asset HEAD round-trip (this is
+        # also the literal meaning of the "absent from source" warning below).
         if "laws" in prefixes:
-            for key in manifest:
-                if not backend.head(key)[0]:
-                    missing.append(key)
+            missing = [key for key in manifest if key not in seen]
 
         logger.info(
             "sync_images[%s]: copied=%d skipped=%d verified=%d mismatches=%d missing_manifest=%d",
             backend.name, copied, skipped, verified, len(mismatches), len(missing),
         )
         if mismatches:
-            logger.warning("sha256 mismatch for %d asset(s): %s", len(mismatches), mismatches[:5])
+            logger.warning(
+                "sha256 mismatch for %d asset(s): %s",
+                len(mismatches), sorted(mismatches)[:5],
+            )
         if missing:
             logger.warning(
                 "manifest registered %d asset(s) absent from source: %s",

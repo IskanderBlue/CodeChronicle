@@ -458,6 +458,57 @@ class TestLoadEdition:
         )
         assert CodeEdition.objects.get(edition_id="1997").amendment_chain_complete is False
 
+    def test_refuses_triple_in_force_overlap(
+        self, edition_json: Path, tmp_path: Path
+    ) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        # Give provision 1.1. three versions whose in-force ranges all cover
+        # 2000-01-01.  The pairwise transition model can't represent a 3-way
+        # overlap, so the load must fail loudly rather than silently drop the
+        # third version at query time.
+        for prov in data["provisions"]:
+            if prov["provision_id"] == "1.1." and prov["division"] == "Division A":
+                base = prov["versions"][0]
+                prov["versions"] = [
+                    {**base, "version": 0, "effective_date": "1998-04-06",
+                     "ineffective_date": None},
+                    {**base, "version": 1, "effective_date": "1999-01-01",
+                     "ineffective_date": None},
+                    {**base, "version": 2, "effective_date": "2000-01-01",
+                     "ineffective_date": None},
+                ]
+                break
+        bad = tmp_path / "OBC_1997_triple.json"
+        bad.write_text(json.dumps(data), encoding="utf-8")
+        with pytest.raises(CommandError, match="in force simultaneously"):
+            call_command("load_edition", "--source", str(bad))
+
+    def test_allows_pairwise_in_force_overlap(
+        self, edition_json: Path, tmp_path: Path
+    ) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        # Two overlapping versions (a normal commencement-window transition)
+        # must still load — only a 3-way overlap is rejected.
+        for prov in data["provisions"]:
+            if prov["provision_id"] == "1.1." and prov["division"] == "Division A":
+                base = prov["versions"][0]
+                prov["versions"] = [
+                    {**base, "version": 0, "effective_date": "1998-04-06",
+                     "ineffective_date": None},
+                    {**base, "version": 1, "effective_date": "1999-01-01",
+                     "ineffective_date": None},
+                ]
+                break
+        ok = tmp_path / "OBC_1997_pair.json"
+        ok.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(ok))
+        assert (
+            CodeEditionProvisionVersion.objects.filter(
+                provision__provision_id="1.1."
+            ).count()
+            == 2
+        )
+
     def test_loads_regulation_assets(self, edition_json: Path, tmp_path: Path) -> None:
         data = json.loads(edition_json.read_text(encoding="utf-8"))
         # Inject assets onto the amending regulation per the

@@ -245,8 +245,11 @@ def _build_copy_text(
         # No linked regulation (e.g. a base-enactment gap): the date has no
         # operative reg to attach to, so it stands alone.
         lines.append(f"In force: {in_force}")
-    if next_version and next_version.contributing_clauses.exists():
-        first_clause = next_version.contributing_clauses.all()[0]
+    if next_version:
+        # Earliest-filed contributing clause (apply_order==0), not the
+        # heap-order contributing_clauses.all()[0] — see
+        # CodeEditionProvisionVersion.first_contributing_clause.
+        first_clause = next_version.first_contributing_clause
         if first_clause and first_clause.regulation:
             reg = first_clause.regulation
             date_part = (

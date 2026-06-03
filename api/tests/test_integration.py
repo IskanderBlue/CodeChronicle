@@ -201,6 +201,36 @@ class TestRunSearchEndToEnd:
         assert result["error"] is None
         assert SearchHistory.objects.count() == 1
 
+    @patch("services.search_service.parse_user_query")
+    def test_invalid_date_override_returns_specific_error(self, mock_parse):
+        # A malformed user date must be rejected at the boundary with a
+        # correctable message naming the value — not raise deep in
+        # execute_search and surface as a generic "unexpected error".
+        mock_parse.return_value = {
+            "date": "2024-06-01", "province": "ON",
+            "keywords": ["fire"], "section_references": [],
+        }
+        result = run_search("fire separation", date_override="2015-13-01")
+
+        assert result["success"] is False
+        assert result["invalid_date"] == "2015-13-01"
+        assert "2015-13-01" in result["error"]
+        assert "unexpected error" not in result["error"].lower()
+        # A rejected search records no history.
+        assert SearchHistory.objects.count() == 0
+
+    @patch("services.search_service.parse_user_query")
+    def test_valid_date_override_is_applied(self, mock_parse):
+        _create_obc_fixtures()
+        mock_parse.return_value = {
+            "date": "2024-06-01", "province": "ON",
+            "keywords": ["fire"], "section_references": [],
+        }
+        result = run_search("fire separation", date_override="2020-01-01")
+
+        assert result["success"] is True
+        assert result["parsed_params"]["date"] == "2020-01-01"
+
 
 @pytest.mark.integration
 @pytest.mark.django_db

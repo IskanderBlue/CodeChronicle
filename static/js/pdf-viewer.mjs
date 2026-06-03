@@ -394,9 +394,24 @@ async function buildPageElement(pdf, pageNum, containerWidth, opts = {}) {
 async function renderPdfPage(container, expectedFilename, pageNum, span) {
     try {
         const viewerMode = container.hasAttribute('data-pdf-viewer-mode');
-        // Skip re-render if viewer mode scrollBox is already set up or render in progress
-        if (viewerMode && (container.dataset.pdfRendering === 'true' || container.querySelector('[data-pdf-scale]'))) {
-            return true;
+        if (viewerMode) {
+            // A render is already in flight — don't start a second.
+            if (container.dataset.pdfRendering === 'true') return true;
+            // Already showing this edition's scrollBox — nothing to do.  Guard
+            // on the filename, not merely on scrollBox presence: switching
+            // editions rewrites data-pdf-expected-filename, so a stale scrollBox
+            // from the previous edition must be re-rendered, not short-circuited.
+            if (container.querySelector('[data-pdf-scale]')
+                && container.dataset.pdfRenderedFilename === expectedFilename) {
+                return true;
+            }
+            // Filename changed (or first render): drop any prior lazy-render
+            // observer before its slots get replaced, so it stops firing and
+            // doesn't accumulate across edition switches.
+            if (container._pdfObserver) {
+                container._pdfObserver.disconnect();
+                container._pdfObserver = null;
+            }
         }
 
         if (viewerMode) {
@@ -459,6 +474,9 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
 
             container.innerHTML = '';
             container.appendChild(scrollBox);
+            // Tag the rendered edition so a later renderPdfPage call can tell
+            // whether the on-screen scrollBox still matches the requested file.
+            container.dataset.pdfRenderedFilename = expectedFilename;
 
             // Lazy render with IntersectionObserver
             const rendered = new Set();
@@ -497,6 +515,8 @@ async function renderPdfPage(container, expectedFilename, pageNum, span) {
                 }
             }, { root: scrollBox, rootMargin: '200px 0px' });
 
+            // Keep a handle so a re-render (edition switch) can disconnect it.
+            container._pdfObserver = observer;
             for (const slot of slots) observer.observe(slot);
 
             // Scroll to section page (use live width for accurate offset)

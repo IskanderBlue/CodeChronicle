@@ -6,8 +6,12 @@ from django.utils import timezone
 from core.models import (
     Code,
     CodeEdition,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
+    CodeEditionProvisionVersionClause,
     CorpusCurrency,
     Regulation,
+    RegulationClause,
     SearchHistory,
     User,
 )
@@ -76,3 +80,68 @@ class TestCorpusCurrency:
         assert currency.corpus_span.endswith("present")
         assert currency.coverage_end is None or currency.coverage_end >= date(2024, 1, 1)
         assert currency.data_current_to is not None
+
+
+@pytest.mark.django_db
+class TestContributingClauseOrdering:
+    """first/last_contributing_clause follow the (filed_date, clause_id)
+    contract order via the through model's apply_order — not heap order."""
+
+    def _version_with_two_clauses(self) -> CodeEditionProvisionVersion:
+        code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+        edition = CodeEdition.objects.create(
+            code=code, edition_id="1997", year=1997,
+            effective_date=date(1998, 4, 6),
+        )
+        provision = CodeEditionProvision.objects.create(
+            edition=edition, provision_id="3.1.4.7.", level="article", division="B",
+        )
+        version = CodeEditionProvisionVersion.objects.create(
+            provision=provision, version=2,
+            effective_date=date(1999, 4, 1), title="Fire Separations",
+        )
+        # Two amending regs filed on different dates, created in the *reverse*
+        # of filed order so heap/pk order would disagree with the contract
+        # (regulation.filed_date, clause_id) order.
+        later = Regulation.objects.create(
+            reg_id="152/99", edition=edition, role="amendment",
+            effective_date=date(1999, 4, 1), filed_date=date(1999, 3, 15),
+        )
+        earlier = Regulation.objects.create(
+            reg_id="22/98", edition=edition, role="amendment",
+            effective_date=date(1998, 4, 6), filed_date=date(1998, 2, 1),
+        )
+        self.cl_later = RegulationClause.objects.create(
+            regulation=later, clause_id="1.(1)",
+        )
+        self.cl_earlier = RegulationClause.objects.create(
+            regulation=earlier, clause_id="3.(2)",
+        )
+        # apply_order mirrors the (filed_date, clause_id) projection load_edition
+        # writes: earliest-filed reg first.
+        CodeEditionProvisionVersionClause.objects.create(
+            version=version, clause=self.cl_earlier, apply_order=0,
+        )
+        CodeEditionProvisionVersionClause.objects.create(
+            version=version, clause=self.cl_later, apply_order=1,
+        )
+        return version
+
+    def test_first_is_earliest_filed_last_is_latest(self):
+        version = self._version_with_two_clauses()
+        assert version.first_contributing_clause == self.cl_earlier
+        assert version.last_contributing_clause == self.cl_later
+
+    def test_empty_when_no_contributing_clauses(self):
+        code = Code.objects.create(code="NBC", display_name="National Building Code")
+        edition = CodeEdition.objects.create(
+            code=code, edition_id="2020", year=2020, effective_date=date(2020, 1, 1),
+        )
+        provision = CodeEditionProvision.objects.create(
+            edition=edition, provision_id="1.1.", level="section", division="",
+        )
+        version = CodeEditionProvisionVersion.objects.create(
+            provision=provision, version=0, effective_date=date(2020, 1, 1),
+        )
+        assert version.first_contributing_clause is None
+        assert version.last_contributing_clause is None

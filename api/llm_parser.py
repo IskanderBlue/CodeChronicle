@@ -16,9 +16,6 @@ SECTION_REF_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Matches YYYY-MM-DD, YYYY/MM/DD, or bare 4-digit years (1900–2099)
-_DATE_LIKE_RE = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|\b(19|20)\d{2}\b")
-
 
 def extract_section_references(query: str) -> list[str]:
     return SECTION_REF_RE.findall(query)
@@ -106,6 +103,20 @@ def get_query_hash(query: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
+def _parse_is_stale(cached: Any) -> bool:
+    """Whether a cached parse can no longer be trusted today.
+
+    Only *relative* parses expire.  ``date_is_relative`` marks a row whose
+    ``date`` was the LLM's "no date mentioned -> use today" default — valid only
+    for the day it was computed.  Because that default *is* the stored date, the
+    row is stale exactly when the stored date no longer equals today.  Explicit
+    or historical dates are stable and never go stale.
+    """
+    if not cached.date_is_relative:
+        return False
+    return cached.parsed_params.get("date") != date.today().isoformat()
+
+
 def parse_user_query(query: str) -> Dict[str, Any]:
     """
     Parse natural language query into structured parameters using Claude.
@@ -127,11 +138,12 @@ def parse_user_query(query: str) -> Dict[str, Any]:
         }
 
     # 0. Prepare hashes
-    # Dateless queries get today's date from the LLM, so the cache must rotate
-    # daily for them. Dated queries produce stable parses — cache indefinitely.
-    has_date = bool(_DATE_LIKE_RE.search(remaining_query))
-    cache_salt = "" if has_date else date.today().isoformat()
-    query_hash = get_query_hash(f"{cache_salt}:{query}")
+    # The cache is keyed on the bare query.  Whether a parse depends on "today"
+    # is decided from the LLM's actual answer (see ``date_is_relative`` below and
+    # ``_parse_is_stale``), not from a pre-LLM guess at whether the text names a
+    # date — a regex can't tell a construction year from an edition label
+    # ("OBC 2012") or a measurement ("1900 mm").
+    query_hash = get_query_hash(query)
     prompt_content = SYSTEM_PROMPT + str(PARSE_QUERY_TOOL)
     prompt_hash = get_prompt_hash(prompt_content)
 
@@ -140,7 +152,7 @@ def parse_user_query(query: str) -> Dict[str, Any]:
         query_hash=query_hash, prompt__prompt_hash=prompt_hash
     ).first()
 
-    if cached:
+    if cached and not _parse_is_stale(cached):
         cached.hits += 1
         cached.save(update_fields=["hits"])
         params = cached.parsed_params
@@ -210,6 +222,11 @@ def parse_user_query(query: str) -> Dict[str, Any]:
                     "parsed_params": params,
                     "llm_model": settings.CLAUDE_MODEL,
                     "prompt": prompt_obj,
+                    # The parse is time-relative iff its date is today's date
+                    # (the LLM's default when the query names no date).
+                    "date_is_relative": (
+                        params.get("date") == date.today().isoformat()
+                    ),
                 },
             )
 

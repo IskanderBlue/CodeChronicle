@@ -190,11 +190,13 @@ def score_versions(
 
     criteria = Q()
     if query_lower:
-        criteria |= Q(provision__provision_id__icontains=query_lower)
-        # CCM folds the title into keyword_counts at ingest (it tokenizes the
-        # title alongside the body), so has_key over the expanded terms already
-        # covers title words.  A separate title__icontains gate would only pull
-        # in candidates that then score 0.
+        # Keyword matching is via keyword_counts only.  CCM folds the title into
+        # keyword_counts at ingest (it tokenizes the title alongside the body),
+        # so has_key over the expanded terms already covers title words; a
+        # separate title__icontains gate would only pull in candidates that then
+        # score 0.  (A provision_id__icontains over the keyword text used to be
+        # OR'd in here, but provision ids are dotted numbers — it never matched
+        # alphabetic keywords and only added a dead ILIKE to every search.)
         for term in expanded_terms:
             criteria |= Q(keyword_counts__has_key=term)
     if has_refs:
@@ -210,6 +212,13 @@ def score_versions(
                 criteria |= Q(tables__table_id__icontains=core)
             else:
                 criteria |= Q(provision__provision_id__icontains=core)
+
+    # No usable filter — e.g. a refs-only query whose references were all
+    # unparseable (every `_ref_parts` returned no segments). An empty Q matches
+    # the entire corpus, so bail here rather than scan and score every in-force
+    # version only to discard them all.
+    if not criteria:
+        return []
 
     # distinct(): the tables__ join fans out to-many rows; without it a
     # provision with several tables would be scored more than once.

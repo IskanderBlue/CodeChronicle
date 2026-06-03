@@ -139,6 +139,21 @@ sectionContentUrl() in search.html.
         </div>
     </div>
 </div>
+{% elif invalid_date %}
+{# -- Invalid date input: name the bad value, point back at the date selector -- #}
+<div class="border-l-[3px] border-secondary bg-surface-2 p-4">
+    <div class="flex">
+        <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+        </div>
+        <div class="ml-3">
+            <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Invalid date</h3>
+            <p class="mt-2 text-sm text-ink-2">{{ error }}</p>
+        </div>
+    </div>
+</div>
 {% else %}
 {# -- Generic error -- #}
 <div class="border-l-[3px] border-strike bg-surface-2 p-4">

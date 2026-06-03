@@ -108,7 +108,7 @@ class TestViewerSectionTracking:
             "provision_id": "1.1.1.1.",
             "query_date": "2020-01-01",
             "search_id": str(search.pk),
-        })
+        }, HTTP_HX_REQUEST="true")
         assert response.status_code == 200
 
         event = EngagementEvent.objects.get()
@@ -123,10 +123,22 @@ class TestViewerSectionTracking:
             "code": "OBC", "edition_id": "1997", "division": "",
             "provision_id": "1.1.1.1.", "query_date": "2020-01-01",
             "search_id": "not-a-number",
-        })
+        }, HTTP_HX_REQUEST="true")
         assert response.status_code == 200
         event = EngagementEvent.objects.get()
         assert event.search_id is None
+
+    def test_non_htmx_get_is_not_counted(self, client: Client, provision_fixtures):
+        # A plain GET (crawler / link prefetch / refreshed URL) has no
+        # HX-Request header and must not inflate the click-through metric —
+        # only genuine htmx drill-ins are recorded.
+        url = reverse("core:viewer_section_content")
+        response = client.get(url, {
+            "code": "OBC", "edition_id": "1997", "division": "",
+            "provision_id": "1.1.1.1.", "query_date": "2020-01-01",
+        })
+        assert response.status_code == 200
+        assert not EngagementEvent.objects.exists()
 
 
 @pytest.mark.django_db
