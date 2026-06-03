@@ -177,8 +177,8 @@ for block in response.content:
 ### Partial Updates
 Use `hx-target` and `hx-swap` for partial page updates:
 ```html
-<form hx-post="/api/search" 
-      hx-target="#results" 
+<form hx-post="/api/search"
+      hx-target="#results"
       hx-swap="innerHTML"
       hx-indicator="#loading">
 ```
@@ -217,10 +217,10 @@ Required variables (see `.env.example`):
 ```python
 class TestQueryParser:
     """Tests for LLM query parsing"""
-    
+
     def test_simple_query_extracts_year(self):
         ...
-    
+
     def test_missing_keywords_raises_error(self):
         ...
 ```

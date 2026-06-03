@@ -1,0 +1,9 @@
+/* Tailwind v4 entrypoint for the standalone CLI build (BOTH dev watch and prod
+   CI — same v4.3.0 binary, so the two surfaces can't skew). `@config` loads the
+   legacy-style JS config (content globs + theme.extend with the legacy palette
+   AND the design role tokens). This file is ONLY the Tailwind entrypoint: all
+   hand-written, non-utility CSS lives inline + always-present in
+   templates/base.html so it survives the CLI's purge.
+   Build: tailwindcss -i static/css/input.css -o static/css/tailwind.css [--watch] */
+@import "tailwindcss";
+@config "../../tailwind.config.js";

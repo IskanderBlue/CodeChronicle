@@ -10,6 +10,7 @@ from .billing import (
 )
 from .history import history
 from .pages import pricing, privacy_policy, terms_of_service, user_settings
+from .regulation import edition_chain, provision_permalink, regulation_detail
 from .search import (
     home,
     search_results,
@@ -21,10 +22,13 @@ from .search import (
 __all__ = [
     "create_checkout_session",
     "create_customer_portal_session",
+    "edition_chain",
     "history",
     "home",
     "pricing",
     "privacy_policy",
+    "provision_permalink",
+    "regulation_detail",
     "search_results",
     "stripe_cancel",
     "stripe_success",

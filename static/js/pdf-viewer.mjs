@@ -258,7 +258,7 @@ function renderPageControls(block, mount, wantsPicker) {
 
         const jumpBtn = document.createElement('button');
         jumpBtn.type = 'button';
-        jumpBtn.className = 'inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-500 dark:text-primary-300 dark:hover:bg-primary-900/20';
+        jumpBtn.className = 'inline-flex items-center px-2.5 py-1.5 text-xs font-medium border border-secondary text-secondary hover:bg-secondary-soft';
         jumpBtn.textContent = 'Jump to section';
         jumpBtn.addEventListener('click', () => {
             const scrollBox = container.querySelector('[data-pdf-scale]');
@@ -804,6 +804,10 @@ export async function initPdfContainers(root) {
     // Show browse buttons for any mapped PDFs (covers HTMX-loaded content)
     refreshBrowseButtons();
     await updateStorageUi();
+}
+
+export function getPdfMappingCount() {
+    return mappingRegistry.size;
 }
 
 export async function clearAllPdfMappings() {

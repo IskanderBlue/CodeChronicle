@@ -2,12 +2,10 @@ from datetime import date
 from unittest.mock import patch
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.test import Client
 
-from core.models import CodeEdition, CodeSystem
+from core.models import Code, CodeEdition, User
 
-User = get_user_model()
 
 @pytest.mark.django_db
 class TestApiEndpoints:
@@ -22,16 +20,15 @@ class TestApiEndpoints:
             password="testpassword",
             pro_courtesy=True,
         )
-        nbc = CodeSystem.objects.create(
+        nbc = Code.objects.create(
             code="NBC",
             display_name="National Building Code",
             is_national=True,
         )
         CodeEdition.objects.create(
-            system=nbc,
+            code=nbc,
             edition_id="2025",
             year=2025,
-            map_codes=["NBC"],
             effective_date=date(2025, 1, 1),
         )
 

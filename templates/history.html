@@ -2,14 +2,15 @@
 
 {% block content %}
 <div class="max-w-4xl mx-auto py-8 px-4" x-data="{ query: '' }">
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Search History</h1>
+    <div class="flex justify-between items-center mb-6 gap-4">
+        <h1 class="font-serif text-3xl font-bold text-ink">Search History</h1>
 
-        <!-- Client-side filter -->
+        {% comment %} Client-side filter — same cellular, ruled, no-radius field
+           vocabulary as the search bar. {% endcomment %}
         <div class="relative">
             <input type="text" x-model="query" placeholder="Filter history..."
-                class="bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg py-2 px-4 pl-10 focus:outline-none focus:ring-2 focus:ring-primary-500 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500">
-            <svg class="w-5 h-5 text-neutral-400 absolute left-3 top-2.5" fill="none" stroke="currentColor"
+                class="bg-panel border border-ink-2 py-2 px-4 pl-10 font-mono text-sm text-ink placeholder-ink-3 focus:outline-none focus:ring-1 focus:ring-secondary focus:border-secondary">
+            <svg class="w-5 h-5 text-ink-3 absolute left-3 top-2.5" fill="none" stroke="currentColor"
                 viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
@@ -20,36 +21,35 @@
     <div class="space-y-4">
         {% for item in history %}
         <a href="{% url 'core:home' %}?q={{ item.query|urlencode }}"
-            class="block bg-neutral-100 dark:bg-neutral-800 rounded-lg shadow p-6 border border-neutral-200 dark:border-neutral-700 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-md transition-all cursor-pointer no-underline"
+            class="block bg-surface-2 border border-rule p-6 hover:border-secondary transition-colors cursor-pointer no-underline"
             x-show="!query || '{{ item.query|escapejs }}'.toLowerCase().includes(query.toLowerCase())" x-transition>
             <div class="flex justify-between items-start">
                 <div>
-                    <h3 class="text-lg font-semibold text-primary-600 dark:text-primary-400 mb-2">
+                    {% comment %} The query string is the user's own input —
+                       echoed in serif ink, not the accent. {% endcomment %}
+                    <h3 class="font-serif text-lg font-semibold text-ink mb-2">
                         {{ item.query }}
                     </h3>
                     <div class="flex flex-wrap gap-2 mb-3">
                         {% for kw in item.parsed_params.keywords %}
-                        <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-200 text-neutral-800 dark:bg-neutral-700 dark:text-neutral-300">
+                        <span class="inline-flex items-center border border-rule px-2 py-0.5 font-mono text-[11px] text-ink-2">
                             {{ kw }}
                         </span>
                         {% endfor %}
-                        <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary-100 text-secondary-800 dark:bg-secondary-900 dark:text-secondary-200">
+                        <span class="inline-flex items-center border border-rule px-2 py-0.5 font-mono text-[11px] text-ink-2">
                             {{ item.parsed_params.date }}
                         </span>
-                        <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                        <span class="inline-flex items-center border border-rule px-2 py-0.5 font-mono text-[11px] text-ink-2">
                             {{ item.parsed_params.province }}
                         </span>
                     </div>
                 </div>
-                <div class="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400 shrink-0">
+                <div class="flex items-center gap-2 font-mono text-xs text-ink-3 shrink-0">
                     {% if item.search_count > 1 %}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">{{ item.search_count }}x</span>
+                    <span class="inline-flex items-center border border-rule px-2 py-0.5 text-[11px] text-ink-2">{{ item.search_count }}×</span>
                     {% endif %}
                     {{ item.timestamp|date:"M d, Y" }}
-                    <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                     </svg>
                 </div>
@@ -57,14 +57,14 @@
 
             <!-- Quick Links -->
             {% if item.top_results %}
-            <div class="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
-                <h4 class="text-xs font-bold text-neutral-500 uppercase tracking-wide mb-2">Top Results</h4>
+            <div class="mt-4 pt-4 border-t border-rule-2">
+                <h4 class="font-mono text-[10px] font-semibold text-ink-3 uppercase tracking-[0.08em] mb-2">Top Results</h4>
                 <ul class="space-y-2">
                     {% for result in item.top_results|slice:":3" %}
                     <li class="flex items-center text-sm">
-                        <span class="w-20 font-mono text-neutral-500 text-xs">{{ result.code }}</span>
-                        <span class="font-medium text-neutral-800 dark:text-neutral-200 truncate">{{ result.title }}</span>
-                        <span class="ml-2 text-xs text-neutral-400">{{ result.section_id }}</span>
+                        <span class="w-20 font-mono text-ink-3 text-xs">{{ result.code }}</span>
+                        <span class="font-serif text-ink-2 truncate">{{ result.title }}</span>
+                        <span class="ml-2 font-mono text-xs text-ink-3">{{ result.section_id }}</span>
                     </li>
                     {% endfor %}
                 </ul>
@@ -72,7 +72,7 @@
             {% endif %}
         </a>
         {% empty %}
-        <div class="text-center py-12 text-neutral-500">
+        <div class="text-center py-12 text-ink-3">
             No search history found.
         </div>
         {% endfor %}

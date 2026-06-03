@@ -76,6 +76,24 @@ jobs:
       - name: Run tests
         run: pytest
 
+      - name: Cache Tailwind CLI
+        uses: actions/cache@v4
+        with:
+          path: tailwindcss-linux-x64
+          key: tailwindcss-v4.3.0
+
+      # Pinned to an exact version: `releases/latest` previously dragged the
+      # build across the v3→v4 major boundary silently, producing a CSS file
+      # with no custom-colour utilities. input.css/tailwind.config.js are v4
+      # (@import + @config). Bump this deliberately, not implicitly.
+      - name: Build Tailwind CSS
+        run: |
+          if [ ! -f tailwindcss-linux-x64 ]; then
+            curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.0/tailwindcss-linux-x64
+            chmod +x tailwindcss-linux-x64
+          fi
+          ./tailwindcss-linux-x64 -i static/css/input.css -o static/css/tailwind.css --minify
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:

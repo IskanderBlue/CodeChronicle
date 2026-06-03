@@ -1,0 +1,94 @@
+{% comment %} CommencementProvenance detail — the *why* behind an in-force date.
+
+   `commencement` is one entry dict (RegulationClause.commencement /
+   Regulation.commencement, mirroring CCM's CommencementProvenance): the
+   verbatim commencement subsection, how the date was established (`source`),
+   and for derived dates the `depends_on` statute + `computation`.  Rendered
+   as the body of a popup on both the regulation clause page and the provision
+   page, so it carries no modal chrome of its own.
+
+   `effective_date` (optional) is the real date object the host surface already
+   holds (clause/version effective_date) — preferred for display since the
+   entry's own date is a raw ISO string from JSON. {% endcomment %}
+<div class="space-y-3 text-left">
+    <div class="flex items-baseline justify-between gap-3">
+        <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary">Commencement</span>
+        {% if commencement.is_default %}
+        <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-ink-3 border border-rule px-1.5 py-0.5">Default</span>
+        {% else %}
+        <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-highlight border border-highlight px-1.5 py-0.5">Deferred</span>
+        {% endif %}
+    </div>
+
+    <div>
+        <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">In force</div>
+        <div class="font-serif text-[20px] font-semibold leading-tight text-ink">
+            {% if effective_date %}{{ effective_date|date:"j F Y" }}{% else %}{{ commencement.effective_date }}{% endif %}
+        </div>
+    </div>
+
+    {% comment %} Verbatim commencement subsection — render as legal text. {% endcomment %}
+    {% if commencement.commencement_clause %}
+    <blockquote class="border-l-2 border-rule pl-3 font-serif text-[13.5px] leading-[1.55] text-ink-2">
+        {{ commencement.commencement_clause }}
+    </blockquote>
+    {% endif %}
+
+    {% comment %} How the date was established — a friendly gloss on `source`. {% endcomment %}
+    <div>
+        <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3 mb-0.5">How this date was set</div>
+        <p class="text-[12.5px] leading-[1.5] text-ink-2">
+            {% if commencement.source == "parsed" %}
+            Read directly from the regulation's own commencement section.
+            {% elif commencement.source == "commencement-input" %}
+            Tied to an external statute the filing alone doesn't resolve — see the dependency below.
+            {% elif commencement.source == "regulations-act-default" %}
+            Default rule under the <i>Regulations Act</i>: the later of the filing date and the parent edition's in-force date.
+            {% elif commencement.source == "catalog" %}
+            Taken from the amendments catalogue's stated date.
+            {% else %}
+            {{ commencement.source|default:"—" }}
+            {% endif %}
+        </p>
+    </div>
+
+    {% comment %} External dependency — statute-proclamation / "later of" clauses. {% endcomment %}
+    {% if commencement.depends_on %}
+    <div class="border border-rule-2 bg-surface-2 px-3 py-2">
+        <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3 mb-1">Depends on</div>
+        <p class="text-[12.5px] leading-[1.5] text-ink-2">
+            {% if commencement.depends_on.provision %}<span class="font-semibold">{{ commencement.depends_on.provision }}</span> of {% endif %}
+            {% if commencement.depends_on.source_legislation_url %}<a href="{{ commencement.depends_on.source_legislation_url }}" target="_blank" rel="noopener" @click.stop class="text-secondary border-b border-secondary hover:text-secondary-2">{{ commencement.depends_on.legislation }}</a>{% else %}<i>{{ commencement.depends_on.legislation }}</i>{% endif %}
+            {% if commencement.depends_on.date_type %}<span class="text-ink-3">&middot; {{ commencement.depends_on.date_type }}</span>{% endif %}
+            {% if commencement.depends_on.date %}<span class="font-mono text-ink">&middot; {{ commencement.depends_on.date }}</span>{% endif %}
+        </p>
+        {% if commencement.depends_on.gazette_reference %}
+        <p class="mt-1 font-mono text-[11px] text-ink-3">
+            {% if commencement.depends_on.gazette_url %}<a href="{{ commencement.depends_on.gazette_url }}" target="_blank" rel="noopener" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">{{ commencement.depends_on.gazette_reference }}</a>{% else %}{{ commencement.depends_on.gazette_reference }}{% endif %}
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% comment %} The derivation, when the date isn't a bare filing date. {% endcomment %}
+    {% if commencement.computation %}
+    <div>
+        <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3 mb-0.5">Computation</div>
+        <p class="font-mono text-[11.5px] leading-[1.5] text-ink-2">{{ commencement.computation }}</p>
+    </div>
+    {% endif %}
+
+    {% comment %} A third-party source citing a different date — surfaced, not hidden. {% endcomment %}
+    {% if commencement.elaws_discrepancy %}
+    <div class="border-l-2 border-highlight pl-3">
+        <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-highlight mb-0.5">Note</div>
+        <p class="text-[12px] leading-[1.5] text-ink-2">{{ commencement.elaws_discrepancy }}</p>
+    </div>
+    {% endif %}
+
+    {% if commencement.regulation %}
+    <p class="font-mono text-[10px] text-ink-3 pt-1 border-t border-rule-2">
+        O. Reg. {{ commencement.regulation }}{% if commencement.clause %} &middot; commencement {{ commencement.clause }}{% endif %}
+    </p>
+    {% endif %}
+</div>

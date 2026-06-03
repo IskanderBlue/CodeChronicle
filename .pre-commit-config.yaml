@@ -1,0 +1,48 @@
+# Pre-commit hooks for CodeChronicle.
+#
+# Install once per clone (with the venv active):
+#     pre-commit install
+# Run manually against everything:
+#     pre-commit run --all-files
+#
+# NOTE on the mypy hook: the django-stubs plugin imports Django settings to
+# introspect models, so settings.development must be importable — which needs
+# DATABASE_URL.  Locally that comes from .env (loaded in settings/base.py).
+# In CI, set a dummy value, e.g. DATABASE_URL=postgres://u:p@localhost/db.
+
+repos:
+  # ---- Generic hygiene -------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  # ---- Lint (ruff, isolated env — no project imports needed) -----------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.1
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  # ---- Types (mypy + django-stubs plugin, project venv) ----------------
+  # language: system so mypy sees the django-stubs plugin, the project's deps,
+  # and DATABASE_URL — none of which exist in pre-commit's isolated per-hook
+  # virtualenvs.  scripts/run_mypy.py re-dispatches to venv/'s python (falling
+  # back to the current interpreter) so the hook works even when the venv isn't
+  # active — e.g. the Windows App-execution-alias shim shadowing PATH.
+  # pass_filenames: false because the plugin needs the whole app's model graph,
+  # not just the staged files.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (django-stubs plugin)
+        entry: python scripts/run_mypy.py
+        language: system
+        types: [python]
+        pass_filenames: false
+        args: ["api", "core", "config", "code_chronicle"]

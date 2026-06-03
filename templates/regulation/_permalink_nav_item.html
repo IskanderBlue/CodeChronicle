@@ -1,0 +1,22 @@
+{% comment %} One neighbour provision in the permalink hierarchy nav.
+   `item`: {provision_id, versions:[{version, effective_date,
+   ineffective_date, url}]}.  A single overlapping version links the id
+   itself; multiple versions show the id plain with one chip per version,
+   since the same neighbour read differently across the pinned version's
+   lifetime. {% endcomment %}
+{% if item.versions|length == 1 %}
+    {% with v=item.versions.0 %}
+    <a href="{{ v.url }}" class="font-mono font-semibold text-secondary hover:underline"
+       title="v{{ v.version }} — in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}">{{ item.provision_id }}</a>
+    {% endwith %}
+{% elif item.versions %}
+    <span class="font-mono font-semibold text-ink">{{ item.provision_id }}</span>
+    <span class="flex flex-wrap gap-1">
+        {% for v in item.versions %}
+        <a href="{{ v.url }}" class="bg-secondary-soft px-1.5 font-mono text-[11px] text-secondary hover:underline"
+           title="in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}">v{{ v.version }}</a>
+        {% endfor %}
+    </span>
+{% else %}
+    <span class="font-mono text-ink-3">{{ item.provision_id }}</span>
+{% endif %}

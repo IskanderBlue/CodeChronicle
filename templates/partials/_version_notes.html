@@ -1,0 +1,89 @@
+{% comment %} Per-version provenance & legal notes.
+
+   Context:
+     version — CodeEditionProvisionVersion (read via .grouped_notes)
+
+   This partial renders notes only.  The "Open full provision record"
+   click-through lives in _result_document_block.html (a search-result
+   navigation affordance, independent of whether notes exist).
+
+   Tiers (core/provision_notes.py): integrity caveat (prominent, strike-red),
+   reader annotation (prominent, serif), record (forensic, default-collapsed),
+   sourcing (one badge for the bulk e-Laws-snapshot notes).
+
+   NB: multi-line {# #} comments leak as literal text (tokenizer isn't
+   re.DOTALL) — use {% comment %} for anything spanning lines. {% endcomment %}
+{% with g=version.grouped_notes %}
+{% if g.has_any %}
+<div class="mt-4 space-y-2">
+
+    {% comment %} Integrity caveat — the consolidated text may be wrong or
+       incomplete (a directive that couldn't be applied, or a revoke whose
+       target was absent).  Strongest signal here: strike-red ruled box +
+       warning glyph, deliberately distinct from the revoke band (circle-slash)
+       so "incomplete" ≠ "revoked".  Caption varies per kind (note.caption),
+       since "may be incomplete" and "structural anomaly" mean different
+       things. {% endcomment %}
+    {% for note in g.integrity %}
+    <div class="border border-strike bg-surface-2">
+        <div class="flex items-center gap-2 border-b border-strike/40 bg-strike/10 px-3 py-1.5">
+            <svg class="h-4 w-4 shrink-0 text-strike" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a1 1 0 0 0 .86 1.5h18.64a1 1 0 0 0 .86-1.5L13.71 3.86a1 1 0 0 0-1.72 0z"/>
+            </svg>
+            <span class="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-strike">{{ note.caption }}</span>
+        </div>
+        <p class="px-3 py-2 font-mono text-[11px] leading-[1.6] text-ink-2">{% if note.scope %}<span class="text-ink-3">{{ note.scope }} &mdash; </span>{% endif %}{{ note.text|safe }}</p>
+    </div>
+    {% endfor %}
+
+    {% comment %} Reader-facing annotation — an e-Laws consolidation note (e.g. a
+       scheduled future revocation), a curator's editor's note, or an accepted
+       e-Laws correction.  Serif footnote in a secondary band, the way the
+       official consolidation prints its notes.  Each item carries its own kind
+       label so the three provenances stay distinguishable. {% endcomment %}
+    {% if g.annotation %}
+    <div class="space-y-2 border-l-[3px] border-secondary bg-secondary-soft px-3 py-2">
+        {% for note in g.annotation %}
+        <div>
+            <p class="mb-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-[0.1em] text-secondary">{{ note.label }}</p>
+            <p class="font-serif text-[13px] leading-[1.55] text-ink-2">{% if note.scope %}<span class="text-ink-3">{{ note.scope }} &mdash; </span>{% endif %}{{ note.text|safe }}</p>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% comment %} Forensic record notes — editorial normalisations, gazette↔source
+       reconciliations, consolidation-method deferrals.  Default-collapsed; mono;
+       each tagged with its kind so an auditor can scan them. {% endcomment %}
+    {% if g.record %}
+    <div x-data="{ openNotes: false }">
+        <button type="button" @click.stop="openNotes = !openNotes"
+            class="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3 hover:text-ink">
+            <span class="text-[9px]" x-text="openNotes ? '▾' : '▸'"></span>
+            Record notes ({{ g.record|length }})
+        </button>
+        <div x-show="openNotes" x-cloak class="mt-1.5 space-y-1.5 border-l border-rule pl-3">
+            {% for note in g.record %}
+            <div class="font-mono text-[11px] leading-[1.55]">
+                <span class="mr-1.5 inline-block border border-rule px-1 py-px text-[8.5px] uppercase tracking-[0.06em] text-ink-3">{{ note.label }}</span>
+                <span class="text-ink-2">{% if note.scope %}<span class="text-ink-3">{{ note.scope }} &mdash; </span>{% endif %}{{ note.text|safe }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% comment %} Sourcing badge — the displayed text was taken verbatim from the
+       e-Laws consolidated snapshot (text-equivalent to the gazette reconstruction).
+       Collapses thousands of identical machine notes to one chip. {% endcomment %}
+    {% if g.sourced %}
+    <p class="inline-flex items-center gap-1.5 border border-rule px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.06em] text-ink-3">
+        <span class="inline-block h-1.5 w-1.5 rounded-full bg-secondary"></span>
+        Text &middot; e-Laws consolidated snapshot
+    </p>
+    {% endif %}
+
+
+</div>
+{% endif %}
+{% endwith %}

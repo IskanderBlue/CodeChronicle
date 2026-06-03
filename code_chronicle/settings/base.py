@@ -67,6 +67,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.context_processors.masthead_currency",
             ],
         },
     },
@@ -95,6 +96,47 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+
+# ===================
+# Asset root — CCM-mirrored images
+# ===================
+# Page images (``documents/...``), composited amended-table images
+# (``amended/...``), and e-Laws inline asset bytes (``laws/images/...``)
+# live under this root with paths verbatim matching the URL paths in the
+# CCM output JSON.  Inline ``<img src="/laws/images/...">`` references
+# in version HTML resolve here without rewriting.
+#
+# Development: served by Django via ``core.urls`` under ``/`` (see url conf).
+# Production: served from Cloudflare R2 at the edge by a Worker bound to the
+# ``codechronicle-assets-prod`` bucket (see the CodeChronicleTerraform
+# ``modules/cloudflare`` asset proxy) — the origin/app is not in the path.
+#
+# The default ``BASE_DIR/assets`` directory is the on-disk copy for the local
+# backend; it is gitignored and is the local mirror of what ``sync_images
+# --backend r2`` publishes to the R2 bucket. Override with the ``ASSET_ROOT``
+# env var to point at a checkout of ``CodeChronicleMapping/data/outputs``
+# directly during local dev — the layout is identical, so no sync is needed.
+ASSET_ROOT = Path(os.environ.get("ASSET_ROOT", BASE_DIR / "assets"))
+
+
+# ===================
+# Cloudflare R2 — asset object storage (upload/sync side only)
+# ===================
+# Used by ``manage.py sync_images --backend r2`` to publish the mirrored
+# asset trees (documents/, amended/, laws/) to R2.  Serving is handled at
+# the Cloudflare edge by a Worker with an R2 binding (see the Terraform
+# ``modules/cloudflare`` asset-proxy), so the running app needs NO R2
+# credentials — only whoever runs the sync does.  S3-compatible: keys are
+# minted under R2 > Manage R2 API Tokens.  Endpoint defaults to the
+# account-scoped R2 host when unset.
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
+R2_BUCKET = os.environ.get("R2_BUCKET", "")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+R2_ENDPOINT_URL = os.environ.get("R2_ENDPOINT_URL", "") or (
+    f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else ""
+)
 
 
 # Default primary key field type

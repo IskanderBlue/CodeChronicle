@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block title %}O. Reg. {{ regulation.reg_id }} — CodeChronicle{% endblock %}
+{% comment %} Match the working surfaces (search, provision permalink): the same
+   max-w-[1700px] content cap so the regulation page doesn't render visibly
+   narrower than the provision pages it links to. {% endcomment %}
+{% block content_width %}max-w-[1700px]{% endblock %}
+{% block content %}
+<div class="px-4 sm:px-8 py-8">
+
+    {% comment %} Citation-style header: mono overline (system answer), serif
+       title with the reg number in mono, then a mono metadata row.  See
+       design handoff README §"Regulation DETAIL". {% endcomment %}
+    <div class="border-b border-rule pb-[18px] mb-2">
+        <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary">
+            {% if regulation.amends %}Amending O. Reg. {{ regulation.amends.reg_id }}{% else %}Base regulation for{% endif %}
+            <span class="text-ink-3">&middot; {{ regulation.edition.code.code }} {{ regulation.edition.edition_id }}</span>
+        </div>
+        <h1 class="mt-2 font-serif text-[30px] font-bold tracking-[-0.01em] text-ink">
+            O. Reg. <span class="font-mono text-[26px] font-semibold">{{ regulation.reg_id }}</span>
+        </h1>
+        <div class="mt-2 flex flex-wrap items-center gap-x-[18px] gap-y-1 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+            {% if regulation.filed_date %}<span>FILED &middot; {{ regulation.filed_date|date:"Y-m-d" }}</span>
+            <span class="text-rule">&middot;</span>{% endif %}
+            <span>EFFECTIVE &middot; <span class="text-ink font-semibold">{{ regulation.effective_date|date:"Y-m-d" }}</span></span>
+            <span class="text-rule">&middot;</span>
+            <span>{{ clauses|length }} CLAUSE{{ clauses|length|pluralize|upper }}</span>
+            <span class="text-rule">&middot;</span>
+            <a href="{% url 'core:edition_chain' regulation.edition.pk %}"
+               class="text-secondary border-b border-secondary hover:text-secondary-2">VIEW AMENDMENT CHAIN →</a>
+        </div>
+    </div>
+
+    {% comment %} Two-pane body: a sticky clause INDEX (left) for jump-navigation
+       without scrolling the whole regulation, and ALL page content (editorial
+       note, commencement schedule, clause cards) in the right column — so they
+       share one sane reading measure rather than stretching across the full
+       1700px cap.  The index is a scroll-spy: the IntersectionObserver in x-init
+       tracks which clause card is at the top of the viewport and lights up its
+       index entry.  Desktop-only (hidden below lg); on narrow screens content
+       flows normally.  NB: no Django tags inside the x-init JS — see MEMORY
+       template gotcha. {% endcomment %}
+    <div class="mt-6 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8"
+         x-data="{ activeId: null }"
+         x-init="
+            const obs = new IntersectionObserver((entries) => {
+                entries.forEach((e) => { if (e.isIntersecting) activeId = e.target.id; });
+            }, { rootMargin: '-12% 0px -78% 0px', threshold: 0 });
+            $el.querySelectorAll('[data-clause-anchor]').forEach((el) => obs.observe(el));
+         ">
+
+        {% comment %} Clause index — sticky, independently scrollable.  A staggered
+           (deferred-commencement) clause gets a small highlight dot. {% endcomment %}
+        <nav aria-label="Clauses" class="hidden lg:block sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-y-auto pr-1">
+            <div class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3 mb-2">
+                Clauses ({{ clauses|length }})
+            </div>
+            <div class="space-y-0.5">
+                {% for clause in clauses %}
+                <a href="#clause-{{ clause.pk }}"
+                   @click="activeId = 'clause-{{ clause.pk }}'"
+                   :class="activeId === 'clause-{{ clause.pk }}' ? 'border-secondary bg-secondary-soft text-ink' : 'border-transparent text-ink-3 hover:text-ink hover:border-rule'"
+                   class="flex items-center gap-1.5 border-l-2 pl-2.5 pr-1 py-1 font-mono text-[11px] leading-tight transition-colors">
+                    <span class="truncate">cl. {{ clause.clause_id }}</span>
+                    {% if clause.is_staggered %}<span class="ml-auto shrink-0 text-highlight" title="Deferred commencement">&bull;</span>{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+        </nav>
+
+        {% comment %} Content column — every page-level block lives here so it
+           aligns with the clause cards at one width. {% endcomment %}
+        <div class="min-w-0">
+
+    {% comment %} A base regulation's enactment isn't stored as clauses — that
+       text becomes the v0 provision versions directly. The only clauses it has
+       are its self-amending tail (transition / deferred-commencement directives
+       that amend its own earlier sections). It's information, not a warning, so
+       it's a ruled editorial note (no amber). {% endcomment %}
+    {% if not regulation.amends %}
+    <div class="mt-6 border border-rule-2 bg-surface-2 px-4 py-3 text-sm text-ink-2">
+        <div class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary mb-1">Editorial note</div>
+        This page lists only the amending clauses within O.&nbsp;Reg.&nbsp;{{ regulation.reg_id }} —
+        its transition and commencement directives that amend its own earlier sections. The enacted text of the
+        {{ regulation.edition.code.code }} {{ regulation.edition.edition_id }} itself is not shown here;
+        follow a clause's target link to read the relevant provision.
+    </div>
+    {% endif %}
+
+    {% comment %} Commencement schedule — a regulation's blanket effective_date
+       is only its DEFAULT commencement; Ontario regs routinely stagger later
+       in-force dates for specific provisions.  Shown only when the reg actually
+       has a deferred (non-default) date — otherwise the header's EFFECTIVE date
+       is the whole story.  Rows are shaped in views._commencement_schedule
+       (sorted by date, default first, provisions split from their division). {% endcomment %}
+    {% if has_staggered_commencement %}
+    <div class="mt-6 border border-secondary bg-secondary-soft px-4 py-3">
+        <div class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary mb-1.5">Commencement schedule</div>
+        <p class="text-[12.5px] leading-[1.5] text-ink-2 mb-3">
+            This regulation comes into force in stages — some provisions are deferred past its
+            effective date of {{ regulation.effective_date|date:"j F Y" }}.
+        </p>
+        <ul class="space-y-2.5">
+            {% for row in commencement %}
+            <li class="border-l-2 {% if row.is_default %}border-rule{% else %}border-highlight{% endif %} pl-3">
+                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span class="font-serif text-[15px] font-semibold text-ink">{{ row.date|date:"j F Y" }}</span>
+                    {% if row.is_default %}
+                    <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-ink-3 border border-rule px-1.5 py-0.5">Default</span>
+                    {% else %}
+                    <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-highlight border border-highlight px-1.5 py-0.5">Deferred</span>
+                    {% endif %}
+                    {% if row.provisions %}
+                    <span class="font-sans text-[11.5px] text-ink-2">
+                        {% for p in row.provisions %}<span class="font-mono">{{ p.provision_id }}{% if p.division %}<span class="text-ink-3">&nbsp;Div&nbsp;{{ p.division }}</span>{% endif %}</span>{% if not forloop.last %}<span class="text-ink-3">,</span> {% endif %}{% endfor %}
+                    </span>
+                    {% endif %}
+                </div>
+                {% if row.text %}<p class="mt-1 font-serif text-[12.5px] leading-[1.5] text-ink-3">{{ row.text }}</p>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% comment %} Clause cards — amendment text reads as the main column (serif,
+       with a ruled spine); identifying metadata (clause id, action, targets,
+       provenance) sits in a 240px margin note.  The bulky source-document image
+       spans full width below both columns, sharing one Alpine toggle. {% endcomment %}
+        {% for clause in clauses %}
+        <div id="clause-{{ clause.pk }}" data-clause-anchor
+             class="scroll-mt-24 border-b border-rule-2 py-[22px] target:bg-secondary-soft"
+             x-data="{ showSource: false }">
+            <div class="grid gap-7 md:grid-cols-[1fr_240px]">
+
+            {% comment %} Main column: the actual amendment text (verbatim
+               e-Laws HTML, block-level, so |safe in a div, never a p).  See
+               feedback_no_html_sanitisation.md.  The text is height-capped with a
+               fade + "Show full text" toggle (mirrors _result_document_block) so a
+               long clause doesn't dominate the page, and ``overflow-x-auto`` keeps
+               wide e-Laws tables scrolling INSIDE the column instead of bleeding
+               over the margin note.  The toggle only appears when content actually
+               overflows the cap (measured once in x-init). {% endcomment %}
+            <div class="min-w-0 border-l-2 border-rule pl-[18px]">
+                {% if clause.clause_text %}
+                <div x-data="{ expanded: false, overflowing: false }"
+                     x-init="$nextTick(() => overflowing = $refs.body.scrollHeight > $refs.body.clientHeight + 4)">
+                    <div x-ref="body" class="relative overflow-x-auto overflow-y-hidden"
+                         :style="{ maxHeight: expanded ? 'none' : '24rem' }">
+                        <div class="font-serif text-base leading-[1.6] text-ink-2 provision-content">{{ clause.clause_text|safe }}</div>
+                        <div x-show="!expanded && overflowing" x-cloak
+                             class="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-surface to-transparent"></div>
+                    </div>
+                    <button type="button" x-show="overflowing" x-cloak @click.stop="expanded = !expanded"
+                        class="mt-1.5 font-mono text-[10px] uppercase tracking-[0.06em] text-secondary hover:text-secondary-2 cursor-pointer"
+                        x-text="expanded ? 'Collapse' : 'Show full text'"></button>
+                </div>
+                {% else %}
+                <p class="font-serif text-sm italic text-ink-3">No clause text recorded.</p>
+                {% endif %}
+            </div>
+
+            {# Margin note: identifier, action, change, targets, provenance. #}
+            <aside class="border-l border-rule pl-[18px] font-sans text-[11.5px] leading-[1.55] text-ink-2">
+                <div class="flex flex-wrap items-center gap-[10px] mb-[10px]">
+                    <span class="font-mono text-[15px] font-bold text-ink">cl. {{ clause.clause_id }}</span>
+                    {% if clause.action %}
+                    {% comment %} Square ruled action tag — only revoke* gets the
+                       danger (strike) hue; additions get insert; the rest are
+                       neutral.  We don't rainbow the page. {% endcomment %}
+                    <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.06em] border px-1.5 py-0.5
+                        {% if clause.action == 'revoke' or clause.action == 'revoke_and_substitute' %}text-strike border-strike{% elif clause.action == 'amend_add' %}text-insert border-insert{% else %}text-ink-2 border-rule{% endif %}">{{ clause.get_action_display }}</span>
+                    {% endif %}
+                </div>
+
+                {% comment %} Clause commencement — the date this directive comes
+                   into force, plus a Deferred/Default marker that opens the
+                   commencement-provenance popup (the *why*: verbatim subsection,
+                   source, any statute dependency).  ``is_staggered`` is computed
+                   in the view; ``clause.commencement`` is the resolved
+                   CommencementProvenance entry (load_edition). {% endcomment %}
+                {% if clause.effective_date %}
+                <div class="mb-[10px]"{% if clause.commencement %} x-data="{ cmOpen: false }"{% endif %}>
+                    <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <span class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3">In force</span>
+                        <span class="font-mono text-[11.5px] {% if clause.is_staggered %}font-semibold text-highlight{% else %}text-ink-2{% endif %}">{{ clause.effective_date|date:"Y-m-d" }}</span>
+                        {% if clause.commencement %}
+                        <button type="button" @click.stop="cmOpen = true"
+                            title="Why this date? — commencement provenance"
+                            class="inline-flex items-center gap-1 font-mono text-[9px] font-semibold uppercase tracking-[0.06em] border px-1 py-0.5 cursor-pointer transition-colors {% if clause.is_staggered %}text-highlight border-highlight hover:bg-highlight hover:text-secondary-contrast{% else %}text-ink-3 border-rule hover:border-ink-3 hover:text-ink{% endif %}">
+                            {% if clause.is_staggered %}Deferred{% else %}Default{% endif %}
+                            <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 11v5m0-8h.01"/></svg>
+                        </button>
+                        {% elif clause.is_staggered %}
+                        <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-highlight border border-highlight px-1 py-0.5">Deferred</span>
+                        {% endif %}
+                    </div>
+                    {% if clause.commencement %}
+                    {% include "partials/_commencement_modal.html" with commencement=clause.commencement effective_date=clause.effective_date %}
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                {% comment %} The strike→substitute redline sits in the margin
+                   note with the other metadata (not the main column).  Still
+                   serif — it's legal text — but sized to the aside. {% endcomment %}
+                {% if clause.strike_text %}
+                <div class="mb-[10px]">
+                    <div class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3 mb-1">Change</div>
+                    <div class="font-serif text-[13px] leading-[1.5]">
+                        <del class="text-strike line-through decoration-strike">{{ clause.strike_text|safe }}</del>
+                        <span class="text-ink-3 mx-1.5">→</span>
+                        <span class="text-insert">{{ clause.sub_text|safe }}</span>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% comment %} Targets: every provision this clause produced a
+                   version of, linked to that version's permalink.  First 3
+                   show; the rest collapse behind a toggle.  ``indent`` (set in
+                   _clause_targets) nests descendants under their ancestors. {% endcomment %}
+                {% if clause.targets or clause.target_reg %}
+                <div class="mb-[10px]" x-data="{ showTargets: false }">
+                    <div class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3 mb-1">{% if clause.targets|length > 1 %}Targets{% else %}Target{% endif %}</div>
+                    {% if clause.targets %}
+                    <ul class="space-y-[3px]">
+                        {% for t in clause.targets %}
+                        <li{% if forloop.counter > 3 %} x-show="showTargets" x-cloak{% endif %} style="padding-left: {{ t.indent }}px">
+                            {% if t.url %}<a href="{{ t.url }}" class="font-mono text-[11.5px] text-secondary border-b border-secondary hover:text-secondary-2">{{ t.label }}</a>{% else %}<span class="font-mono text-[11.5px]">{{ t.label }}</span>{% endif %}{% if t.version is not None %} <span class="font-mono text-[10px] text-ink-3 ml-1.5">v{{ t.version }}</span>{% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% if clause.targets|length > 3 %}
+                    <button type="button" @click.stop="showTargets = !showTargets" class="mt-1 flex items-center gap-1 font-mono text-[10.5px] text-ink-3 hover:text-ink cursor-pointer">
+                        <span x-text="showTargets ? '&#9662;' : '&#9656;'" class="text-[9px]"></span>
+                        <span x-show="!showTargets">+{{ clause.targets|length|add:"-3" }} more</span>
+                        <span x-show="showTargets" x-cloak>Show fewer</span>
+                    </button>
+                    {% endif %}
+                    {% endif %}
+                    {% if clause.target_reg %}<p class="mt-1 text-ink-3">in O. Reg. {{ clause.target_reg }}</p>{% endif %}
+                </div>
+                {% endif %}
+
+                {% if clause.amended_by %}
+                <div class="mb-[10px]">
+                    <div class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3 mb-1">Subsequently amended by</div>
+                    <ul class="space-y-1">
+                        {% for entry in clause.amended_by %}
+                        <li class="font-mono text-[11px]">
+                            <span class="text-ink-2">O. Reg. {{ entry.reg_id }}</span>, cl. {{ entry.clause_id }}
+                            {% if entry.effective_date %}<div class="text-[10px] text-ink-3">eff. {{ entry.effective_date }}</div>{% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                {% if clause.page and regulation.source_pdf %}
+                <button type="button" @click.stop="showSource = !showSource"
+                    class="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-ink-3 hover:text-ink cursor-pointer">
+                    <span x-text="showSource ? '&#9662;' : '&#9656;'" class="text-[9px]"></span>
+                    Source &middot; p.{{ clause.page }}
+                </button>
+                {% endif %}
+            </aside>
+        </div>
+
+        {% comment %} Gazette page image — full width below both columns.  The
+           amber bbox overlay is functional (it marks where the clause sits on
+           the scanned page), so it stays per the README. {% endcomment %}
+        {% if clause.page and regulation.source_pdf %}
+        <div x-show="showSource" x-cloak class="mt-3 accordion-content">
+            <div class="overflow-hidden paper-container" style="border-style: dashed;">
+                {% with img_entry_image="documents/"|add:regulation.source_pdf|add:"/"|add:clause.page|add:".webp" %}
+                <div class="relative">
+                    <img src="{{ img_entry_image }}" alt="Gazette page {{ clause.page }}"
+                        class="w-full fade-in-image" loading="lazy">
+                    {% if clause.bbox %}
+                    <div class="absolute border border-amber-600/30 bg-amber-600/[0.06] pointer-events-none"
+                        style="left: {{ clause.bbox.l }}px; top: {{ clause.bbox.t }}px; right: {{ clause.bbox.r }}px; bottom: {{ clause.bbox.b }}px;">
+                    </div>
+                    {% endif %}
+                </div>
+                {% endwith %}
+            </div>
+            <p class="mt-1 font-mono text-[11px] text-ink-3">
+                {{ regulation.source_pdf }} &middot; p.{{ clause.page }}
+            </p>
+        </div>
+        {% endif %}
+    </div>
+        {% empty %}
+        <div class="text-center py-8 text-ink-3">
+            <p>No clauses recorded for this regulation.</p>
+        </div>
+        {% endfor %}
+        </div>{# /content column #}
+    </div>{# /index + content grid #}
+</div>
+{% endblock %}

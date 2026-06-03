@@ -2,14 +2,16 @@
 Core models for CodeChronicle.
 """
 
+from typing import TYPE_CHECKING
+
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from django.contrib.postgres.fields import ArrayField
-from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.utils import timezone
 
+from core.provision_notes import GroupedNotes, group_notes
 
-class UserManager(BaseUserManager):
+
+class UserManager(BaseUserManager["User"]):
     """
     Custom manager for the email-only User model.
     """
@@ -55,7 +57,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Stripe customer ID (managed by dj-stripe, but useful for quick lookup)
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
 
-    objects = UserManager()
+    # Explicit annotation so Pyright (no plugin) resolves UserManager methods
+    # like create_user, rather than falling back to the base Manager.
+    objects: "UserManager" = UserManager()
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -134,6 +138,9 @@ class SearchHistory(models.Model):
     Track user search history for analytics and rate limiting.
     """
 
+    # Auto pk, plugin-only — declared for Pyright.
+    id: int
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -163,61 +170,79 @@ class SearchHistory(models.Model):
         return f"{self.user or self.ip_address}: {self.query[:50]}"
 
 
-class CodeMap(models.Model):
-    """
-    Top-level map record that stores map identity for a specific code edition.
+class EngagementEvent(models.Model):
+    """Append-only log of what users *do with* results — the engagement
+    counterpart to ``SearchHistory`` (which only records search inputs).
+
+    One row per tracked interaction: opening a provision version from the
+    search viewer, landing on a regulation or provision permalink, or
+    following a result link out (external source, PDF download).  Writes are
+    best-effort and must never break the page or the search — see
+    ``core.events.record_event``.
+
+    ``object_id`` is intentionally a loose integer, **not** a ``ForeignKey``:
+    events outlive the rows they point at (``load_edition`` replaces
+    provision/version pks wholesale on reload), and an analytics log should
+    not cascade-delete or block deletes.  Resolve targets at report time and
+    tolerate misses.
     """
 
-    code_name = models.CharField(max_length=100)
-    map_code = models.CharField(max_length=100, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # Auto pk + FK id-shadow, plugin-only — declared for Pyright.
+    id: int
+    search_id: int | None
+
+    class EventType(models.TextChoices):
+        PROVISION_VERSION_VIEW = "provision_version_view", "Provision version view"
+        REGULATION_VIEW = "regulation_view", "Regulation view"
+        RESULT_LINK_CLICK = "result_link_click", "Result link click"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="engagement_events",
+        null=True,  # Anonymous engagement
+        blank=True,
+    )
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    event_type = models.CharField(max_length=40, choices=EventType.choices)
+    # Model label of the target (e.g. "CodeEditionProvisionVersion"), kept as
+    # a plain string so the table stays generic across target types.
+    object_type = models.CharField(max_length=50, blank=True, default="")
+    object_id = models.BigIntegerField(null=True, blank=True)
+    # The search this engagement came from, when known — lets us compute
+    # click-through rate per query.  SET_NULL so pruning history never drops
+    # the engagement record.
+    search = models.ForeignKey(
+        SearchHistory,
+        on_delete=models.SET_NULL,
+        related_name="engagement_events",
+        null=True,
+        blank=True,
+    )
+    # Free-form target detail (provision_id, division, reg_id, query_date,
+    # source surface, …) so reports don't need to re-resolve object_id.
+    context = models.JSONField(default=dict, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "code_maps"
-        verbose_name = "Code Map"
-        verbose_name_plural = "Code Maps"
-
-    def __str__(self):
-        return f"{self.map_code} ({self.code_name})"
-
-
-class CodeMapNode(models.Model):
-    """
-    Disaggregated map content for a specific section node.
-    """
-
-    code_map = models.ForeignKey(CodeMap, on_delete=models.CASCADE, related_name="nodes")
-    node_id = models.CharField(max_length=200)
-    title = models.CharField(max_length=500)
-    page = models.IntegerField(null=True, blank=True)
-    page_end = models.IntegerField(null=True, blank=True)
-    initial_page_top = models.FloatField(null=True, blank=True)
-    final_page_bottom = models.FloatField(null=True, blank=True)
-    html = models.TextField(null=True, blank=True)
-    notes_html = models.TextField(null=True, blank=True)
-    keywords = ArrayField(models.CharField(max_length=100), null=True, blank=True)
-    parent_id = models.CharField(max_length=200, null=True, blank=True)
-
-    class Meta:
-        db_table = "code_map_nodes"
-        verbose_name = "Code Map Node"
-        verbose_name_plural = "Code Map Nodes"
+        db_table = "engagement_events"
+        verbose_name = "Engagement Event"
+        verbose_name_plural = "Engagement Events"
+        ordering = ["-timestamp"]
         indexes = [
-            models.Index(fields=["node_id"], name="code_mapnode_node_id_idx"),
-            GinIndex(fields=["keywords"], name="code_mapnode_keywords_gin"),
-        ]
-        constraints = [
-            models.UniqueConstraint(fields=["code_map", "node_id"], name="code_map_node_unique"),
+            models.Index(fields=["event_type", "timestamp"]),
+            models.Index(fields=["object_type", "object_id"]),
+            models.Index(fields=["search"]),
         ]
 
     def __str__(self):
-        return f"{self.code_map.map_code}:{self.node_id}"
+        who = self.user or self.ip_address or "anon"
+        return f"{who}: {self.event_type} {self.object_type}#{self.object_id}"
 
 
-class CodeSystem(models.Model):
+class Code(models.Model):
     """
-    High-level code system (e.g., OBC, NBC, IUGP9).
+    A building code system (e.g., OBC, NBC).
     """
 
     code = models.CharField(max_length=20, unique=True)
@@ -230,9 +255,9 @@ class CodeSystem(models.Model):
     )
 
     class Meta:
-        db_table = "code_systems"
-        verbose_name = "Code System"
-        verbose_name_plural = "Code Systems"
+        db_table = "codes"
+        verbose_name = "Code"
+        verbose_name_plural = "Codes"
 
     def __str__(self):
         return self.code
@@ -243,20 +268,19 @@ class CodeEdition(models.Model):
     A specific edition/version of a code system.
     """
 
-    system = models.ForeignKey(CodeSystem, on_delete=models.CASCADE, related_name="editions")
+    # Reverse relations — declared for Pyright (no plugin); the mypy
+    # django-stubs plugin infers these from the related_name on the FK side.
+    regulations: "models.Manager[Regulation]"
+    provisions: "models.Manager[CodeEditionProvision]"
+
+    code = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="editions")
     edition_id = models.CharField(max_length=50)
     year = models.IntegerField()
-    map_codes = ArrayField(models.CharField(max_length=100))
     effective_date = models.DateField()
-    superseded_date = models.DateField(null=True, blank=True)
-    pdf_files = models.JSONField(null=True, blank=True)
-    download_url = models.CharField(max_length=500, blank=True, default="")
-    amendments = models.JSONField(null=True, blank=True)
-    regulation = models.CharField(max_length=200, blank=True, default="")
+    ineffective_date = models.DateField(null=True, blank=True)
+    amendment_chain_complete = models.BooleanField(default=False)
     version_number = models.IntegerField(null=True, blank=True)
     source = models.CharField(max_length=50, blank=True, default="")
-    source_url = models.CharField(max_length=500, blank=True, default="")
-    amendments_applied = models.JSONField(null=True, blank=True)
     is_guide = models.BooleanField(default=False)
 
     class Meta:
@@ -265,33 +289,654 @@ class CodeEdition(models.Model):
         verbose_name_plural = "Code Editions"
         constraints = [
             models.UniqueConstraint(
-                fields=["system", "edition_id"], name="code_system_edition_unique"
+                fields=["code", "edition_id"], name="code_edition_code_edition_unique"
             ),
         ]
         indexes = [
-            models.Index(fields=["system", "effective_date"], name="code_edition_effective_idx"),
+            models.Index(fields=["code", "effective_date"], name="code_edition_effective_idx"),
         ]
 
     def __str__(self):
-        return f"{self.system.code}_{self.edition_id}"
+        return f"{self.code.code}_{self.edition_id}"
 
     @property
     def code_name(self) -> str:
-        return f"{self.system.code}_{self.edition_id}"
+        return f"{self.code.code}_{self.edition_id}"
 
 
-class ProvinceCodeMap(models.Model):
+class ProvinceCode(models.Model):
     """
     Map a province abbreviation to its primary code system.
     """
 
     province = models.CharField(max_length=2, unique=True)
-    code_system = models.ForeignKey(CodeSystem, on_delete=models.CASCADE, related_name="provinces")
+    code = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="provinces")
 
     class Meta:
-        db_table = "province_code_maps"
-        verbose_name = "Province Code Map"
-        verbose_name_plural = "Province Code Maps"
+        db_table = "province_codes"
+        verbose_name = "Province Code"
+        verbose_name_plural = "Province Codes"
 
     def __str__(self):
-        return f"{self.province} -> {self.code_system.code}"
+        return f"{self.province} -> {self.code.code}"
+
+
+class Regulation(models.Model):
+    """An Ontario regulation — base code enactment or amendment."""
+
+    # Reverse relations (see note on CodeEdition).
+    clauses: "models.Manager[RegulationClause]"
+    assets: "models.Manager[RegulationAsset]"
+
+    class Role(models.TextChoices):
+        BASE = "base", "Base"
+        AMENDMENT = "amendment", "Amendment"
+
+    reg_id = models.CharField(max_length=50, unique=True)
+    edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="regulations"
+    )
+    role = models.CharField(max_length=20, choices=Role.choices)
+    amends = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="amended_by",
+    )
+    filed_date = models.DateField(null=True, blank=True)
+    effective_date = models.DateField()
+    source_pdf = models.CharField(max_length=200, blank=True, default="")
+    source_pages = models.JSONField(null=True, blank=True)
+    commencement = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "CCM-parsed commencement records: the regulation's default "
+            "'comes into force on …' clause plus any staggered exceptions. "
+            "Each record carries {clause, is_default, commencement_clause, "
+            "effective_date, resolved_provisions, …}. The default record's "
+            "date mirrors ``effective_date``; non-default records pin "
+            "later in-force dates for the provisions they name."
+        ),
+    )
+
+    class Meta:
+        db_table = "regulations"
+        indexes = [
+            models.Index(fields=["edition", "effective_date"]),
+        ]
+
+    def __str__(self):
+        return f"O. Reg. {self.reg_id} ({self.role})"
+
+
+class RegulationClause(models.Model):
+    """A single amendment directive within a regulation."""
+
+    # Reverse relations (see note on CodeEdition).  The M2M back-accessor of
+    # CodeEditionProvisionVersion.contributing_clauses (related_name).
+    contributed_to_versions: "models.Manager[CodeEditionProvisionVersion]"
+
+    if TYPE_CHECKING:
+        # Choice-field display methods Django generates at class creation.
+        # The mypy plugin synthesises these; plain Pyright (editor) can't see
+        # them, so declare the ones we call.  Guarded by TYPE_CHECKING so the
+        # real generated methods are used at runtime.
+        def get_action_display(self) -> str: ...
+        def get_target_level_display(self) -> str: ...
+
+    class Action(models.TextChoices):
+        REVOKE_AND_SUBSTITUTE = "revoke_and_substitute", "Revoke and substitute"
+        AMEND_ADD = "amend_add", "Amend by adding"
+        AMEND_STRIKE_SUB = "amend_strike_sub", "Amend by striking and substituting"
+        REVOKE = "revoke", "Revoke"
+        RENUMBER = "renumber", "Renumber"
+
+    class TargetLevel(models.TextChoices):
+        ARTICLE = "article", "Article"
+        SENTENCE = "sentence", "Sentence"
+        CLAUSE = "clause", "Clause"
+        SUBCLAUSE = "subclause", "Subclause"
+        SUBSECTION = "subsection", "Subsection"
+        SECTION = "section", "Section"
+        PART = "part", "Part"
+        TABLE = "table", "Table"
+
+    regulation = models.ForeignKey(
+        Regulation, on_delete=models.CASCADE, related_name="clauses"
+    )
+    clause_id = models.CharField(max_length=50)
+    parent_clause = models.CharField(max_length=50, blank=True, default="")
+    action = models.CharField(
+        max_length=50, choices=Action.choices, blank=True, default=""
+    )
+    target_level = models.CharField(
+        max_length=50, choices=TargetLevel.choices, blank=True, default=""
+    )
+    target_id = models.CharField(max_length=200, blank=True, default="")
+    target_division = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text=(
+            "Division the target provision lives in, as a bare letter "
+            "('A'/'B'/'C') matching CodeEditionProvision.division. Empty for "
+            "division-less editions (OBC 1997) or clauses with no single "
+            "division (meta-amendments)."
+        ),
+    )
+    target_reg = models.CharField(max_length=50, blank=True, default="")
+    effective_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "The clause's own commencement date — when this amending "
+            "directive comes into force. Usually equal to the regulation's "
+            "blanket effective_date, but Ontario regs routinely stagger "
+            "commencement so a clause can come into force later (its date "
+            "resolved by CCM from the regulation's commencement records)."
+        ),
+    )
+    clause_text = models.TextField(blank=True, default="")
+    strike_text = models.TextField(null=True, blank=True)
+    sub_text = models.TextField(null=True, blank=True)
+    add_text = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Text inserted by an 'amend by adding' directive, anchored at "
+            "``add_anchor``. Part of recording commencement at provision "
+            "granularity: this is the content the clause brings into force "
+            "on ``effective_date``."
+        ),
+    )
+    add_anchor = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Where ``add_text`` is inserted, e.g. "
+            "'after:CSA C22.2 No. 0.3, …'. The primary directive's anchor "
+            "for a single-directive clause."
+        ),
+    )
+    directives = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Full decomposition of a clause that amends several targets — "
+            "the list of {action, target_level, target_id, target_division, "
+            "strike_text, sub_text, add_text, add_anchor, …} directives. The "
+            "flat target_*/strike_*/sub_*/add_* fields mirror the primary "
+            "(first) directive; this list carries them all so the clause's "
+            "``effective_date`` (commencement) can be pinned onto every "
+            "provision it touches, not just the primary target."
+        ),
+    )
+    commencement = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "The single CommencementProvenance record that set this clause's "
+            "``effective_date`` — the *why* behind the date: the verbatim "
+            "commencement subsection, its ``source`` (parsed / "
+            "commencement-input / regulations-act-default / catalog), and for "
+            "derived dates the ``depends_on`` statute and ``computation``. "
+            "Resolved at load from the regulation's commencement schedule via "
+            "``resolved_clauses`` (with the default entry as fallback); see "
+            "load_edition._resolve_clause_commencement. Mirrors one entry of "
+            "``Regulation.commencement``."
+        ),
+    )
+    amended_by = models.JSONField(null=True, blank=True)
+    page = models.IntegerField(null=True, blank=True)
+    bbox = models.JSONField(null=True, blank=True)
+    overlay = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = "regulation_clauses"
+        indexes = [
+            models.Index(fields=["regulation"]),
+            models.Index(fields=["target_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["regulation", "clause_id"],
+                name="clause_regulation_clause_id_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.regulation.reg_id} cl. {self.clause_id}"
+
+
+class RegulationAsset(models.Model):
+    """An inline-image asset referenced from a regulation's clause HTML.
+
+    Mirrors the ``regulations[].assets[]`` registry CCM emits for
+    e-Laws-derived editions.  Stored as a manifest only — the bytes live
+    under the asset root at ``path`` (e.g.
+    ``laws/images/en/R19088_e_files/image007.gif``).  The same relative
+    path is the URL path served at host root, so the inline
+    ``<img src="/laws/images/...">`` references in ``versions[].html``
+    resolve without HTML rewriting.
+    """
+
+    regulation = models.ForeignKey(
+        Regulation, on_delete=models.CASCADE, related_name="assets",
+    )
+    path = models.CharField(max_length=500)
+    original_url = models.CharField(max_length=500, blank=True, default="")
+    sha256 = models.CharField(max_length=64, blank=True, default="")
+    byte_size = models.BigIntegerField(null=True, blank=True)
+    content_type = models.CharField(max_length=100, blank=True, default="")
+
+    class Meta:
+        db_table = "regulation_assets"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["regulation", "path"],
+                name="regulation_asset_path_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["path"]),
+        ]
+
+    def __str__(self):
+        return f"{self.regulation.reg_id} :: {self.path}"
+
+
+class CodeEditionProvision(models.Model):
+    """Structural identity of a provision within an edition. No content."""
+
+    # Reverse relations (see note on CodeEdition).
+    versions: "models.Manager[CodeEditionProvisionVersion]"
+    children: "models.Manager[CodeEditionProvision]"
+    # FK id-shadow, plugin-only — declared for Pyright.
+    parent_id: int | None
+
+    if TYPE_CHECKING:
+        # Choice-field display method (see RegulationClause): synthesised by
+        # the mypy plugin, invisible to plain Pyright — declared so the call
+        # in views.regulation._clause_targets type-checks under both.
+        def get_level_display(self) -> str: ...
+
+    class Level(models.TextChoices):
+        DIVISION = "division", "Division"
+        PART = "part", "Part"
+        SECTION = "section", "Section"
+        SUBSECTION = "subsection", "Subsection"
+        ARTICLE = "article", "Article"
+        SENTENCE = "sentence", "Sentence"
+        CLAUSE = "clause", "Clause"
+
+    edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="provisions"
+    )
+    provision_id = models.CharField(max_length=200)
+    level = models.CharField(max_length=20, choices=Level.choices)
+    division = models.CharField(max_length=50, blank=True, default="")
+    parent = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.CASCADE, related_name="children",
+    )
+    appendix_of = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="appendix_entries",
+    )
+    version_count = models.PositiveSmallIntegerField(default=1)
+
+    class Meta:
+        db_table = "code_edition_provisions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["edition", "provision_id", "division"],
+                name="provision_edition_id_division_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["edition", "division", "provision_id"]),
+            models.Index(fields=["parent"]),
+        ]
+
+    def __str__(self):
+        prefix = f"{self.division} " if self.division else ""
+        return f"{prefix}{self.provision_id}"
+
+
+class CodeEditionProvisionVersion(models.Model):
+    """A frozen snapshot of a provision's content at a point in the amendment chain.
+
+    Version-level kind-of-change is derived, not stored — see
+    ``tasks/provenance/drop-version-action.md``.  A version may aggregate
+    multiple clauses of different actions on the same effective date; any
+    consumer that needs a kind label should project from
+    ``contributing_clauses``.
+    """
+
+    # Reverse relations (see note on CodeEdition).
+    tables: "models.Manager[ProvisionVersionTable]"
+    codeeditionprovisionversionclause_set: (
+        "models.Manager[CodeEditionProvisionVersionClause]"
+    )
+    # FK id-shadow, plugin-only — declared for Pyright.
+    provision_id: int
+
+    provision = models.ForeignKey(
+        CodeEditionProvision, on_delete=models.CASCADE, related_name="versions",
+    )
+    version = models.PositiveSmallIntegerField(default=0)
+    # String annotation (not evaluated at runtime — ManyToManyField is not
+    # subscriptable at runtime, unlike ForeignKey) so mypy learns the target
+    # and through models without breaking Django's model import.
+    contributing_clauses: "models.ManyToManyField[RegulationClause, CodeEditionProvisionVersionClause]" = (
+        models.ManyToManyField(
+            RegulationClause,
+            through="CodeEditionProvisionVersionClause",
+            related_name="contributed_to_versions",
+            blank=True,
+        )
+    )
+    effective_date = models.DateField()
+    ineffective_date = models.DateField(null=True, blank=True)
+    transition_provision = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="transition_targets",
+    )
+
+    title = models.CharField(max_length=500, blank=True, default="")
+    html = models.TextField(blank=True, default="")
+    page_images = models.JSONField(null=True, blank=True)
+    keyword_counts = models.JSONField(null=True, blank=True)
+    # Provenance/annotation notes, shipped by CCM already tagged as
+    # ``[{"kind": ..., "text": ...}]`` (CCM owns the kind taxonomy) and stored
+    # verbatim — see ``core.provision_notes`` for the kind→display-tier map and
+    # the ``grouped_notes`` property.
+    notes = models.JSONField(default=list, blank=True)
+    # Whole-provision revocation tombstone, derived once by CCM from the
+    # e-Laws "Revoked: O. Reg. …" title marker (clause action can't tell a
+    # full revoke from a substitution).  Absent in the source JSON for the
+    # ~99% of versions that aren't revoked → defaults False on ingest.
+    revoked = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "code_edition_provision_versions"
+        ordering = ["version"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provision", "version"],
+                name="version_provision_version_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["provision", "effective_date"]),
+            models.Index(fields=["effective_date", "ineffective_date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.provision} v{self.version}"
+
+    @property
+    def last_contributing_clause(self) -> "RegulationClause | None":
+        """The final clause applied to produce this version, in apply order.
+
+        ``contributing_clauses.all()`` orders by ``RegulationClause``'s
+        (empty) ``Meta.ordering`` and so is non-deterministic — ``[-1]`` and
+        ``.last()`` can disagree across queries (Postgres heap order vs.
+        ``ORDER BY pk``).  The canonical order lives on the through model
+        ``CodeEditionProvisionVersionClause.apply_order``; ``.last()`` against
+        its reverse set (apply_order DESC) yields the last-applied clause
+        consistently for the header, amendment chain, and next-version rows.
+        """
+        last = (
+            self.codeeditionprovisionversionclause_set
+            .select_related("clause__regulation")
+            .last()
+        )
+        return last.clause if last else None
+
+    @property
+    def grouped_notes(self) -> GroupedNotes:
+        """Notes bucketed into display tiers for ``_version_notes.html``.
+
+        Cheap derivation over the small, pre-parsed ``notes`` list — the prefix
+        parsing itself ran once at load time (see ``core.provision_notes``), so
+        this only fans the tagged entries into annotation / integrity / record
+        / sourcing for rendering.
+        """
+        return group_notes(self.notes)
+
+
+class CodeEditionProvisionVersionClause(models.Model):
+    """Through model for ``CodeEditionProvisionVersion.contributing_clauses``.
+
+    The contract orders contributing clauses by
+    ``(regulation.filed_date, clause_id)`` — the order the applicator
+    actually processed them.  ``apply_order`` is the 0-indexed position
+    within that ordering so consumers can reconstruct it without joining
+    against ``Regulation.filed_date``.
+    """
+
+    version = models.ForeignKey(
+        CodeEditionProvisionVersion, on_delete=models.CASCADE,
+    )
+    clause = models.ForeignKey(
+        RegulationClause, on_delete=models.CASCADE,
+    )
+    apply_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "code_edition_provision_version_clauses"
+        ordering = ["apply_order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["version", "clause"],
+                name="version_clause_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["clause"]),
+        ]
+
+    def __str__(self):
+        return f"{self.version} ← {self.clause} (#{self.apply_order})"
+
+
+class ProvisionVersionTable(models.Model):
+    """Table content associated with a provision version."""
+
+    version = models.ForeignKey(
+        CodeEditionProvisionVersion, on_delete=models.CASCADE, related_name="tables",
+    )
+    table_id = models.CharField(max_length=200)
+    caption = models.CharField(max_length=500, blank=True, default="")
+    images = models.JSONField(default=list)
+    html = models.TextField(blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "provision_version_tables"
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["version", "table_id"],
+                name="table_version_table_id_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.version} — {self.table_id}"
+
+
+class ProvisionMapping(models.Model):
+    """Old↔new provision identity mapping.
+
+    The two endpoints may share an edition (intra-edition renumber
+    triggered by a gazette amendment) or differ (cross-edition migration
+    produced by CCM's edition matcher).  ``introduced_by_version`` is
+    populated only for intra-edition rows — the version whose
+    ``action == "renumbered"`` is the structural origin of the mapping.
+    """
+
+    # FK id-shadows, plugin-only — declared for Pyright.
+    old_provision_id: int
+    new_provision_id: int
+
+    class MappingType(models.TextChoices):
+        RENUMBERED = "renumbered", "Renumbered"
+        SPLIT = "split", "Split"
+        MERGED = "merged", "Merged"
+        REPLACED = "replaced", "Replaced"
+
+    old_provision = models.ForeignKey(
+        CodeEditionProvision, on_delete=models.CASCADE, related_name="mapped_forward",
+    )
+    new_provision = models.ForeignKey(
+        CodeEditionProvision, on_delete=models.CASCADE, related_name="mapped_back",
+    )
+    mapping_type = models.CharField(max_length=20, choices=MappingType.choices)
+    introduced_by_version = models.ForeignKey(
+        CodeEditionProvisionVersion,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="introduced_mappings",
+    )
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "provision_mappings"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["old_provision", "new_provision"],
+                name="provision_mapping_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.old_provision} → {self.new_provision} ({self.mapping_type})"
+
+
+class CorpusCurrency(models.Model):
+    """Precomputed masthead provenance stamp — one row (a singleton).
+
+    The masthead's job is to say *what corpus you're querying* (left) and
+    *how current the consolidation is* (right).  The currency date is a real
+    selling point for a forensic tool, so it must be genuine — never faked or
+    hardcoded (design handoff README §"Masthead fix").  Deriving it means a
+    ``MAX(effective_date)`` aggregate over the whole corpus; running that on
+    every request would be wasteful, so we snapshot it whenever data is
+    (re)loaded via :meth:`refresh` (called at the end of ``load_edition``).
+    The context processor then serves it with a single PK read.
+    """
+
+    #: This model only ever holds one row; we pin it to this PK.
+    SINGLETON_PK = 1
+
+    corpus_label = models.CharField(max_length=200, default="Ontario Building Code")
+    corpus_span = models.CharField(max_length=50, blank=True, default="")
+    data_current_to = models.DateField(null=True, blank=True)
+    #: The corpus's last covered date as a real date — the end of
+    #: ``corpus_span`` (last in-force day for a closed corpus, else the most
+    #: recent amendment).  Backs the search "as-of" default so it matches the
+    #: masthead end date without re-parsing the formatted span string.
+    coverage_end = models.DateField(null=True, blank=True)
+    refreshed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "corpus_currency"
+        verbose_name = "Corpus Currency"
+        verbose_name_plural = "Corpus Currency"
+
+    def __str__(self) -> str:
+        return f"{self.corpus_label} (current to {self.data_current_to})"
+
+    @classmethod
+    def get_solo(cls) -> "CorpusCurrency | None":
+        """Return the singleton row, or ``None`` before the first load."""
+        return cls.objects.filter(pk=cls.SINGLETON_PK).first()
+
+    @classmethod
+    def refresh(cls) -> "CorpusCurrency":
+        """Recompute the masthead stamp from the *provenance* corpus and persist it.
+
+        Scope is editions that actually carry regulation data — the
+        version-tracked provenance system (currently OBC only).  The shared
+        ``code_editions`` table also holds search-metadata-only editions for
+        other codes (NBC, Quebec, …, back to 1997); those have no regulations
+        and must NOT widen the corpus the regulation/provenance pages describe.
+
+        - ``corpus_span`` = the precise window we cover: first in-force date →
+          last covered date (``ineffective``/``superseded`` is exclusive, so we
+          step back a day), or ``… – present`` if still current.  Full dates,
+          derived from ``effective_date`` — not the edition-label ``year``.
+        - ``data_current_to`` = how current the consolidation is.  Only set
+          while the corpus is still in force (the most recent amendment we've
+          ingested); for a closed/superseded corpus the span already states the
+          end date, so this stays None and the masthead drops the redundant
+          "current to" endpoint.
+        - ``corpus_label`` = a provenance code's display name, else the Ontario
+          default.
+        """
+        from datetime import date, timedelta
+
+        from django.db.models import Count, Max, Min
+
+        def _fmt(d: date) -> str:
+            # ISO 8601 calendar date (e.g. "2014-01-01").
+            return d.isoformat()
+
+        prov_editions = CodeEdition.objects.annotate(
+            _reg_count=Count("regulations")
+        ).filter(_reg_count__gt=0)
+
+        agg = prov_editions.aggregate(
+            first_eff=Min("effective_date"),
+            last_end=Max("ineffective_date"),
+        )
+        first_eff = agg["first_eff"]
+
+        span = ""
+        data_current_to = None
+        coverage_end = None
+        if first_eff:
+            # The corpus's coverage closes when its latest edition ceased to be
+            # in force; None on both means it's still the current edition.
+            # ``Max`` ignores NULLs, so an open-ended current edition
+            # (ineffective_date IS NULL) sitting alongside older, closed
+            # editions would otherwise report the older end date and mark the
+            # corpus closed — check for any still-open edition first.
+            has_open_edition = prov_editions.filter(
+                ineffective_date__isnull=True
+            ).exists()
+            end = None if has_open_edition else agg["last_end"]
+            if end:
+                last_covered = end - timedelta(days=1)  # exclusive boundary
+                span = f"{_fmt(first_eff)} – {_fmt(last_covered)}"
+                coverage_end = last_covered
+            else:
+                span = f"{_fmt(first_eff)} – present"
+                data_current_to = Regulation.objects.filter(
+                    edition__in=prov_editions
+                ).aggregate(mx=Max("effective_date"))["mx"]
+                coverage_end = data_current_to
+
+        label = "Ontario Building Code"
+        code = (
+            Code.objects.filter(editions__in=prov_editions)
+            .exclude(display_name="")
+            .order_by("id")
+            .distinct()
+            .first()
+        )
+        if code:
+            label = code.display_name
+
+        obj, _ = cls.objects.update_or_create(
+            pk=cls.SINGLETON_PK,
+            defaults={
+                "corpus_label": label,
+                "corpus_span": span,
+                "data_current_to": data_current_to,
+                "coverage_end": coverage_end,
+            },
+        )
+        return obj

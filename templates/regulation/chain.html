@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ edition }} — Amendment Chain — CodeChronicle{% endblock %}
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-8 py-8">
+
+    {% comment %} Citation-style header: mono overline (system answer), serif
+       title, mono metadata row with the completeness shown as a ruled tag —
+       not a filled pill.  See design handoff README §"Regulation CHAIN". {% endcomment %}
+    <div class="border-b border-rule pb-[18px] mb-7">
+        <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary">
+            {{ edition.code.code }} {{ edition.edition_id }}
+        </div>
+        <h1 class="mt-2 font-serif text-[30px] font-bold tracking-[-0.01em] text-ink">Amendment chain</h1>
+        <div class="mt-2 flex flex-wrap items-center gap-x-[14px] gap-y-1 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+            <span>EFFECTIVE &middot; {{ edition.effective_date|date:"Y-m-d" }}</span>
+            {% if edition.ineffective_date %}
+            <span class="text-rule">&middot;</span>
+            <span>SUPERSEDED &middot; {{ edition.ineffective_date|date:"Y-m-d" }}</span>
+            {% endif %}
+            <span class="text-rule">&middot;</span>
+            {% if edition.amendment_chain_complete %}
+            <span class="inline-flex items-center gap-1.5 border border-insert px-[7px] py-0.5 font-semibold tracking-[0.06em] text-insert">✓ Chain complete</span>
+            {% else %}
+            <span class="inline-flex items-center gap-1.5 border border-strike px-[7px] py-0.5 font-semibold tracking-[0.06em] text-strike">Chain incomplete</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% comment %} Vertical amendment timeline: a real 1px ruled spine with
+       ringed nodes — base = filled accent, amendment = hollow, revocation =
+       filled danger. {% endcomment %}
+    <div class="relative">
+        <div class="absolute left-[5px] top-1.5 bottom-1.5 w-px bg-rule"></div>
+
+        {% for reg in regulations %}
+        <div class="relative pl-[34px] pb-[22px]">
+            {# Node: filled accent for the base, hollow for amendments. #}
+            <div class="absolute left-0 top-1 w-[11px] h-[11px] rounded-full border-2 box-border
+                {% if reg.role == 'base' %}bg-secondary border-secondary{% else %}bg-surface border-ink-3{% endif %}"></div>
+
+            <div class="border border-rule bg-panel p-4">
+                <div class="flex items-baseline justify-between gap-3">
+                    <div class="flex items-baseline gap-[10px] flex-wrap">
+                        <a href="{% url 'core:regulation_detail' reg.pk %}"
+                            class="font-mono text-base font-semibold text-secondary border-b border-secondary hover:text-secondary-2">O. Reg. {{ reg.reg_id }}</a>
+                        <span class="font-mono text-[9.5px] font-semibold uppercase tracking-[0.08em] border px-1.5 py-px
+                            {% if reg.role == 'base' %}text-secondary border-secondary{% else %}text-ink-3 border-rule{% endif %}">{% if reg.role == 'base' %}Base{% else %}Amendment{% endif %}</span>
+                    </div>
+                    <span class="font-mono text-xs font-semibold text-ink shrink-0">{{ reg.effective_date|date:"Y-m-d" }}</span>
+                </div>
+                <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10.5px] uppercase tracking-[0.03em] text-ink-3">
+                    {% if reg.amends %}<span>Amends O. Reg. {{ reg.amends.reg_id }}</span>{% endif %}
+                    {% if reg.filed_date %}<span>Filed {{ reg.filed_date|date:"Y-m-d" }}</span>{% endif %}
+                    <span>{{ reg.clauses.count }} clause{{ reg.clauses.count|pluralize }}</span>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-8 text-ink-3">
+            <p>No regulations recorded for this edition.</p>
+        </div>
+        {% endfor %}
+
+        {# Revocation marker at the foot, if the edition is superseded. #}
+        {% if edition.ineffective_date %}
+        <div class="relative pl-[34px] pt-0.5">
+            <div class="absolute left-0 top-[5px] w-[11px] h-[11px] rounded-full bg-strike border-2 border-strike box-border"></div>
+            <div class="font-mono text-xs font-semibold uppercase tracking-[0.04em] text-strike">
+                Superseded &middot; {{ edition.ineffective_date|date:"Y-m-d" }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

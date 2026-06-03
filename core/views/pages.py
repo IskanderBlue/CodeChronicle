@@ -6,8 +6,6 @@ from allauth.account.forms import ChangePasswordForm
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 
-from config.code_metadata import get_pdf_expectations
-
 from .billing import _sync_subscription_status
 
 
@@ -41,7 +39,6 @@ def user_settings(request):
         request,
         "settings.html",
         {
-            "pdf_expectations": get_pdf_expectations(),
             "password_form": password_form,
         },
     )

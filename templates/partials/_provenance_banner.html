@@ -1,0 +1,12 @@
+{% comment %} ── Provenance banner (stacked band + rail) ──
+   Thin wrapper that stacks the in-force band over its metadata, for callers that
+   want them together in one column: the mobile/tablet search accordion,
+   transition-compare results, and the permalink page below `lg`. The
+   master-detail layout (search + permalink on `lg+`) instead includes the two
+   pieces directly — _provenance_band.html in the middle column, _provenance_rail.html
+   in the right rail. `query_date` flows through to the band's timeline tick.
+{% endcomment %}
+<div class="mt-3 space-y-3">
+    {% include "partials/_provenance_band.html" with result=result query_date=query_date %}
+    {% include "partials/_provenance_rail.html" with result=result %}
+</div>

@@ -1,17 +1,17 @@
 {% if edition.effective_date %}
-<div class="space-y-2 text-sm text-neutral-700 dark:text-neutral-300">
-    <div class="flex flex-wrap gap-x-4 gap-y-1">
-        <p><span class="font-semibold">Effective:</span> {{ edition.effective_date }}</p>
-        {% if edition.superseded_date %}
-        <p><span class="font-semibold">Superseded:</span> {{ edition.superseded_date }}</p>
+<div class="space-y-2 text-sm text-ink-2">
+    <div class="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px]">
+        <p><span class="uppercase tracking-[0.06em] text-ink-3">Effective</span> <span class="text-ink">{{ edition.effective_date }}</span></p>
+        {% if edition.ineffective_date %}
+        <p><span class="uppercase tracking-[0.06em] text-ink-3">Superseded</span> <span class="text-ink">{{ edition.ineffective_date }}</span></p>
         {% else %}
-        <p><span class="font-semibold">Status:</span> Current</p>
+        <p><span class="uppercase tracking-[0.06em] text-ink-3">Status</span> <span class="text-secondary">Current</span></p>
         {% endif %}
     </div>
     {% for t in edition.transitions %}
-    <div class="opacity-50">
-        <p class="text-xs">
-            <span class="font-semibold">{{ t.transition_type|title }}:</span>
+    <div class="opacity-60">
+        <p class="font-mono text-[10px] text-ink-3">
+            <span class="uppercase tracking-[0.06em]">{{ t.transition_type|title }}</span>
             {% if t.old_edition == edition.code_name %}
             lingering validity {{ t.overlap_start }} &ndash; {{ t.overlap_end }} (superseded by {{ t.new_edition }})
             {% else %}
@@ -22,5 +22,5 @@
     {% endfor %}
 </div>
 {% else %}
-<p class="text-xs text-neutral-400 dark:text-neutral-500">No edition date information available.</p>
+<p class="font-mono text-[10px] text-ink-3">No edition date information available.</p>
 {% endif %}

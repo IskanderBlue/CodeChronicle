@@ -4,19 +4,19 @@
     data-nav-query-code="{{ query_code }}">
     {% if previous_version %}
     <button type="button"
-        data-edition-result='{"id":"{{ previous_version.id|escapejs }}","title":"{{ previous_version.title|escapejs }}","code":"{{ previous_version.code|escapejs }}","code_display_name":"{{ previous_version.code_display_name|escapejs }}","map_code":"{{ previous_version.map_code|escapejs }}","page":{{ previous_version.page|default:"null" }},"page_end":{{ previous_version.page_end|default:"null" }},"initial_page_top":{{ previous_version.initial_page_top|default:"null" }},"final_page_bottom":{{ previous_version.final_page_bottom|default:"null" }},"pdf_filename":"{{ previous_version.pdf_filename|escapejs }}","pdf_download_url":"{{ previous_version.pdf_download_url|escapejs }}","source_url":"{{ previous_version.source_url|escapejs }}"}'
-        class="inline-flex w-full items-center justify-center rounded border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-700">
+        data-edition-result='{"id":"{{ previous_version.id|escapejs }}","title":"{{ previous_version.title|escapejs }}","code":"{{ previous_version.code|escapejs }}","code_display_name":"{{ previous_version.code_display_name|escapejs }}","division":"{{ previous_version.division|escapejs }}","map_code":"{{ previous_version.map_code|escapejs }}","page":{{ previous_version.page|default:"null" }},"page_end":{{ previous_version.page_end|default:"null" }},"initial_page_top":{{ previous_version.initial_page_top|default:"null" }},"final_page_bottom":{{ previous_version.final_page_bottom|default:"null" }},"pdf_filename":"{{ previous_version.pdf_filename|escapejs }}","pdf_download_url":"{{ previous_version.pdf_download_url|escapejs }}","source_url":"{{ previous_version.source_url|escapejs }}"}'
+        class="inline-flex w-full items-center justify-center border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
         Previous edition
     </button>
     {% endif %}
     {% if next_version %}
     <button type="button"
-        data-edition-result='{"id":"{{ next_version.id|escapejs }}","title":"{{ next_version.title|escapejs }}","code":"{{ next_version.code|escapejs }}","code_display_name":"{{ next_version.code_display_name|escapejs }}","map_code":"{{ next_version.map_code|escapejs }}","page":{{ next_version.page|default:"null" }},"page_end":{{ next_version.page_end|default:"null" }},"initial_page_top":{{ next_version.initial_page_top|default:"null" }},"final_page_bottom":{{ next_version.final_page_bottom|default:"null" }},"pdf_filename":"{{ next_version.pdf_filename|escapejs }}","pdf_download_url":"{{ next_version.pdf_download_url|escapejs }}","source_url":"{{ next_version.source_url|escapejs }}"}'
-        class="inline-flex w-full items-center justify-center rounded border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-700">
+        data-edition-result='{"id":"{{ next_version.id|escapejs }}","title":"{{ next_version.title|escapejs }}","code":"{{ next_version.code|escapejs }}","code_display_name":"{{ next_version.code_display_name|escapejs }}","division":"{{ next_version.division|escapejs }}","map_code":"{{ next_version.map_code|escapejs }}","page":{{ next_version.page|default:"null" }},"page_end":{{ next_version.page_end|default:"null" }},"initial_page_top":{{ next_version.initial_page_top|default:"null" }},"final_page_bottom":{{ next_version.final_page_bottom|default:"null" }},"pdf_filename":"{{ next_version.pdf_filename|escapejs }}","pdf_download_url":"{{ next_version.pdf_download_url|escapejs }}","source_url":"{{ next_version.source_url|escapejs }}"}'
+        class="inline-flex w-full items-center justify-center border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
         Next edition
     </button>
     {% endif %}
     {% if not previous_version and not next_version %}
-    <p class="text-sm text-neutral-500 dark:text-neutral-400">No adjacent edition links are available for this node yet.</p>
+    <p class="text-sm text-ink-3">No adjacent edition links are available for this provision yet.</p>
     {% endif %}
 </div>

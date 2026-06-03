@@ -3,20 +3,84 @@ Format search results for frontend display.
 """
 
 import difflib
+import logging
 import re
-from typing import Any, Dict, Iterable, List, Tuple
+from datetime import date
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
-from config.code_metadata import (
-    get_code_display_name,
-    get_download_url,
-    get_pdf_filename,
-    get_source_url,
-)
-from core.models import CodeMapNode
+from api.band import compute_band_geometry, parse_iso_date
+from api.search.engine import _ref_parts
+from config.code_metadata import get_code_display_name
+from core.models import CodeEditionProvision, CodeEditionProvisionVersion
+
+logger = logging.getLogger(__name__)
+
+# Structural container levels: these are heading nodes (Division A / Part 3 /
+# Section 3.2 / Subsection 1.3.7.) whose substantive text lives in their child
+# articles — they legitimately carry no body, so the empty-content notice must
+# not read as a data gap for them.  See _result_document_block.html.
+_CONTAINER_LEVELS = frozenset({
+    CodeEditionProvision.Level.DIVISION,
+    CodeEditionProvision.Level.PART,
+    CodeEditionProvision.Level.SECTION,
+    CodeEditionProvision.Level.SUBSECTION,
+})
 
 _HTML_TAG_RE = re.compile(r"(<[^>]+>)")
 # Splits text into words and whitespace runs, preserving both.
 _WORD_SPACE_RE = re.compile(r"(\S+)")
+
+_APPENDIX_REF_RE = re.compile(
+    r'\(See Note (A-[\d.]+(?:\.\)?\(\d+(?:-\d+|(?:,\d+)*)\))?)\)',
+    re.IGNORECASE,
+)
+
+
+def _linkify_appendix_refs(html: str) -> str:
+    """Replace (See Note A-X.X.X.X.(N)) with clickable anchors."""
+    def _replace(match: re.Match[str]) -> str:
+        ref_id = match.group(1)
+        return (
+            f'(<a href="#" @click.prevent="'
+            f"$dispatch('expand-appendix'); "
+            f'document.getElementById(\'appendix-{ref_id}\')?.scrollIntoView({{behavior: \'smooth\'}})"'
+            f' class="text-secondary hover:text-secondary-2 hover:underline">'
+            f'See Note {ref_id}</a>)'
+        )
+    return _APPENDIX_REF_RE.sub(_replace, html)
+
+
+def highlight_terms(html: str, terms: Iterable[str]) -> str:
+    """Wrap occurrences of query ``terms`` in provision HTML with ``<mark>``.
+
+    Phrase-aware and case-insensitive. Only the text *between* tags is
+    processed (via the same tag split used for diffing), so tags and their
+    attributes are never corrupted. Longer terms match first, so
+    "fire-resistance rating" wins over a bare "rating". ``\\w`` lookarounds
+    give word boundaries that respect hyphens inside a term.
+
+    The emitted ``mark.match-highlight`` class is styled by a role-variable
+    CSS rule in base.html (paper-yellow in light, amber in dark).
+    """
+    cleaned = sorted(
+        {t.strip() for t in terms if t and t.strip()},
+        key=len,
+        reverse=True,
+    )
+    if not html or not cleaned:
+        return html
+    pattern = re.compile(
+        r"(?<!\w)(" + "|".join(re.escape(t) for t in cleaned) + r")(?!\w)",
+        re.IGNORECASE,
+    )
+    parts = _HTML_TAG_RE.split(html)
+    out: list[str] = []
+    for part in parts:
+        if _HTML_TAG_RE.fullmatch(part):
+            out.append(part)  # tag — leave untouched
+        else:
+            out.append(pattern.sub(r'<mark class="match-highlight">\1</mark>', part))
+    return "".join(out)
 
 
 def _tokenize_html_for_diff(html: str) -> list[tuple[str, str]]:
@@ -70,7 +134,7 @@ def _diff_html_content(
     def _render_side(
         tokens: list[tuple[str, str]],
         words: list[str],
-        opcodes: list[tuple[str, int, int, int, int]],
+        opcodes: Sequence[tuple[str, int, int, int, int]],
         *,
         is_old: bool,
     ) -> str:
@@ -125,75 +189,403 @@ def _code_order_key(value: str) -> Tuple[Any, ...]:
     return tuple(key)
 
 
-def _format_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
+def _build_copy_text(
+    *,
+    code_edition: str,
+    division: str,
+    provision_id: str,
+    title: str,
+    version: Any,
+    most_recent_clause: Any,
+    base_regulation: Any,
+    next_version: Any,
+) -> str:
+    """Reference string for the clipboard copy button.
+
+    Per ``tasks/provenance/4-display.md`` §"Copy Button"::
+
+        OBC 1997, Div B, S 3.1.4.7. -- Fire Separations
+        Base: O. Reg. 403/97
+        Amended by: O. Reg. 22/98, cl. 1.(1) (1998-04-06)
+        Next amendment: O. Reg. 152/99 (1999-04-01) -- not in force at query date
+
+    The in-force date sits with whatever regulation is currently *operative*:
+    the amending clause when the provision has been amended, otherwise the base
+    regulation. The base reg is always shown for provenance, labelled ``Base:``
+    (undated unless it is itself the operative one).
+    """
+    code_display = _build_code_display_name(code_edition).strip() or code_edition
+    div_label = f"Div {division}, " if division else ""
+    header = f"{code_display}, {div_label}S {provision_id} -- {title}".strip()
+
+    lines = [header]
+    in_force = (
+        version.effective_date.isoformat()
+        if version and version.effective_date else None
+    )
+    in_force_suffix = f" ({in_force})" if in_force else ""
+
+    if most_recent_clause and most_recent_clause.regulation:
+        # Amended: the current text was put in force by this clause, so the
+        # in-force date belongs on the "Amended by" line (not the regulation's
+        # own filing date, which is a different event). The base reg is still
+        # shown for provenance, labelled and undated — it isn't operative now.
+        if base_regulation:
+            lines.append(f"Base: O. Reg. {base_regulation.reg_id}")
+        reg = most_recent_clause.regulation
+        lines.append(
+            f"Amended by: O. Reg. {reg.reg_id}, "
+            f"cl. {most_recent_clause.clause_id}{in_force_suffix}"
+        )
+    elif base_regulation:
+        # Unamended: the base regulation is what's currently in force, so the
+        # in-force date sits with it.
+        lines.append(f"Base: O. Reg. {base_regulation.reg_id}{in_force_suffix}")
+    elif in_force:
+        # No linked regulation (e.g. a base-enactment gap): the date has no
+        # operative reg to attach to, so it stands alone.
+        lines.append(f"In force: {in_force}")
+    if next_version and next_version.contributing_clauses.exists():
+        first_clause = next_version.contributing_clauses.all()[0]
+        if first_clause and first_clause.regulation:
+            reg = first_clause.regulation
+            date_part = (
+                f" ({next_version.effective_date.isoformat()})"
+                if next_version.effective_date else ""
+            )
+            lines.append(
+                f"Next amendment: O. Reg. {reg.reg_id}{date_part} "
+                "-- not in force at query date"
+            )
+    return "\n".join(lines)
+
+
+def _join_terms(terms: Sequence[str]) -> str:
+    """Join terms readably: 'a' · 'a and b' · 'a, b, and c'."""
+    items = [t for t in terms if t]
+    if not items:
+        return "your search"
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return ", ".join(items[:-1]) + f", and {items[-1]}"
+
+
+def _reference_label(ref: str) -> str:
+    """Human label for a matched reference: 'table-3.1.4.7' -> 'Table 3.1.4.7'."""
+    is_table, segs = _ref_parts(ref)
+    core = ".".join(segs)
+    return f"Table {core}" if is_table else core
+
+
+def _build_score_explanation(
+    match_type: str | None,
+    matched_terms: Sequence[str],
+    matched_terms_indirect: Sequence[str] = (),
+) -> str:
+    """One plain-English sentence explaining why a result matched.
+
+    Driven by the engine's ``match_type`` so the card can say *why* a provision
+    ranked rather than show an opaque score the user can't calibrate.  Keyword
+    results distinguish *direct* hits (terms the user typed) from *indirect*
+    ones (LLM-added variants and synonyms), so the sentence never claims the
+    user searched for a word they didn't type.
+    """
+    direct = list(matched_terms or [])
+    indirect = list(matched_terms_indirect or [])
+    first = direct[0] if direct else ""
+    if match_type == "exact_id":
+        return f"You referenced {_reference_label(first)} — this is that provision."
+    if match_type == "ancestor_id":
+        return f"A sub-provision of {_reference_label(first)}, which you referenced."
+    if match_type == "table_ref":
+        return f"Contains {_reference_label(first)}, the table you referenced."
+    if match_type == "fuzzy":
+        return f"Close approximate match on {_join_terms(direct or indirect)}."
+    if match_type in ("exact", "synonym"):
+        if direct and indirect:
+            return (
+                f"Directly matched your search for {_join_terms(direct)}; "
+                f"indirectly matched {_join_terms(indirect)}."
+            )
+        if direct:
+            return f"Directly matched your search for {_join_terms(direct)}."
+        if indirect:
+            return f"Indirectly matched {_join_terms(indirect)} (synonym of your search)."
+    return "Matched your search."
+
+
+def _format_single_result(
+    result: Dict[str, Any],
+    query_date: date | None = None,
+    terms: Iterable[str] | None = None,
+) -> Dict[str, Any]:
     code_edition = result.get("code_edition", "Unknown")
-    page = result.get("page")
-    page_end = result.get("page_end", page)
+    provision = result.get("provision")
+    version = result.get("version")
+    parent_id = ""
+    if provision and provision.parent:
+        parent_id = provision.parent.provision_id
 
-    pdf_filename = ""
-    map_code = result.get("map_code", "")
-    if map_code:
-        pdf_filename = get_pdf_filename(code_edition, map_code) or ""
+    # Derive provenance from prefetched relationships
+    base_regulation = None
+    all_versions = []
+    appendix_notes = []
+    contributing_clauses: list = []
+    if provision:
+        # Base regulation: from prefetched edition.regulations
+        for reg in provision.edition.regulations.all():
+            if reg.role == "base":
+                base_regulation = reg
+                break
+        # Full version chain: from prefetched provision.versions
+        all_versions = list(provision.versions.all())
+        # Appendix notes: from prefetched provision.appendix_entries
+        for ap in provision.appendix_entries.all():
+            latest = ap.versions.order_by("-version").first() if ap.versions.all() else None
+            appendix_notes.append({
+                "id": ap.provision_id,
+                "title": latest.title if latest else "",
+                "html": latest.html if latest else "",
+            })
 
-    section_data = {
+    if version:
+        contributing_clauses = list(version.contributing_clauses.all())
+
+    # Next-version-not-in-force: orchestration prefetches into
+    # provision.next_versions (to_attr).
+    next_version = None
+    if provision is not None and hasattr(provision, "next_versions"):
+        nexts = getattr(provision, "next_versions", []) or []
+        next_version = nexts[0] if nexts else None
+    # Fallback: pick the next version from the full chain when the
+    # to_attr prefetch wasn't applied (e.g. test setups not going
+    # through orchestration).
+    if next_version is None and version and all_versions:
+        for v in all_versions:
+            if v.version > version.version:
+                next_version = v
+                break
+
+    transition_provision_version = (
+        version.transition_provision if version else None
+    )
+
+    # The representative "amended by" clause is the last one applied to this
+    # version, ordered by the through model's apply_order (see
+    # CodeEditionProvisionVersion.last_contributing_clause). Using that
+    # property keeps the header, amendment chain, and next-version rows
+    # consistent — a plain contributing_clauses[-1] is non-deterministic.
+    most_recent_clause = (
+        version.last_contributing_clause if version else None
+    ) or result.get("clause")
+
+    # IN FORCE band rail geometry. The "until" edge is the version's own
+    # ineffective date, falling back to the next version's effective date;
+    # None means open-ended (still current). Geometry is None when there's
+    # no effective date to anchor on.
+    until_date = None
+    if version is not None:
+        until_date = getattr(version, "ineffective_date", None)
+        if until_date is None and next_version is not None:
+            until_date = next_version.effective_date
+    band = compute_band_geometry(
+        version.effective_date if version else None,
+        until_date,
+        query_date,
+    )
+
+    html_content = result.get("html_content")
+    if html_content and appendix_notes:
+        html_content = _linkify_appendix_refs(html_content)
+    if html_content and terms:
+        html_content = highlight_terms(html_content, terms)
+
+    copy_text = _build_copy_text(
+        code_edition=code_edition,
+        division=result.get("division", ""),
+        provision_id=str(result.get("id", "")),
+        title=result.get("title", "No title"),
+        version=version,
+        most_recent_clause=most_recent_clause,
+        base_regulation=base_regulation,
+        next_version=next_version,
+    )
+
+    # Commencement provenance for the band's "Until" edge: this version ends
+    # exactly when the NEXT version comes into force, so the proof of the end
+    # is the next version's CommencementProvenance (its contributing clause's
+    # resolved entry).  Lets the band show why the version started AND ended.
+    next_clause = next_version.last_contributing_clause if next_version else None
+    next_commencement = next_clause.commencement if next_clause else None
+
+    return {
         "id": result.get("id"),
         "title": result.get("title", "No title"),
         "code": code_edition,
         "code_display_name": _build_code_display_name(code_edition),
-        "map_code": map_code,
-        "parent_id": result.get("parent_id"),
+        "code_edition": code_edition,
+        "parent_id": parent_id,
         "source_date": result.get("source_date"),
-        "page": page,
-        "page_end": page_end,
-        "initial_page_top": result.get("initial_page_top"),
-        "final_page_bottom": result.get("final_page_bottom"),
         "score": result.get("score", 0),
-        "pdf_filename": pdf_filename,
-        "pdf_download_url": get_download_url(code_edition) if pdf_filename else "",
-        "html_content": result.get("html_content"),
-        "notes_html": result.get("notes_html"),
-        "source_url": get_source_url(code_edition),
+        "match_type": result.get("match_type"),
+        "matched_terms": result.get("matched_terms") or [],
+        "matched_terms_indirect": result.get("matched_terms_indirect") or [],
+        # Term chips reinforce keyword matches; for reference matches the
+        # sentence already names the provision/table, so chips are redundant.
+        "show_matched_terms": result.get("match_type") in ("exact", "synonym", "fuzzy"),
+        "score_explanation": _build_score_explanation(
+            result.get("match_type"),
+            result.get("matched_terms") or [],
+            result.get("matched_terms_indirect") or [],
+        ),
+        "html_content": html_content,
+        "page_images": result.get("page_images") or [],
+        "tables": result.get("tables") or [],
         "group_type": None,
         "result_type": None,
         "transition_context": result.get("transition_context"),
+        "division": result.get("division", ""),
+        # Single-clause back-compat for existing templates; most_recent_clause
+        # carries the same value via the contributing_clauses[-1] selection.
+        "clause": most_recent_clause,
+        "most_recent_clause": most_recent_clause,
+        "contributing_clauses": contributing_clauses,
+        "is_base": result.get("is_base", True),
+        # Structural heading node (part/section/subsection/division): never
+        # carries body text, so the document block suppresses the
+        # "Content not yet available" notice rather than implying a data gap.
+        "is_structural": bool(provision and provision.level in _CONTAINER_LEVELS),
+        "version": version,
+        "provision": provision,
+        "base_regulation": base_regulation,
+        "next_version": next_version,
+        "next_commencement": next_commencement,
+        "amendment_chain": all_versions,
+        "appendix_notes": appendix_notes,
+        "transition_provision_version": transition_provision_version,
+        "copy_text": copy_text,
+        "band": band,
     }
-    section_data["amendments"] = get_amendments_for_section(
-        str(result.get("id") or ""), code_edition
-    )
-    return section_data
 
 
 def _build_group_lookup_key(result: Dict[str, Any]) -> tuple[str, str, str] | None:
     parent_id = result.get("parent_id")
     code = result.get("code")
-    map_code = result.get("map_code")
-    if not parent_id or not code or not map_code:
+    if not parent_id or not code:
         return None
-    return str(code), str(map_code), str(parent_id)
+    division = result.get("division", "")
+    return str(code), str(parent_id), str(division)
+
+
+def _in_force_title(
+    versions: list[CodeEditionProvisionVersion],
+    query_date: date | None,
+    fallback_id: str,
+    *,
+    log_label: str,
+) -> str:
+    """Title of the version in force on ``query_date`` (for a group label).
+
+    Group labels must read as the provision did on the queried date, not as
+    it ends up — otherwise a provision that is later *revoked* shows its
+    "Revoked: …" sentinel title even when the query lands while it was
+    substantively in force (see ``order_by("-version")`` regression).
+
+    Falls back to the latest version when there's no as-of date, when the
+    provision has no versions, or when *nothing* is in force on the date —
+    the last case is a data anomaly for a provision search just surfaced, so
+    it's logged as an error.  Zero-width "as-filed but superseded same day"
+    versions (``ineffective == effective``) are skipped, mirroring the
+    in-force search filter.
+    """
+    if not versions:
+        return fallback_id
+    latest = max(versions, key=lambda v: v.version)
+    if query_date is None:
+        return latest.title or fallback_id
+    in_force = next(
+        (
+            v
+            for v in versions
+            if v.effective_date <= query_date
+            and (v.ineffective_date is None or query_date < v.ineffective_date)
+            and v.ineffective_date != v.effective_date
+        ),
+        None,
+    )
+    if in_force is None:
+        logger.error(
+            "Group label: no version of %s in force on %s; "
+            "falling back to latest (v%s) title.",
+            log_label,
+            query_date.isoformat(),
+            latest.version,
+        )
+        return latest.title or fallback_id
+    return in_force.title or fallback_id
 
 
 def _load_group_hierarchy(
     formatted_results: Iterable[Dict[str, Any]],
+    query_date: date | None = None,
 ) -> Dict[tuple[str, str, str], Dict[str, Any]]:
     group_keys = {
         key for result in formatted_results if (key := _build_group_lookup_key(result)) is not None
     }
     hierarchy: Dict[tuple[str, str, str], Dict[str, Any]] = {}
 
-    for code_edition, map_code, parent_id in group_keys:
-        parent_node = (
-            CodeMapNode.objects.filter(code_map__map_code=map_code, node_id=parent_id)
-            .values("node_id", "title")
+    for code_edition, parent_id, division in group_keys:
+        system_code = code_edition.split("_", 1)[0] if "_" in code_edition else code_edition
+        edition_id = code_edition.split("_", 1)[1] if "_" in code_edition else ""
+
+        prov_filter: Dict[str, Any] = {
+            "edition__code__code": system_code,
+            "edition__edition_id": edition_id,
+        }
+        if division:
+            prov_filter["division"] = division
+
+        parent_prov = (
+            CodeEditionProvision.objects.filter(provision_id=parent_id, **prov_filter)
             .first()
         )
-        child_nodes = list(
-            CodeMapNode.objects.filter(code_map__map_code=map_code, parent_id=parent_id).values(
-                "node_id", "title", "page", "page_end"
+        # Title the group as the parent read on the query date — not its
+        # latest (possibly "Revoked: …") version. See _in_force_title.
+        parent_title = parent_id
+        if parent_prov:
+            parent_title = _in_force_title(
+                list(parent_prov.versions.all()),
+                query_date,
+                parent_id,
+                log_label=f"{code_edition} {division} {parent_id}".strip(),
             )
-        )
+
+        child_provs = CodeEditionProvision.objects.filter(
+            parent=parent_prov, **{
+                k: v for k, v in prov_filter.items()
+                if k not in ("edition__code__code", "edition__edition_id")
+            }
+        ) if parent_prov else CodeEditionProvision.objects.none()
+
+        child_nodes = []
+        for child in child_provs:
+            child_nodes.append({
+                "node_id": child.provision_id,
+                "title": _in_force_title(
+                    list(child.versions.all()),
+                    query_date,
+                    child.provision_id,
+                    log_label=f"{code_edition} {division} {child.provision_id}".strip(),
+                ),
+                "page": None,
+                "page_end": None,
+            })
         child_nodes.sort(key=lambda item: _code_order_key(str(item.get("node_id") or "")))
-        hierarchy[(code_edition, map_code, parent_id)] = {
-            "parent_title": (parent_node or {}).get("title") or parent_id,
+
+        hierarchy[(code_edition, parent_id, division)] = {
+            "parent_title": parent_title,
             "children": child_nodes,
         }
 
@@ -226,7 +618,7 @@ def _build_grouped_result(
         matched_results,
         key=lambda item: (item.get("score", 0), -matched_results.index(item)),
     )
-    parent_id = group_key[2]
+    parent_id = group_key[1]
     children = []
     for child in child_nodes:
         child_id = str(child.get("node_id"))
@@ -240,6 +632,12 @@ def _build_grouped_result(
                 "score": (matched or {}).get("score", 0),
                 "is_match": matched is not None,
                 "is_top_scoring": child_id == top_scoring_child.get("id"),
+                # Full formatted result for matched children so the template can
+                # accordion each open to its own content (provenance + body +
+                # justification) — grouping is a UI aide, not a content drop.
+                # Unmatched "context" children weren't search hits, so they have
+                # no formatted body and stay label-only.
+                "result": matched,
             }
         )
 
@@ -256,8 +654,6 @@ def _build_grouped_result(
                 "id": top_scoring_child.get("id"),
                 "title": top_scoring_child.get("title"),
             },
-            "viewer_node_id": top_scoring_child.get("id"),
-            "viewer_title": top_scoring_child.get("title"),
             "child_match_count": child_match_count,
             "child_total_count": child_total_count,
             "matched_child_ids": [item.get("id") for item in matched_results if item.get("id")],
@@ -269,9 +665,10 @@ def _build_grouped_result(
 def group_formatted_results(
     formatted_results: List[Dict[str, Any]],
     hierarchy_by_group: Dict[tuple[str, str, str], Dict[str, Any]] | None = None,
+    query_date: date | None = None,
 ) -> List[Dict[str, Any]]:
     if hierarchy_by_group is None:
-        hierarchy_by_group = _load_group_hierarchy(formatted_results)
+        hierarchy_by_group = _load_group_hierarchy(formatted_results, query_date)
 
     matched_results_by_group: Dict[tuple[str, str, str], List[Dict[str, Any]]] = {}
     for result in formatted_results:
@@ -296,6 +693,26 @@ def group_formatted_results(
             output.append(grouped_results_by_key[key])
             collapsed_keys.add(key)
             continue
+        # A provision that matches on its own AND is the parent of a built group
+        # is already represented by that group card (id == parent_id).  Don't
+        # leave it as a second standalone row — that duplicates the parent and
+        # collides on the accordion key (code + id).  Instead absorb its match
+        # onto the group as ``parent_result`` so the group can still surface the
+        # parent provision's own title/provenance/content (it isn't lost, just
+        # not a separate row).
+        identity = (
+            str(result.get("code") or ""),
+            str(result.get("id") or ""),
+            str(result.get("division") or ""),
+        )
+        if identity in grouped_results_by_key:
+            group = grouped_results_by_key[identity]
+            group["parent_result"] = result
+            # The group card header shows the *parent's* score (the child it was
+            # cloned from lent its score); each child keeps its own in its
+            # accordion.  Phase-3 groups already carry the parent's score.
+            group["score"] = result.get("score", group.get("score", 0))
+            continue
         output.append(result)
 
     return output
@@ -304,20 +721,29 @@ def group_formatted_results(
 def merge_transition_compare_results(
     formatted_results: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    transition_groups: Dict[tuple[str, str, str], Dict[str, Dict[str, Any]]] = {}
+    """Collapse each transition pair into a single ``transition_compare`` card.
+
+    Orchestration (``_group_transitions`` / ``_merge_provision_mapping_transitions``)
+    is the authority on *which* two results form a pair — it stamps both members
+    with a shared ``pair_key`` and an ``is_primary`` flag (True on the newer
+    member).  We group on that token rather than re-deriving the pairing from
+    ``id``/edition, so pairs whose members carry different provision ids
+    (cross- or intra-edition renumbers) group correctly instead of colliding.
+    """
+    # Pass 1: bucket paired members by their upstream pair_key, split by role.
+    pairs: Dict[str, Dict[str, Dict[str, Any]]] = {}
     for result in formatted_results:
         transition_context = result.get("transition_context")
         if not transition_context or result.get("group_type") == "parent_children":
             continue
-        key = (
-            str(result.get("id") or ""),
-            str(transition_context.get("new_edition") or ""),
-            str(transition_context.get("old_edition") or ""),
-        )
-        edition = str(result.get("code") or "")
-        transition_groups.setdefault(key, {})[edition] = result
+        pair_key = transition_context.get("pair_key")
+        if not pair_key:
+            continue
+        role = "new" if transition_context.get("is_primary") else "old"
+        pairs.setdefault(pair_key, {})[role] = result
 
-    consumed_keys: set[tuple[str, str, str]] = set()
+    # Pass 2: emit one card per complete pair, at the first member's position.
+    consumed_keys: set[str] = set()
     output: List[Dict[str, Any]] = []
     for result in formatted_results:
         transition_context = result.get("transition_context")
@@ -325,27 +751,24 @@ def merge_transition_compare_results(
             output.append(result)
             continue
 
-        key = (
-            str(result.get("id") or ""),
-            str(transition_context.get("new_edition") or ""),
-            str(transition_context.get("old_edition") or ""),
-        )
-        grouped_versions = transition_groups.get(key, {})
-        if key in consumed_keys:
-            continue
-
-        new_version = grouped_versions.get(str(transition_context.get("new_edition") or ""))
-        old_version = grouped_versions.get(str(transition_context.get("old_edition") or ""))
-        if not new_version or not old_version:
+        pair_key = transition_context.get("pair_key")
+        members = pairs.get(pair_key, {}) if pair_key else {}
+        new_version = members.get("new")
+        old_version = members.get("old")
+        # Unpaired (only one member surfaced) or degenerate (both roles point at
+        # the same result) -> render plainly rather than compare-to-self.
+        if not new_version or not old_version or new_version is old_version:
             output.append(result)
             continue
+        if pair_key in consumed_keys:
+            continue
 
-        consumed_keys.add(key)
+        consumed_keys.add(pair_key)
         has_renderable_content = bool(
             old_version.get("html_content")
-            or old_version.get("pdf_filename")
+            or old_version.get("page_images")
             or new_version.get("html_content")
-            or new_version.get("pdf_filename")
+            or new_version.get("page_images")
         )
         old_diff, new_diff = _diff_html_content(
             old_version.get("html_content"),
@@ -355,6 +778,10 @@ def merge_transition_compare_results(
             old_version["diff_html"] = old_diff
         if new_diff is not None:
             new_version["diff_html"] = new_diff
+        # Explain the pair using whichever version actually earned the score.
+        top_version = max(
+            (old_version, new_version), key=lambda v: v.get("score", 0)
+        )
         output.append(
             {
                 "id": result.get("id"),
@@ -367,6 +794,11 @@ def merge_transition_compare_results(
                 "code_display_name": new_version.get("code_display_name")
                 or result.get("code_display_name"),
                 "score": max(new_version.get("score", 0), old_version.get("score", 0)),
+                "match_type": top_version.get("match_type"),
+                "matched_terms": top_version.get("matched_terms") or [],
+                "matched_terms_indirect": top_version.get("matched_terms_indirect") or [],
+                "show_matched_terms": top_version.get("show_matched_terms", False),
+                "score_explanation": top_version.get("score_explanation"),
                 "result_type": "transition_compare",
                 "transition_context": transition_context,
                 "has_renderable_content": has_renderable_content,
@@ -377,6 +809,17 @@ def merge_transition_compare_results(
     return output
 
 
+def _nest_result_key(
+    result: Dict[str, Any],
+) -> tuple[str, str, str]:
+    """Build a (code, id, division) key that scopes nesting per edition."""
+    return (
+        str(result.get("code") or ""),
+        str(result.get("id") or ""),
+        str(result.get("division") or ""),
+    )
+
+
 def _nest_child_results(
     results: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -384,34 +827,49 @@ def _nest_child_results(
 
     Unlike the >80% Phase 2 grouping which fills in context siblings, this only
     includes children that were actually returned by the search.
+
+    Keys are scoped by (code, map_code, id, division) so that identically-numbered
+    sections across different editions (OBC vs NBC, or transition pairs) never
+    collide.
     """
-    results_by_id: Dict[str, Dict[str, Any]] = {}
+    # Full composite key → result
+    results_by_key: Dict[tuple[str, str, str], Dict[str, Any]] = {}
     for result in results:
-        result_id = result.get("id")
-        if result_id:
-            results_by_id[str(result_id)] = result
+        key = _nest_result_key(result)
+        if key[1]:  # has an id
+            results_by_key[key] = result
 
     # Collect children per parent (only when the parent itself is also a result)
-    children_by_parent: Dict[str, List[Dict[str, Any]]] = {}
+    children_by_parent: Dict[tuple[str, str, str], List[Dict[str, Any]]] = {}
     for result in results:
         parent_id = result.get("parent_id")
+        if not parent_id:
+            continue
         result_id = str(result.get("id") or "")
-        if (
-            parent_id
-            and str(parent_id) in results_by_id
-            and str(parent_id) != result_id
-            and result.get("group_type") != "parent_children"
-        ):
-            parent = results_by_id[str(parent_id)]
-            if parent.get("group_type") == "parent_children":
-                continue
-            children_by_parent.setdefault(str(parent_id), []).append(result)
+        if str(parent_id) == result_id:
+            continue
+        if result.get("group_type") == "parent_children":
+            continue
+        parent_key = (
+            str(result.get("code") or ""),
+            str(parent_id),
+            str(result.get("division") or ""),
+        )
+        if parent_key not in results_by_key:
+            continue
+        parent = results_by_key[parent_key]
+        if parent.get("group_type") == "parent_children":
+            continue
+        children_by_parent.setdefault(parent_key, []).append(result)
 
     # Convert each parent + children set into a grouped card
-    grouped_parent_ids: set[str] = set()
-    absorbed_child_ids: set[str] = set()
-    for parent_id_str, children in children_by_parent.items():
-        parent = results_by_id[parent_id_str]
+    absorbed_child_keys: set[tuple[str, str, str]] = set()
+    for parent_key, children in children_by_parent.items():
+        parent = results_by_key[parent_key]
+        # Snapshot the parent's own match before we mutate it into the group
+        # card, so the template can still surface the parent provision (its
+        # title/provenance/content) — parity with the Phase-2 ``parent_result``.
+        parent_self = dict(parent)
         top_child = max(children, key=lambda c: (c.get("score", 0),))
         child_entries = []
         for child in sorted(children, key=lambda c: _code_order_key(str(c.get("id", "")))):
@@ -424,41 +882,52 @@ def _nest_child_results(
                 "score": child.get("score", 0),
                 "is_match": True,
                 "is_top_scoring": child_id == str(top_child.get("id", "")),
+                # Full formatted child so the template accordions it open to its
+                # own content — parity with Phase-2 grouping.
+                "result": child,
             })
-            absorbed_child_ids.add(child_id)
+            absorbed_child_keys.add(_nest_result_key(child))
 
         parent["group_type"] = "parent_children"
         parent["children"] = child_entries
+        parent["parent_result"] = parent_self
         parent["top_scoring_child_id"] = str(top_child.get("id", ""))
         parent["active_child"] = {
             "id": top_child.get("id"),
             "title": top_child.get("title"),
         }
-        parent["viewer_node_id"] = top_child.get("id")
-        parent["viewer_title"] = top_child.get("title")
         parent["child_match_count"] = len(children)
         parent["child_total_count"] = len(children)
         parent["matched_child_ids"] = [str(c.get("id", "")) for c in children]
-        # Carry over content fields from the top-scoring child for the document block
-        for field in ("pdf_filename", "pdf_download_url", "source_url", "html_content",
-                      "notes_html", "map_code", "page", "page_end",
-                      "initial_page_top", "final_page_bottom"):
-            if top_child.get(field) is not None:
-                parent[field] = top_child[field]
-        grouped_parent_ids.add(parent_id_str)
+        # The card keeps the parent's own score (header) — its content is no
+        # longer rendered at card level, so nothing is carried from the child;
+        # each child shows its own body and score in its accordion.
 
-    return [r for r in results if str(r.get("id") or "") not in absorbed_child_ids]
+    return [r for r in results if _nest_result_key(r) not in absorbed_child_keys]
 
 
-def format_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Transform raw search results into a format suitable for the frontend."""
-    formatted = [_format_single_result(result) for result in results]
+def format_search_results(
+    results: List[Dict[str, Any]],
+    query_date: date | str | None = None,
+    terms: Iterable[str] | None = None,
+) -> List[Dict[str, Any]]:
+    """Transform raw search results into a format suitable for the frontend.
+
+    ``query_date`` (a ``date`` or ISO string) drives the IN FORCE band's
+    query tick + coverage; omit it and the band still renders its date span.
+    ``terms`` (parsed query keywords) are highlighted in the provision body;
+    omit or pass empty to skip highlighting.
+    """
+    parsed_query_date = parse_iso_date(query_date)
+    formatted = [
+        _format_single_result(result, parsed_query_date, terms) for result in results
+    ]
     formatted.sort(key=lambda item: item.get("score", 0), reverse=True)
-    grouped = group_formatted_results(formatted)
+    grouped = group_formatted_results(formatted, query_date=parsed_query_date)
     merged = merge_transition_compare_results(grouped)
     return _nest_child_results(merged)
 
 
-def get_amendments_for_section(section_id: str, code_edition: str) -> List[Dict[str, Any]]:
-    """Mock amendment lookup placeholder."""
+def get_amendments_for_provision(provision_id: str, code_edition: str) -> List[Dict[str, Any]]:
+    """Placeholder for amendment chain lookup. Will be populated from regulation data."""
     return []

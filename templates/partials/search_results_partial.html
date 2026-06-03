@@ -1,242 +1,138 @@
 {% if success %}
-<div class="mb-4">
-    <p class="text-sm text-neutral-500 dark:text-neutral-400">
-        Found {{ results|length }} results in
-        <span class="font-medium text-neutral-900 dark:text-white">
-            {% for code in meta.applicable_codes %}
-            {{ code }}{% if not forloop.last %}, {% endif %}
-            {% endfor %}
-        </span>
-    </p>
+{% comment %}
+Parsed query keywords, stashed for the viewer overlay's section-content
+request so it can highlight matched terms in the provision body (parity
+with the results-card highlight). Read by sectionContentUrl() in search.html.
+{% endcomment %}
+<div id="cc-query-keywords" hidden data-keywords="{{ keywords|join:',' }}"></div>
+{% comment %}
+Originating search id, threaded into the viewer's section-content request so a
+provision drill-in attributes back to this search (click-through). Read by
+sectionContentUrl() in search.html.
+{% endcomment %}
+<div id="cc-search-id" hidden data-search-id="{{ search_id|default_if_none:'' }}"></div>
+<div class="mb-4 flex flex-wrap items-center gap-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+    <span>{{ results|length }} RESULT{{ results|length|pluralize|upper }}</span>
+    <span class="text-rule">&middot;</span>
+    <span class="text-ink-2">
+        {% for code in meta.applicable_codes %}{{ code }}{% if not forloop.last %} &rarr; {% endif %}{% endfor %}
+    </span>
 </div>
 
-<div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}"{% else %}null{% endif %} }' class="space-y-4" data-results-accordion>
+<div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}_{{ results.0.division|escapejs }}"{% else %}null{% endif %}, comparePrevious: false, open(key, result) { this.activeResult = key; this.comparePrevious = false; window.ccRecordView && window.ccRecordView(result); } }' data-results-accordion>
+
+{% comment %} ───── Mobile / tablet: inline accordion (today's behaviour, unchanged) ─────
+   Rows expand in place. Hidden at `lg` where the master-detail grid takes over.
+   Both layouts read the same `activeResult`, so selection survives a resize. {% endcomment %}
+<div class="border-t border-rule lg:hidden">
 {% for result in results %}
 <div
-    class="bg-neutral-100 dark:bg-neutral-800 shadow rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 transition-colors"
-    :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? 'border-primary-400 dark:border-primary-500' : 'hover:border-primary-300 dark:hover:border-primary-500'">
-    <button type="button" class="w-full text-left" @click="activeResult = activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}' ? null : '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
-        {# ── Collapsed: compact one-liner ── #}
-        <div class="px-4 py-3 sm:px-5" x-show="activeResult !== '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
-            <div class="flex items-center gap-2 text-sm">
-                {% if result.source_url %}<a href="{{ result.source_url }}" target="_blank" rel="noopener noreferrer" class="font-medium text-primary-600 dark:text-primary-400 shrink-0 hover:underline" @click.stop>{{ result.code_display_name }}</a>{% else %}<span class="font-medium text-primary-600 dark:text-primary-400 shrink-0">{{ result.code_display_name }}</span>{% endif %}
-                <span class="text-neutral-400 dark:text-neutral-500">&middot;</span>
-                <span class="font-semibold text-neutral-900 dark:text-white truncate">{{ result.id }} &mdash; {{ result.title }}</span>
-                {% if result.page %}
-                <span class="text-neutral-400 dark:text-neutral-500 shrink-0">&middot;</span>
-                <span class="text-neutral-500 dark:text-neutral-400 shrink-0 text-xs">{% if result.page_end and result.page_end != result.page %}p.{{ result.page }}&ndash;{{ result.page_end }}{% else %}p.{{ result.page }}{% endif %}</span>
-                {% endif %}
-                <span class="ml-auto shrink-0 bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-medium px-2 py-0.5 rounded">{{ result.score|floatformat:1 }}</span>
-            </div>
-        </div>
-        {# ── Expanded: full header ── #}
-        <div class="px-4 py-5 sm:p-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'" x-cloak>
-            <div class="flex justify-between items-start gap-4">
-                <div>
-                    <p class="text-sm text-primary-600 dark:text-primary-400 font-medium">
-                        {% if result.source_url %}<a href="{{ result.source_url }}" target="_blank" rel="noopener noreferrer" class="hover:underline" @click.stop>{{ result.code_display_name }}</a>{% else %}{{ result.code_display_name }}{% endif %}
-                    </p>
-                    {% if result.group_type == 'parent_children' %}
-                    <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                        Grouped result · {{ result.child_match_count }}/{{ result.child_total_count }} child matches
-                    </p>
-                    {% endif %}
-                    {% if result.result_type == 'transition_compare' %}
-                    <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                        Transition compare
-                    </p>
-                    {% endif %}
-                    <h3 class="mt-2 text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-                        <span class="select-all">{{ result.id }}</span>
-                        <span role="button" tabindex="0" @click.stop="navigator.clipboard.writeText('{{ result.id|escapejs }}')" @keydown.enter.stop="navigator.clipboard.writeText('{{ result.id|escapejs }}')" title="Copy provision ID" class="inline-flex items-center p-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 cursor-pointer">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                        </span>
-                        <span class="font-normal text-neutral-500 dark:text-neutral-400">&mdash;</span> {{ result.title }}
-                    </h3>
-                    {% if result.page %}
-                    <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                        {% if result.page_end and result.page_end != result.page %}
-                        Pages {{ result.page }}&ndash;{{ result.page_end }}
-                        {% else %}
-                        Page {{ result.page }}
-                        {% endif %}
-                    </p>
-                    {% endif %}
-                </div>
-                <span
-                    class="bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-medium px-2.5 py-0.5 rounded border border-neutral-300 dark:border-neutral-600">
-                    Score: {{ result.score|floatformat:2 }}
-                </span>
-            </div>
-        </div>
-    </button>
-
-    <div class="px-4 pb-5 sm:px-6 sm:pb-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}'">
-        {% if result.group_type == 'parent_children' %}
-        <div class="mt-1 rounded-md border border-neutral-200 bg-white/70 p-3 dark:border-neutral-700 dark:bg-neutral-900/40"
-            data-top-scoring-child="{{ result.top_scoring_child_id }}">
-            <div class="flex items-center justify-between gap-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                    Matching children
-                </p>
-                <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                    Showing content for top match {{ result.active_child.id }}
-                </p>
-            </div>
-            <div class="mt-3 space-y-2">
-                {% for child in result.children %}
-                <div {% if child.is_top_scoring %}class="rounded-md border border-primary-300 bg-primary-50/80 px-3 py-3 text-sm dark:border-primary-500 dark:bg-primary-900/20"{% elif child.is_match %}class="rounded-md border border-neutral-300 bg-white px-3 py-3 text-sm dark:border-neutral-600 dark:bg-neutral-900/60"{% else %}class="rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-3 py-3 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/20 dark:text-neutral-400"{% endif %}>
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                            <p class="font-medium text-neutral-900 dark:text-white">{{ child.id }} — {{ child.title }}</p>
-                            {% if child.page %}
-                            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                                {% if child.page_end and child.page_end != child.page %}
-                                Pages {{ child.page }}&ndash;{{ child.page_end }}
-                                {% else %}
-                                Page {{ child.page }}
-                                {% endif %}
-                            </p>
-                            {% endif %}
-                        </div>
-                        <div class="flex flex-wrap items-center gap-2 sm:flex-col sm:items-end sm:gap-1">
-                            {% if child.is_top_scoring %}
-                            <span class="rounded border border-primary-300 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary-700 dark:border-primary-500 dark:text-primary-300">Top match</span>
-                            {% endif %}
-                            {% if child.is_match %}
-                            <span class="text-[11px] font-medium text-neutral-600 dark:text-neutral-300">Matched</span>
-                            {% else %}
-                            <span class="text-[11px] font-medium text-neutral-400 dark:text-neutral-500">Context</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        {% if result.result_type == 'transition_compare' and not result.has_renderable_content %}
-        <div class="mt-4 flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm dark:border-neutral-700 dark:bg-neutral-900/40">
-            <span class="font-semibold text-neutral-900 dark:text-white">{{ result.id }} &mdash; {{ result.title }}</span>
-            <span class="text-neutral-400 dark:text-neutral-500">&middot;</span>
-            <span class="text-neutral-500 dark:text-neutral-400">found in both editions &middot; no viewable content</span>
-        </div>
-        {% elif result.result_type == 'transition_compare' %}
-        <div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-800 dark:bg-emerald-900/20">
-            <div class="grid gap-3 sm:grid-cols-3">
-                <div>
-                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Transition context</p>
-                    <p class="mt-1 text-sm text-emerald-900 dark:text-emerald-100">{{ result.transition_context.transition_type_display|default:result.transition_context.transition_type|title }}</p>
-                    <div class="mt-2 flex items-center gap-1.5">
-                        <p class="text-xs text-emerald-800 dark:text-emerald-200">{{ result.transition_context.citation_text }}</p>
-                        <span role="button" tabindex="0" class="inline-flex items-center text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-200 cursor-pointer select-none" @click.stop="navigator.clipboard.writeText('{{ result.transition_context.citation_text|escapejs }}')" @keydown.enter.stop="navigator.clipboard.writeText('{{ result.transition_context.citation_text|escapejs }}')"><svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></span>
-                    </div>
-                </div>
-                <div class="text-xs text-emerald-800 dark:text-emerald-200 space-y-1">
-                    <p><span class="font-semibold">Queried date:</span> {{ result.transition_context.query_date }}</p>
-                    <p><span class="font-semibold">New version effective:</span> {{ result.transition_context.new_version_effective_date }}</p>
-                    <p><span class="font-semibold">Old version last overlap date:</span> {{ result.transition_context.old_version_last_date }}</p>
-                </div>
-                <div class="text-sm text-emerald-900 dark:text-emerald-100">{{ result.transition_context.applicability_text }}</div>
-            </div>
-        </div>
-
-        <div x-data="{ activeCompareVersion: '{{ result.versions.1.code|default:'primary'|escapejs }}', expanded: false, showDiff: true }" class="mt-4">
-            <div class="mb-3 grid grid-cols-2 gap-2 md:hidden" data-transition-mobile-tabs>
-                {% for version in result.versions %}
-                <button type="button"
-                    class="rounded border px-3 py-2 text-xs font-semibold uppercase tracking-wide"
-                    :class="activeCompareVersion === '{{ version.code|escapejs }}' ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/20 dark:text-primary-300' : 'border-neutral-300 text-neutral-600 dark:border-neutral-600 dark:text-neutral-300'"
-                    @click="activeCompareVersion = '{{ version.code|escapejs }}'">
-                    {% if version.transition_context.is_primary %}Matching version{% else %}Comparison version{% endif %}
-                </button>
-                {% endfor %}
-            </div>
-        <div class="grid gap-4 md:grid-cols-2">
-            {% for version in result.versions %}
-            <div class="rounded-lg border p-4 {% if version.transition_context.is_primary %}border-primary-300 bg-primary-50/60 dark:border-primary-500 dark:bg-primary-900/20{% else %}border-neutral-200 bg-white/70 dark:border-neutral-700 dark:bg-neutral-900/40{% endif %}"
-                :class="activeCompareVersion === '{{ version.code|escapejs }}' ? 'block' : 'hidden md:block'">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <p class="text-sm font-semibold text-neutral-900 dark:text-white">{% if version.source_url %}<a href="{{ version.source_url }}" target="_blank" rel="noopener noreferrer" class="hover:underline" @click.stop>{{ version.code_display_name }}</a>{% else %}{{ version.code_display_name }}{% endif %}</p>
-                        {% if version.page %}
-                        <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                            {% if version.page_end and version.page_end != version.page %}
-                            Pages {{ version.page }}&ndash;{{ version.page_end }}
-                            {% else %}
-                            Page {{ version.page }}
-                            {% endif %}
-                        </p>
-                        {% endif %}
-                    </div>
-                    <span class="rounded border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide {% if version.transition_context.is_primary %}border-primary-300 text-primary-700 dark:border-primary-500 dark:text-primary-300{% else %}border-neutral-300 text-neutral-600 dark:border-neutral-600 dark:text-neutral-300{% endif %}">
-                        {% if version.transition_context.is_primary %}Matches query{% else %}Comparison edition{% endif %}
-                    </span>
-                </div>
-                {% include "partials/_result_document_block.html" with result=version shared_expand=True %}
-            </div>
-            {% endfor %}
-        </div>
-        </div>
-        {% else %}
-        {% include "partials/_result_document_block.html" with result=result %}
-        {% endif %}
-
-        <div class="mt-4 border-t border-neutral-200 dark:border-neutral-700 pt-3" data-result-justification>
-            <button type="button"
-                class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                Result justification
-            </button>
-            <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                Scoring details are not shown yet.
-            </p>
-        </div>
+    class="border-b border-rule border-l-[3px] transition-colors"
+    :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}' ? 'border-l-secondary' : 'border-l-transparent hover:border-l-secondary/50'">
+    {# Header toggles the accordion. Collapsed: click anywhere to expand. Expanded: collapse on whitespace only; text blocks stop propagation so they stay selectable. #}
+    {# -- Collapsed: compact one-liner -- #}
+    <div class="px-4 py-3 sm:px-5 cursor-pointer" role="button" tabindex="0"
+        x-show="activeResult !== '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'"
+        @click="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+        @keydown.enter="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+        @keydown.space.prevent="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})">
+        {% include "partials/_result_list_row.html" with result=result %}
+    </div>
+    {# -- Expanded: full header (white panel band) -- #}
+    <div class="bg-panel border-b border-rule px-4 py-5 sm:p-6 cursor-pointer" role="button" tabindex="0"
+        x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'" x-cloak
+        @click="activeResult = null"
+        @keydown.enter="activeResult = null"
+        @keydown.space.prevent="activeResult = null">
+        {% include "partials/_result_citation_header.html" with result=result %}
+    </div>
+    {# -- Expanded: body (provenance stacked inline) -- #}
+    <div class="px-4 pb-5 sm:px-6 sm:pb-6" x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'">
+        {% include "partials/_result_expanded.html" with result=result query_date=query_date %}
     </div>
 </div>
 {% endfor %}
 </div>
 
+{% comment %} ───── Desktop: three-column master-detail (list · provision · metadata) ─────
+   Each result's middle + rail panes are rendered and toggled with x-show
+   (instant switch, no round-trip); only the active one is visible. The in-force
+   band sits wide in the middle header (mockup-faithful); the right rail carries
+   the vertical provenance metadata + justification (standard results only —
+   grouped/transition keep their metadata inline in the middle). {% endcomment %}
+<div class="hidden lg:grid lg:grid-cols-[20rem_minmax(0,1fr)_19rem] lg:gap-6 lg:items-start">
+    {% comment %} Col 1 — results list (sticky, scrolls independently). Collapses
+       while a transition compare is expanded so the two version panes get its
+       width. {% endcomment %}
+    <div x-show="!comparePrevious" class="border-t border-rule lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+    {% for result in results %}
+        <div role="button" tabindex="0"
+            class="border-b border-rule border-l-[3px] px-4 py-3 cursor-pointer transition-colors"
+            :class="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}' ? 'border-l-secondary bg-panel' : 'border-l-transparent hover:border-l-secondary/50 hover:bg-surface-2'"
+            @click="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+            @keydown.enter="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+            @keydown.space.prevent="open('{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ result.id|escapejs }}', division:'{{ result.division|escapejs }}'})">
+            {% include "partials/_result_list_row.html" with result=result %}
+        </div>
+    {% endfor %}
+    </div>
+
+    {% comment %} Col 2 — selected provision body (citation header + in-force band
+       + content). Spans cols 1–2 (incl. the intervening gap) while compare is
+       expanded, so the side-by-side panes fill the freed list-column width. {% endcomment %}
+    <div class="min-w-0" :style="comparePrevious ? 'grid-column: 1 / span 2' : ''">
+    {% for result in results %}
+        <div x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'" x-cloak class="min-w-0">
+            <div class="bg-panel border border-rule px-5 py-5">
+                {% include "partials/_result_citation_header.html" with result=result %}
+            </div>
+            {% include "partials/_result_expanded.html" with result=result query_date=query_date metadata_in_rail=True %}
+        </div>
+    {% endfor %}
+    </div>
+
+    {# Col 3 — provenance metadata rail (sticky, fixed width, natural height) #}
+    <div class="lg:sticky lg:top-4">
+    {% for result in results %}
+        <div x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'" x-cloak>
+            {% include "partials/_result_rail.html" with result=result %}
+        </div>
+    {% endfor %}
+    </div>
+</div>
+
+</div>
+
 {% if not results %}
-<div
-    class="text-center py-12 bg-neutral-100 dark:bg-neutral-800 rounded-lg border-2 border-dashed border-neutral-300 dark:border-neutral-700">
-    <h3 class="mt-2 text-sm font-medium text-neutral-900 dark:text-white">No matching provisions found</h3>
-    <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Try adjusting your keywords or date.</p>
+<div class="border border-dashed border-rule py-12 text-center">
+    <h3 class="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3">No matching provisions found</h3>
+    <p class="mt-2 font-serif text-base text-ink-2">Try adjusting your keywords or as-of date.</p>
 </div>
 {% endif %}
 
 {% else %}
 {% if rate_limited %}
-{# ── Rate-limit notification ── #}
-<div class="bg-accent-50 dark:bg-accent-900/20 border-l-4 border-accent-400 p-4 rounded">
+{# -- Rate-limit notification -- #}
+<div class="border-l-4 border-secondary bg-surface-2 p-4">
     <div class="flex">
         <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-accent-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg class="h-5 w-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
         </div>
         <div class="ml-3">
-            <h3 class="text-sm font-medium text-accent-800 dark:text-accent-200">Daily search limit reached</h3>
-            <p class="mt-2 text-sm text-accent-700 dark:text-accent-400">
-                {{ error }}
-            </p>
+            <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Daily search limit reached</h3>
+            <p class="mt-2 text-sm text-ink-2">{{ error }}</p>
             {% if signup_url %}
-            <p class="mt-3 text-sm text-accent-700 dark:text-accent-400">
-                <a href="{{ signup_url }}"
-                   class="font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-500 underline">
-                    Create a free account</a>
+            <p class="mt-3 text-sm text-ink-2">
+                <a href="{{ signup_url }}" class="font-semibold text-secondary underline hover:text-secondary-2">Create a free account</a>
                 to unlock more searches, or
-                <a href="{{ login_url }}"
-                   class="font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-500 underline">
-                    log in</a>
+                <a href="{{ login_url }}" class="font-semibold text-secondary underline hover:text-secondary-2">log in</a>
                 if you already have one.
             </p>
             {% elif upgrade_url %}
-            <p class="mt-3 text-sm text-accent-700 dark:text-accent-400">
-                <a href="{{ upgrade_url }}"
-                   class="font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-500 underline">
-                    Upgrade to Pro</a>
+            <p class="mt-3 text-sm text-ink-2">
+                <a href="{{ upgrade_url }}" class="font-semibold text-secondary underline hover:text-secondary-2">Upgrade to Pro</a>
                 for unlimited searches.
             </p>
             {% endif %}
@@ -244,20 +140,17 @@
     </div>
 </div>
 {% else %}
-{# ── Generic error ── #}
-<div class="bg-danger-50 dark:bg-danger-900/20 border-l-4 border-danger-400 p-4 rounded">
+{# -- Generic error -- #}
+<div class="border-l-[3px] border-strike bg-surface-2 p-4">
     <div class="flex">
         <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-danger-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg class="h-5 w-5 text-strike" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
         </div>
         <div class="ml-3">
-            <h3 class="text-sm font-medium text-danger-800 dark:text-danger-200">Search Error</h3>
-            <div class="mt-2 text-sm text-danger-700 dark:text-danger-400">
-                {{ error }}
-            </div>
+            <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-strike">Search error</h3>
+            <div class="mt-2 text-sm text-strike">{{ error }}</div>
         </div>
     </div>
 </div>

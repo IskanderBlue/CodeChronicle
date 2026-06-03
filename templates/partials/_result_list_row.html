@@ -1,0 +1,18 @@
+{% comment %} Compact one-line summary of a result: division · id · title, with
+   grouped/amended tags. Shared by the mobile accordion's collapsed state and the
+   desktop master-detail list column, so a row reads identically in both. The
+   edition is deliberately omitted — it's implicit from the jurisdiction/as-of
+   date and shown explicitly in the citation header once the result is selected.
+   The title truncates to one line; its `title` attribute reveals the full text
+   on hover. The clickable wrapper (toggle vs. select) is supplied by the caller.
+{% endcomment %}
+<div class="flex items-baseline gap-2">
+    <span class="shrink-0 font-mono text-[12px] font-semibold text-ink">{% if result.division %}{{ result.division }} &middot; {% endif %}{{ result.id }}</span>
+    <span class="min-w-0 flex-1 truncate font-serif text-sm text-ink" title="{{ result.title }}">{{ result.title }}</span>
+    {% if result.group_type == 'parent_children' %}
+    <span class="shrink-0 font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-secondary">Contains {{ result.child_match_count }} child{{ result.child_match_count|pluralize:",ren" }}</span>
+    {% endif %}
+    {% if result.clause %}
+    <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">Amended</span>
+    {% endif %}
+</div>

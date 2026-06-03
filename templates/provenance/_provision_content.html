@@ -1,0 +1,43 @@
+{% comment %} Provision body: page images or HTML, plus tables.
+   Context: `version` (CodeEditionProvisionVersion).
+   Both branches share the same outer container so the visual transition
+   between image-form and HTML-form is not jarring. {% endcomment %}
+
+{% comment %} Page images first when present.  These are the authoritative artefact
+   for versions sourced from gazette PDFs (base v0 of non-elaws editions,
+   pre-elaws amendments, etc.). {% endcomment %}
+{% if version.page_images %}
+<div class="mt-3 space-y-2">
+    {% for entry in version.page_images %}
+    {% include "partials/_document_image.html" with image=entry %}
+    {% endfor %}
+</div>
+{% endif %}
+
+{% comment %} HTML rendered verbatim — trusted producer (CCM), no sanitisation.
+   See feedback_no_html_sanitisation.md. {% endcomment %}
+{% if version.html %}
+<div class="mt-3 prose dark:prose-invert max-w-none provision-html font-serif">
+    {{ version.html|safe }}
+</div>
+{% endif %}
+
+{% if not version.html and not version.page_images %}
+<p class="mt-3 font-serif text-sm italic text-ink-3">
+    Content not available for this version.
+</p>
+{% endif %}
+
+{# Provenance & legal notes for this version (no permalink — already here). #}
+{% include "partials/_version_notes.html" with version=version %}
+
+{# Tables hang off the version. #}
+{% with version.tables.all as tables %}
+{% if tables %}
+<div class="mt-4 space-y-3">
+    {% for table in tables %}
+    {% include "provenance/_table.html" with table=table %}
+    {% endfor %}
+</div>
+{% endif %}
+{% endwith %}

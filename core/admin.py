@@ -1,11 +1,16 @@
 from django.contrib import admin
 
 from .models import (
+    Code,
     CodeEdition,
-    CodeMap,
-    CodeMapNode,
-    CodeSystem,
-    ProvinceCodeMap,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
+    EngagementEvent,
+    ProvinceCode,
+    ProvisionMapping,
+    ProvisionVersionTable,
+    Regulation,
+    RegulationClause,
     SearchHistory,
     User,
 )
@@ -26,8 +31,27 @@ class SearchHistoryAdmin(admin.ModelAdmin):
     readonly_fields = ['parsed_params']
 
 
-admin.site.register(CodeMap)
-admin.site.register(CodeMapNode)
-admin.site.register(CodeSystem)
+@admin.register(EngagementEvent)
+class EngagementEventAdmin(admin.ModelAdmin):
+    list_display = ['event_type', 'object_type', 'object_id', 'user', 'ip_address', 'timestamp']
+    list_filter = ['event_type', 'timestamp']
+    search_fields = ['object_type', 'user__email']
+    # Append-only analytics log: inspect, never hand-edit.
+    readonly_fields = [
+        'user', 'ip_address', 'event_type', 'object_type', 'object_id',
+        'search', 'context', 'timestamp',
+    ]
+
+    def has_add_permission(self, request):
+        return False
+
+
+admin.site.register(Code)
 admin.site.register(CodeEdition)
-admin.site.register(ProvinceCodeMap)
+admin.site.register(ProvinceCode)
+admin.site.register(Regulation)
+admin.site.register(RegulationClause)
+admin.site.register(CodeEditionProvision)
+admin.site.register(CodeEditionProvisionVersion)
+admin.site.register(ProvisionVersionTable)
+admin.site.register(ProvisionMapping)

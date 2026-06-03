@@ -1,0 +1,28 @@
+{% comment %} "Why this result" — score explanation, matched-term chips, and the
+   relevance score for one result.  Shared by _result_body.html (standard +
+   grouped-child) and the transition-compare branch of search_results_partial,
+   so the justification reads identically wherever a result is rendered.
+{% endcomment %}
+<div class="mt-4 border-t border-rule pt-3" data-result-justification>
+    <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Why this result</p>
+    {% if result.score_explanation %}
+    <p class="mt-2 font-serif text-sm text-ink-2">{{ result.score_explanation }}</p>
+    {% endif %}
+    {% if result.show_matched_terms and result.matched_terms %}
+    <div class="mt-2 flex flex-wrap items-center gap-1.5">
+        <span class="font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">Matched</span>
+        {% for term in result.matched_terms %}
+        <span class="border border-rule bg-surface-2 px-2 py-0.5 font-mono text-[10px] text-ink-2">{{ term }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if result.show_matched_terms and result.matched_terms_indirect %}
+    <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <span class="font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">Also</span>
+        {% for term in result.matched_terms_indirect %}
+        <span class="border border-dashed border-rule bg-surface-2 px-2 py-0.5 font-mono text-[10px] italic text-ink-3">{{ term }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+    <p class="mt-2 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Relevance score {{ result.score|floatformat:2 }}</p>
+</div>

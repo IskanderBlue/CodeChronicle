@@ -1,0 +1,45 @@
+{% comment %} Single ProvisionVersionTable.
+   Renders HTML form when present (CCM's preferred form for elaws-sourced
+   versions); falls back to images otherwise.  Notes are suppressed when
+   the HTML form is populated — by contract CCM emits notes="" in that
+   case to avoid double-rendering.
+
+   Context: `table` (ProvisionVersionTable). {% endcomment %}
+<figure class="border border-rule bg-surface-2 overflow-hidden" x-data="{ open: false }">
+    <figcaption class="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 cursor-pointer select-none"
+                :class="{ 'border-b border-rule': open }"
+                role="button" tabindex="0" :aria-expanded="open"
+                @click="open = !open" @keydown.enter="open = !open" @keydown.space.prevent="open = !open">
+        <span class="shrink-0 text-[10px] text-ink-3" x-text="open ? '▾' : '▸'"></span>
+        {% if table.table_id %}
+        <span class="shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.08em]
+                     text-secondary bg-secondary-soft px-1.5 py-0.5">Table {{ table.table_id|cut:"Table-" }}</span>
+        {% endif %}
+        {% if table.caption %}
+        <span class="font-mono text-[10px] uppercase tracking-[0.08em] font-semibold text-ink-3">{{ table.caption }}</span>
+        {% endif %}
+    </figcaption>
+    <div class="p-3" x-show="open" x-cloak>
+        {% if table.html %}
+        <div class="provision-table-html prose dark:prose-invert max-w-none">
+            {{ table.html|safe }}
+        </div>
+        {% elif table.images %}
+        <div class="overflow-y-auto table-container max-w-none provision-table-html"
+             style="max-height: 500px;">
+            {% for entry in table.images %}
+            {% include "partials/_document_image.html" with image=entry %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="font-serif text-sm italic text-ink-3">Table content not available.</p>
+        {% endif %}
+
+        {% if table.notes and not table.html %}
+        <div class="mt-2 pt-2 border-t border-rule
+                    text-xs text-ink-3 whitespace-pre-line">
+            {{ table.notes }}
+        </div>
+        {% endif %}
+    </div>
+</figure>

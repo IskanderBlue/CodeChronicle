@@ -7,15 +7,15 @@
 {% block content %}
 <div class="min-h-full flex flex-col justify-center py-12 sm:px-6 lg:px-8">
     <div class="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <h2 class="mt-6 text-3xl font-extrabold text-neutral-900 dark:text-white">Sign Out</h2>
-        <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+        <h2 class="mt-6 font-serif text-3xl font-bold text-ink">Sign Out</h2>
+        <p class="mt-2 text-sm text-ink-2">
             Are you sure you want to sign out?
         </p>
     </div>
 
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div
-            class="bg-neutral-100 dark:bg-neutral-800 py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-neutral-200 dark:border-neutral-700">
+            class="bg-surface-2 py-8 px-4 sm:px-10 border border-rule">
             <form method="POST" action="{% url 'account_logout' %}">
                 {% csrf_token %}
                 {% if redirect_field_value %}
@@ -24,12 +24,12 @@
 
                 <div class="space-y-4">
                     <button type="submit"
-                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                        class="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
                         {% trans 'Sign Out' %}
                     </button>
 
                     <a href="/"
-                        class="w-full flex justify-center py-2 px-4 border border-neutral-300 dark:border-neutral-600 rounded-md shadow-sm text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-900 hover:bg-neutral-200 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                        class="w-full flex justify-center py-2 px-4 border border-ink-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 bg-surface hover:bg-surface-2 focus:outline-none focus:ring-1 focus:ring-secondary">
                         Cancel
                     </a>
                 </div>

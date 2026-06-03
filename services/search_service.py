@@ -40,6 +40,9 @@ def run_search(
     try:
         # Step 1: Parse natural language with LLM
         params = parse_user_query(query)
+        # The raw text lets the scorer tell which keywords the user actually
+        # typed (direct) from those the LLM expanded in (indirect, 0.9 weight).
+        params["raw_query"] = query
 
         # Apply manual overrides
         if date_override:
@@ -57,13 +60,22 @@ def run_search(
                 "results": [],
             }
 
-        # Step 3: Format results for display
-        formatted = format_search_results(search_data["results"])
+        # Step 3: Format results for display. The parsed/overridden query
+        # date drives the IN FORCE band's query tick + coverage; the parsed
+        # keywords are highlighted in the provision body.
+        formatted = format_search_results(
+            search_data["results"],
+            query_date=params.get("date"),
+            terms=params.get("keywords"),
+        )
         logger.info("search service payload: %d results", len(formatted))
 
-        # Step 4: Record search history (non-fatal)
+        # Step 4: Record search history (non-fatal).  The row id is surfaced
+        # so engagement events (provision views, link clicks) can attribute
+        # back to the search that produced them — see core.events.
+        search_history_id: int | None = None
         try:
-            SearchHistory.objects.create(
+            history = SearchHistory.objects.create(
                 user=user,
                 ip_address=ip_address if user is None else None,
                 query=query,
@@ -71,6 +83,7 @@ def run_search(
                 result_count=len(formatted),
                 top_results=search_data.get("top_results_metadata", []),
             )
+            search_history_id = history.pk
         except Exception as e:
             logger.error("Error recording search history: %s", e)
 
@@ -81,6 +94,7 @@ def run_search(
             "applicable_codes": search_data.get("applicable_codes", []),
             "parsed_params": params,
             "top_results_metadata": search_data.get("top_results_metadata", []),
+            "search_history_id": search_history_id,
         }
 
     except Exception as e:

@@ -1,0 +1,28 @@
+{% comment %} Commencement provenance popup.
+
+   A teleported Alpine modal — it reads `cmOpen` from the including scope's
+   x-data, so the host renders the trigger button (@click="cmOpen = true")
+   and includes this once.  x-teleport="body" lifts the dialog out of the
+   clause card / provenance rail, whose overflow clipping (scroll-capped text,
+   sticky rails) would otherwise crop a `fixed` overlay.
+
+   Expects context: `commencement` (the entry dict) and, optionally,
+   `effective_date` (a real date object) and `state` — the Alpine boolean in
+   the host scope that opens it (default `cmOpen`; the band passes
+   `cmOpenUntil` for the next version's end-of-life popup). {% endcomment %}
+<template x-teleport="body">
+    <div x-show="{{ state|default:'cmOpen' }}" x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         @keydown.escape.window="{{ state|default:'cmOpen' }} = false"
+         role="dialog" aria-modal="true">
+        <div class="absolute inset-0 bg-black/40" @click="{{ state|default:'cmOpen' }} = false"></div>
+        <div class="relative max-h-[85vh] w-full max-w-md overflow-y-auto border border-rule bg-surface p-5 shadow-xl"
+             @click.stop>
+            <button type="button" @click="{{ state|default:'cmOpen' }} = false" aria-label="Close"
+                class="absolute right-3 top-3 text-ink-3 hover:text-ink cursor-pointer">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+            </button>
+            {% include "partials/_commencement_detail.html" with commencement=commencement effective_date=effective_date %}
+        </div>
+    </div>
+</template>

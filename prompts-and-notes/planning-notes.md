@@ -63,7 +63,7 @@ Payment:
 
 class User(AbstractUser):
     stripe_customer_id = CharField(max_length=255, null=True)
-    
+
 class Subscription(Model):
     user = ForeignKey(User, on_delete=CASCADE)
     stripe_subscription_id = CharField(max_length=255)
@@ -142,7 +142,7 @@ only if profiling shows DB hot spots.
    cd building_code_search
    python -m venv venv
    source venv/bin/activate
-   
+
    # requirements.txt
    Django>=5.0
    django-ninja>=1.0
@@ -192,41 +192,41 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    # api/llm_parser.py
    import anthropic
    from django.conf import settings
-   
+
    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-   
+
    # Master list of valid building code keywords
    VALID_KEYWORDS = [
        # Fire safety
        'fire', 'flame', 'smoke', 'alarm', 'detector', 'sprinkler', 'extinguisher',
        'separation', 'resistance', 'egress', 'exit', 'escape',
-       
+
        # Structural
        'structural', 'load', 'bearing', 'foundation', 'footing', 'beam', 'column',
        'joist', 'rafter', 'truss', 'slab', 'wall', 'floor', 'roof',
-       
+
        # Plumbing
        'plumbing', 'drainage', 'water', 'supply', 'sewage', 'fixture', 'pipe',
        'drain', 'vent', 'trap', 'backflow',
-       
+
        # Electrical
        'electrical', 'wiring', 'circuit', 'panel', 'outlet', 'switch', 'grounding',
        'bonding', 'service', 'voltage',
-       
+
        # HVAC
        'heating', 'ventilation', 'air', 'conditioning', 'hvac', 'duct', 'furnace',
-       
+
        # Building envelope
        'insulation', 'thermal', 'window', 'door', 'glazing', 'weatherproofing',
-       
+
        # Accessibility
        'accessible', 'barrier-free', 'ramp', 'handrail', 'guard', 'stair',
-       
+
        # Occupancy
        'residential', 'commercial', 'industrial', 'assembly', 'institutional',
        'dwelling', 'unit', 'occupancy'
    ]
-   
+
    PARSE_QUERY_TOOL = {
        "name": "parse_building_code_query",
        "description": "Extract search parameters from natural language building code question",
@@ -256,7 +256,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
            "required": ["year", "keywords"]
        }
    }
-   
+
    SYSTEM_PROMPT = f"""You are a building code query parser.
 
    Extract from user query:
@@ -269,11 +269,11 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    {', '.join(VALID_KEYWORDS)}
 
    Do NOT use keywords outside this list. If query contains no valid keywords, return empty array."""
-   
+
    def parse_user_query(query: str) -> dict:
        """
        Parse natural language query into structured search parameters
-       
+
        Example:
        Input: "Fire safety for house built in 1993"
        Output: {
@@ -282,7 +282,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
            "building_type": "residential",
            "province": "ON"
        }
-       
+
        Raises ValueError if no valid keywords found
        """
        response = client.messages.create(
@@ -295,58 +295,58 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                "content": query
            }]
        )
-       
+
        # Extract tool use
        for block in response.content:
            if block.type == "tool_use":
                params = block.input
-               
+
                # Validate keywords against master list
                keywords = params.get('keywords', [])
                valid_keywords = [k for k in keywords if k.lower() in VALID_KEYWORDS]
-               
+
                if not valid_keywords:
                    raise ValueError(
                        f"Query does not contain valid building code keywords. "
                        f"Try terms like: fire, structural, plumbing, electrical"
                    )
-               
+
                params['keywords'] = valid_keywords
                return params
-       
+
        raise ValueError("Could not parse query")
-   
+
 2. **Code Edition Resolver**
 
 
 
    Note: will need to amend to require specific date, not year.
    ```python
-   
+
    def get_applicable_codes(province: str, year: int) -> list[str]:
        """
        Determine which code editions were in effect at a given time
-       
+
        Example: province="ON", year=1993
        Returns: ["OBC_1990", "NBC_1990"]
-       
+
        Logic:
        - Find most recent OBC before/at year
        - Find most recent NBC before/at year
        """
        codes = []
-       
+
        # Provincial code (OBC, BCBC, etc.)
        if province:
            provincial_code = get_applicable_code(f'{province}BC', year)
            if provincial_code:
                codes.append(f"{province}BC_{provincial_code['year']}")
-       
+
        # Federal code (NBC)
        federal_code = get_applicable_code('NBC', year)
        if federal_code:
            codes.append(f"NBC_{federal_code['year']}")
-       
+
        return codes
    ```
 
@@ -358,11 +358,11 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    # api/search.py
    from config.map_loader import map_cache
    from building_code_mcp import search_code
-   
+
    def execute_search(params: dict) -> dict:
        """
        Execute search using parsed parameters
-       
+
        Flow:
        1. Get applicable codes for year
        2. Search each code using building-code-mcp
@@ -371,24 +371,24 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
        year = params['year']
        keywords = params['keywords']
        province = params.get('province', 'ON')
-       
+
        # Step 1: Resolve which codes to search
        applicable_codes = get_applicable_codes(province, year)
-       
+
        if not applicable_codes:
            return {
                'error': f'No building codes found for {province} in {year}',
                'results': []
            }
-       
+
        # Step 2: Search each code
        all_results = []
-       
+
        for code_name in applicable_codes:
            # Check if we have this map loaded
            if not map_cache.get_map(code_name):
                continue
-           
+
            # Use building-code-mcp search
            # This handles fuzzy matching, keyword indexing, etc.
            results = search_code(
@@ -396,24 +396,24 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                code=code_name,
                limit=20  # Top 20 results per code
            )
-           
+
            # Add metadata
            for result in results:
                result['code_edition'] = code_name
                result['year'] = year
-           
+
            all_results.extend(results)
-       
+
        # Step 3: Deduplicate and rank
        # (NBC and OBC might have same section numbers)
        unique_results = deduplicate_results(all_results)
-       
+
        return {
            'applicable_codes': applicable_codes,
            'results': unique_results,
            'result_count': len(unique_results)
        }
-   
+
    ```
 
 **Week 4: Result Formatting**
@@ -424,11 +424,11 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
 
    ```python
    # api/formatters.py
-   
+
    def format_search_results(results: list) -> list:
        """
        Transform raw search results for frontend display
-       
+
        For each result:
        - Section ID and title
        - Page number (for reference)
@@ -437,7 +437,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
        - Related amendments (if any)
        """
        formatted = []
-       
+
        for result in results:
            section_data = {
                'id': result['id'],
@@ -448,17 +448,17 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                'text': None,
                'bbox': result.get('bbox'),  # For NBC PDF extraction
            }
-           
+
            # Include full text for OBC (Crown copyright allows it)
            if section_data['text_available']:
                section_data['text'] = result.get('text', result.get('full_text'))
-           
+
            # Check for amendments affecting this section
            amendments = get_amendments_for_section(
                result['id'],
                result['code_edition']
            )
-           
+
            section_data['amendments'] = [
                {
                    'regulation': a.regulation,
@@ -467,11 +467,11 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                }
                for a in amendments
            ]
-           
+
            formatted.append(section_data)
-       
+
        return formatted
-   
+
    ```
 
 ### Phase 3: Django Backend API (Week 5)
@@ -485,18 +485,18 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    from .llm_parser import parse_user_query
    from .search import execute_search
    from .formatters import format_search_results
-   
+
    api = NinjaAPI()
-   
+
    @api.post("/search", auth=django_auth)
    def search(request, query: str):
        """
        Main search endpoint (MVP - Simple mode only)
-       
+
        Returns: Structured section results with metadata
        """
        user = request.user
-       
+
        # Step 1: Parse natural language with LLM
        try:
            params = parse_user_query(query)
@@ -505,16 +505,16 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                "error": str(e),
                "suggestion": "Try including specific code terms like 'fire safety', 'structural', 'plumbing'"
            }
-       
+
        # Step 2: Execute search
        search_results = execute_search(params)
-       
+
        if search_results.get('error'):
            return search_results
-       
+
        # Step 3: Format for display
        formatted_results = format_search_results(search_results['results'])
-       
+
        # Save to history
        SearchHistory.objects.create(
            user=user,
@@ -522,7 +522,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
            parsed_params=params,
            result_count=len(formatted_results)
        )
-       
+
        return {
            "query": query,
            "parsed_params": params,
@@ -530,14 +530,14 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
            "results": formatted_results,
            "result_count": len(formatted_results)
        }
-   
+
    @api.get("/history", auth=django_auth)
    def get_search_history(request):
        """Return user's recent searches"""
        history = SearchHistory.objects.filter(
            user=request.user
        ).order_by('-timestamp')[:20]
-       
+
        return {
            "history": [
                {
@@ -548,7 +548,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                for h in history
            ]
        }
-   
+
    # /api/codes endpoint removed (use code metadata + DB for code listings)
    ```
 
@@ -557,49 +557,49 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    # middleware/subscription.py
    from django.http import JsonResponse
    from django.utils import timezone
-   
+
    class SubscriptionMiddleware:
        def __init__(self, get_response):
            self.get_response = get_response
-       
+
        def __call__(self, request):
            if request.path.startswith('/api/search'):
                user = request.user
-               
+
                if not user.is_authenticated:
                    return JsonResponse(
-                       {"error": "Authentication required"}, 
+                       {"error": "Authentication required"},
                        status=401
                    )
-               
+
                # Check subscription status
                if not hasattr(user, 'subscription'):
                    # Free tier - enforce limits
                    return self.enforce_free_tier_limits(request)
-               
+
                if user.subscription.status != 'active':
                    return JsonResponse(
-                       {"error": "Subscription expired or inactive"}, 
+                       {"error": "Subscription expired or inactive"},
                        status=403
                    )
-           
+
            return self.get_response(request)
-       
+
        def enforce_free_tier_limits(self, request):
            """Free tier: 10 searches per day"""
            from api.models import SearchHistory
-           
+
            today_searches = SearchHistory.objects.filter(
                user=request.user,
                timestamp__date=timezone.now().date()
            ).count()
-           
+
            if today_searches >= 10:
                return JsonResponse({
                    "error": "Daily limit reached (10 searches)",
                    "upgrade_url": "/pricing"
                }, status=429)
-           
+
            return None
    ```
 
@@ -622,20 +622,20 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
            <p class="text-gray-600 mb-8">
                Find code requirements for buildings constructed at specific dates
            </p>
-           
+
            <!-- Search Form -->
            <div class="bg-white rounded-lg shadow p-6 mb-8">
-               <form hx-post="/api/search" 
-                     hx-target="#results" 
+               <form hx-post="/api/search"
+                     hx-target="#results"
                      hx-indicator="#loading"
                      class="space-y-4">
-                   
+
                    <div>
                        <label class="block text-sm font-medium mb-2">
                            Ask about building codes:
                        </label>
-                       <input type="text" 
-                              name="query" 
+                       <input type="text"
+                              name="query"
                               placeholder="e.g., Fire safety requirements for a house built in 1993"
                               class="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
                               required>
@@ -643,12 +643,12 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                            Include: year built, topic (fire, structural, plumbing), and building type
                        </p>
                    </div>
-                   
-                   <button type="submit" 
+
+                   <button type="submit"
                            class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
                        Search Codes
                    </button>
-                   
+
                    <div id="loading" class="htmx-indicator flex items-center gap-2 text-blue-600">
                        <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -658,7 +658,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                    </div>
                </form>
            </div>
-           
+
            <!-- Results -->
            <div id="results"></div>
        </div>
@@ -677,14 +677,14 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
        {% endif %}
    </div>
    {% else %}
-   
+
    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
        <div class="text-sm">
            <p><strong>Searching:</strong> {{ applicable_codes|join:", " }}</p>
            <p><strong>Found:</strong> {{ result_count }} sections</p>
        </div>
    </div>
-   
+
    <div class="space-y-4" x-data="{ expanded: {} }">
        {% for result in results %}
        <div class="bg-white rounded-lg shadow-md p-6 border-l-4 border-blue-500">
@@ -696,7 +696,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                    <p class="text-gray-700 font-medium">{{ result.title }}</p>
                    <p class="text-sm text-gray-500">Page {{ result.page }}</p>
                </div>
-               
+
                {% if result.text_available %}
                <button @click="expanded['{{ result.id }}'] = !expanded['{{ result.id }}']"
                        class="text-blue-600 hover:text-blue-800 text-sm font-medium">
@@ -709,15 +709,15 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
                </span>
                {% endif %}
            </div>
-           
+
            {% if result.text_available %}
-           <div x-show="expanded['{{ result.id }}']" 
+           <div x-show="expanded['{{ result.id }}']"
                 x-cloak
                 class="mt-4 p-4 bg-gray-50 rounded border border-gray-200">
                <pre class="whitespace-pre-wrap text-sm font-mono">{{ result.text }}</pre>
            </div>
            {% endif %}
-           
+
            {% if result.amendments %}
            <div class="mt-4 pt-4 border-t border-gray-200">
                <p class="text-sm font-semibold text-gray-700 mb-2">Amendments:</p>
@@ -745,7 +745,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
        <!-- px-4 gives padding on mobile -->
        <!-- max-w-4xl keeps readable width on desktop -->
    </div>
-   
+
    <!-- Responsive grid example (if needed later) -->
    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
        <!-- 1 column mobile, 2 tablet, 3 desktop -->
@@ -754,12 +754,12 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
 
 3. **Text Extraction**
 
-   Use PDF.js (& possibly pdf-text-reader, pdfjs-text-layer-builder) on the client-side to extract text from the PDF files. 
+   Use PDF.js (& possibly pdf-text-reader, pdfjs-text-layer-builder) on the client-side to extract text from the PDF files.
 
    ```javascript
    // Example of PDF.js usage
    import pdfjsLib from 'pdfjs-dist';
-   
+
    pdfjsLib.getDocument('path/to/your/file.pdf').promise.then(function(pdf) {
        pdf.getPage(1).then(function(page) {
            page.getTextContent().then(function(textContent) {
@@ -777,19 +777,19 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    ```python
    # settings.py
    INSTALLED_APPS += ['djstripe']
-   
+
    STRIPE_LIVE_SECRET_KEY = os.environ.get("STRIPE_LIVE_SECRET_KEY")
    STRIPE_TEST_SECRET_KEY = os.environ.get("STRIPE_TEST_SECRET_KEY")
    DJSTRIPE_WEBHOOK_SECRET = os.environ.get("DJSTRIPE_WEBHOOK_SECRET")
-   
+
    # models.py (dj-stripe handles most of this)
    from djstripe.models import Customer, Subscription
-   
+
    # User model extension
    class UserProfile(models.Model):
        user = models.OneToOneField(User, on_delete=models.CASCADE)
        stripe_customer = models.ForeignKey(Customer, null=True, on_delete=models.SET_NULL)
-       
+
        @property
        def has_active_subscription(self):
            if not self.stripe_customer:
@@ -803,28 +803,28 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    ```python
    # webhooks.py
    from djstripe import webhooks
-   
+
    @webhooks.handler("customer.subscription.created")
    def handle_subscription_created(event, **kwargs):
        subscription = event.data["object"]
        customer = subscription["customer"]
-       
+
        # Link to Django user
        profile = UserProfile.objects.get(stripe_customer__id=customer)
        # Send welcome email
        send_welcome_email(profile.user)
-   
+
    @webhooks.handler("customer.subscription.deleted")
    def handle_subscription_cancelled(event, **kwargs):
        subscription = event.data["object"]
        # User can still access until period_end
        # dj-stripe handles the status update automatically
-   
+
    @webhooks.handler("invoice.payment_failed")
    def handle_payment_failed(event, **kwargs):
        invoice = event.data["object"]
        customer = invoice["customer"]
-       
+
        profile = UserProfile.objects.get(stripe_customer__id=customer)
        send_payment_failed_email(profile.user)
    ```
@@ -866,7 +866,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    # tests/test_search.py
    from django.test import TestCase
    from api.llm_parser import parse_natural_language_query
-   
+
    class QueryParserTests(TestCase):
        def test_simple_query(self):
            result = parse_natural_language_query(
@@ -883,7 +883,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    terraform init
    terraform plan -var-file=prod.tfvars
    terraform apply -var-file=prod.tfvars
-   
+
    # Output will include:
    # - public_ip
    # - domain_name
@@ -896,7 +896,7 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    cd /opt/codechroniclenet
    docker compose pull
    docker compose up -d
-   
+
    # Run migrations and seed data
    docker exec -it <container> python manage.py migrate
    docker exec -it <container> python manage.py load_code_metadata --source config/metadata.json
@@ -909,17 +909,17 @@ This is the only moat we get. Separate repository for scraper & map updating. Re
    server {
        listen 443 ssl;
        server_name app.yourdomain.com;
-       
+
        ssl_certificate /etc/nginx/certs/origin.crt;
        ssl_certificate_key /etc/nginx/certs/origin.key;
-       
+
        location / {
            proxy_pass http://127.0.0.1:8000;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-Proto https;
        }
-       
+
        location /static/ {
            alias /var/www/building-code-search/static/;
        }
@@ -986,16 +986,16 @@ def ocr_building_code(pdf_path: str) -> dict:
     """
     # Convert PDF to images
     images = convert_from_path(pdf_path, dpi=600)
-    
+
     sections = []
     for page_num, image in enumerate(images):
         # OCR with Tesseract
         text = pytesseract.image_to_string(image)
-        
+
         # Parse section structure
         parsed = parse_sections(text, page_num)
         sections.extend(parsed)
-    
+
     return sections
 
 def parse_sections(text: str, page: int) -> list:
@@ -1006,7 +1006,7 @@ def parse_sections(text: str, page: int) -> list:
     import re
     pattern = r'(\d+\.\d+\.\d+\.\d+)\s+(.+)'
     matches = re.findall(pattern, text)
-    
+
     return [{
         'id': match[0],
         'title': match[1],
@@ -1076,7 +1076,7 @@ MVP provides:
 
 ### Version 2 Features (Month 3-4)
 1. **API access**:
-   - Developer API for third-party integrations  
+   - Developer API for third-party integrations
 2. **AI Synthesis (Pro tier)**:
    - LLM-generated answers from search results
    - "Ask AI" button separate from simple search
@@ -1088,19 +1088,19 @@ MVP provides:
 def search_with_synthesis(request, query: str):
     """
     Pro tier only: AI-powered answer synthesis
-    
+
     Takes search results and uses Claude to write a comprehensive answer
     """
     # Check user has Pro subscription
     if request.user.subscription.plan not in ['pro', 'enterprise']:
         return {"error": "Pro subscription required for AI synthesis"}
-    
+
     # Execute normal search
     results = execute_search(...)
-    
+
     # Use Claude to synthesize answer
     synthesis = synthesize_answer(query, results)
-    
+
     return {
         "results": results,
         "ai_answer": synthesis  # LLM-generated summary

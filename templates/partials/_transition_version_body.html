@@ -1,0 +1,10 @@
+{% comment %} Inner body for one version of a transition-compare card: its
+   in-force band, provenance chain (inline only when stacked — master-detail
+   moves the chain to the right rail via _result_rail.html), then the provision
+   body. shared_expand=False so the document block owns its own diff/expand
+   x-data: with diff_html present, a shared (undefined showDiff) scope hides both
+   panes at runtime, so each version must carry its own toggle state.
+   Expects `version`, `metadata_in_rail`, and `query_date` in context. {% endcomment %}
+{% include "partials/_provenance_band.html" with result=version query_date=query_date %}
+{% if not metadata_in_rail %}{% include "partials/_provenance_rail.html" with result=version collapsible_chain=True %}{% endif %}
+{% include "partials/_result_document_block.html" with result=version shared_expand=False %}
