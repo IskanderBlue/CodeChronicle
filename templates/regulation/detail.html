@@ -128,28 +128,23 @@
                         <span x-text="showProvs ? '&#9662;' : '&#9656;'" class="text-[9px]"></span>
                         {{ row.affected_count }} provision{{ row.affected_count|pluralize }}
                     </button>
-                    <div x-show="showProvs" x-cloak class="mt-2 space-y-3">
+                    {% comment %} One multi-column container that ALL groups flow
+                       through (headings + chips + table lines are siblings), so
+                       the columns fill top-to-bottom like an index — a per-group
+                       column container would collapse to one column whenever a
+                       group is short.  Headings use break-after-avoid so they're
+                       never stranded at a column foot.  Appendix tables sit in
+                       their division's Part 9 group (see _group_provisions). {% endcomment %}
+                    <div x-show="showProvs" x-cloak class="mt-2 columns-2 sm:columns-3 lg:columns-4 gap-x-6 font-mono text-[11.5px] leading-[1.5]">
                         {% for g in row.provision_groups %}
-                        <div>
-                            <div class="font-mono text-[9.5px] font-semibold uppercase tracking-[0.08em] text-ink-3 mb-1">{{ g.label }}</div>
-                            <div class="columns-2 sm:columns-3 lg:columns-4 gap-x-5 font-mono text-[11.5px] leading-[1.5]">
-                                {% for p in g.provisions %}
-                                <div class="break-inside-avoid">{% if p.url %}<a href="{{ p.url }}" class="text-secondary hover:text-secondary-2 hover:underline">{{ p.provision_id }}</a>{% else %}<span>{{ p.provision_id }}</span>{% endif %}</div>
-                                {% endfor %}
-                            </div>
-                        </div>
+                        <div class="break-inside-avoid break-after-avoid font-semibold text-[9.5px] uppercase tracking-[0.08em] text-ink-3 mt-2.5 first:mt-0 mb-1">{{ g.label }}</div>
+                        {% for p in g.provisions %}
+                        <div class="break-inside-avoid">{% if p.url %}<a href="{{ p.url }}" class="text-secondary hover:text-secondary-2 hover:underline">{{ p.provision_id }}</a>{% else %}<span>{{ p.provision_id }}</span>{% endif %}</div>
                         {% endfor %}
-                        {% if row.tables %}
-                        <div>
-                            <div class="font-mono text-[9.5px] font-semibold uppercase tracking-[0.08em] text-ink-3 mb-1">Tables</div>
-                            <div class="space-y-0.5 font-mono text-[11.5px] leading-[1.5]">
-                                {% for t in row.tables %}
-                                <div>{{ t.label }}{% if t.owners %} <span class="text-ink-3">&rarr;</span>
-                                    {% for o in t.owners %}{% if o.url %}<a href="{{ o.url }}" class="text-secondary hover:text-secondary-2 hover:underline">{{ o.provision_id }}{% if o.division %}<span class="text-ink-3">&nbsp;Div&nbsp;{{ o.division }}</span>{% endif %}</a>{% else %}<span>{{ o.provision_id }}{% if o.division %}<span class="text-ink-3">&nbsp;Div&nbsp;{{ o.division }}</span>{% endif %}</span>{% endif %}{% if not forloop.last %}<span class="text-ink-3">,</span> {% endif %}{% endfor %}{% endif %}</div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endif %}
+                        {% for t in g.tables %}
+                        <div class="break-inside-avoid">{{ t.label }}{% if t.owners %} <span class="text-ink-3">&rarr;</span> {% for o in t.owners %}{% if o.url %}<a href="{{ o.url }}" class="text-secondary hover:text-secondary-2 hover:underline">{{ o.provision_id }}</a>{% else %}<span>{{ o.provision_id }}</span>{% endif %}{% if not forloop.last %}<span class="text-ink-3">,</span> {% endif %}{% endfor %}{% endif %}</div>
+                        {% endfor %}
+                        {% endfor %}
                     </div>
                 </div>
                 {% endif %}

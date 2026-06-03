@@ -238,10 +238,11 @@ class TestCommencementDisplay:
         assert "/provision/OBC_2012/C/4.2.1.1./v1/" in content
         # The appendix table is shown as "Table A-10" and linked to its owning
         # provision (resolved on the provision side via ProvisionVersionTable),
-        # at the version in force on the deferral date — owner v0.
+        # at the version in force on the deferral date — owner v0.  Appendix
+        # tables are grouped under their division's Part 9.
         assert "Table A-10" in content
         assert "/provision/OBC_2012/B/9.23.4.2./v0/" in content
-        assert "Div&nbsp;B" in content              # owner's division, on the table line
+        assert "Div B · Part 9" in content
 
     def test_clause_shows_own_in_force_date(self, client: Client, staggered_reg):
         response = client.get(f"/regulation/{staggered_reg.pk}/")
@@ -451,3 +452,24 @@ class TestGroupProvisions:
 
         groups = _group_provisions(self._provs(("3.1.1.1.", ""), ("3.2.1.1.", "")))
         assert [g["label"] for g in groups] == ["Part 3"]
+
+    def test_appendix_tables_join_division_part_9(self):
+        from core.views.regulation import _group_provisions
+
+        tables = [{"table_id": "Table-A-10", "label": "Table A-10",
+                   "division": "B", "owners": []}]
+        # A Part 9 provision already present; the table should join it, not
+        # spawn a separate block.
+        groups = _group_provisions(self._provs(("9.23.4.2.", "B")), tables)
+        assert [g["label"] for g in groups] == ["Div B · Part 9"]
+        part9 = groups[0]
+        assert [p["provision_id"] for p in part9["provisions"]] == ["9.23.4.2."]
+        assert [t["table_id"] for t in part9["tables"]] == ["Table-A-10"]
+
+    def test_appendix_table_alone_creates_part_9(self):
+        from core.views.regulation import _group_provisions
+
+        tables = [{"table_id": "Table-A-8", "label": "Table A-8",
+                   "division": "B", "owners": []}]
+        groups = _group_provisions([], tables)
+        assert [g["label"] for g in groups] == ["Div B · Part 9"]

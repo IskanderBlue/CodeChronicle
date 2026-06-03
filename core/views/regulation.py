@@ -477,6 +477,7 @@ def _commencement_schedule(
                 tables.append({
                     "table_id": label,
                     "label": _format_table_label(label),
+                    "division": division,
                     "owners": [],
                 })
                 continue
@@ -502,7 +503,7 @@ def _commencement_schedule(
         })
     _link_commencement_provisions(regulation, code_name, rows)
     for row in rows:
-        row["provision_groups"] = _group_provisions(row["provisions"])
+        row["provision_groups"] = _group_provisions(row["provisions"], row["tables"])
     rows.sort(key=lambda r: (r["date"] or date.min, not r["is_default"]))
     return rows
 
@@ -515,21 +516,38 @@ def _leading_part(provision_id: str) -> str:
     return match.group(0) if match else ""
 
 
+# Appendix tables (``Table-A-<n>``) carry no Part in their id, but in the OBC
+# they're all Part 9 housing tables — so they're grouped under their
+# division's Part 9 alongside the Part 9 provisions.
+_APPENDIX_TABLE_PART = "9"
+
+
 def _group_provisions(
     provisions: list[dict[str, Any]],
+    tables: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Group the (already-linked) provisions by Division then Part so a large
-    deferral (O. Reg. 191/14 defers 156) reads as a handful of labelled blocks
-    rather than one undifferentiated comma blob.
+    """Group the (already-linked) provisions and appendix tables by Division
+    then Part so a large deferral (O. Reg. 191/14 defers 156) reads as a few
+    labelled blocks the template can flow through columns, rather than one
+    undifferentiated blob.
 
     Grouping by ``(division, part)`` also fixes cross-division interleaving:
     a flat natural sort on ``provision_id`` alone would sort ``1.1.2.1.`` (Div
-    A) next to ``1.3.1.1.`` (Div B).  Within each block, provisions are
-    natural-sorted; the template flows them into columns.
+    A) next to ``1.3.1.1.`` (Div B).  Appendix tables join their division's
+    Part 9 bucket (see ``_APPENDIX_TABLE_PART``).  Within each block,
+    provisions are natural-sorted and the tables follow.
     """
-    buckets: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    buckets: dict[tuple[str, str], dict[str, list[dict[str, Any]]]] = {}
+
+    def _bucket(division: str, part: str) -> dict[str, list[dict[str, Any]]]:
+        return buckets.setdefault(
+            (division, part), {"provisions": [], "tables": []}
+        )
+
     for p in provisions:
-        buckets.setdefault((p["division"], _leading_part(p["provision_id"])), []).append(p)
+        _bucket(p["division"], _leading_part(p["provision_id"]))["provisions"].append(p)
+    for t in tables or []:
+        _bucket(t["division"], _APPENDIX_TABLE_PART)["tables"].append(t)
 
     def _group_key(key: tuple[str, str]) -> tuple[str, int, str]:
         division, part = key
@@ -546,10 +564,16 @@ def _group_provisions(
             group_label = f"Div {division}"
         else:
             group_label = "Other"
-        items = sorted(
-            buckets[(division, part)], key=lambda p: _natural_key(p["provision_id"])
-        )
-        groups.append({"label": group_label, "provisions": items})
+        bucket = buckets[(division, part)]
+        groups.append({
+            "label": group_label,
+            "provisions": sorted(
+                bucket["provisions"], key=lambda p: _natural_key(p["provision_id"])
+            ),
+            "tables": sorted(
+                bucket["tables"], key=lambda t: _natural_key(t["table_id"])
+            ),
+        })
     return groups
 
 
