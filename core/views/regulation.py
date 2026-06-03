@@ -16,6 +16,7 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     EngagementEvent,
+    ProvisionVersionTable,
     Regulation,
     RegulationClause,
 )
@@ -387,6 +388,53 @@ def _provenance_result(
     }
 
 
+_TABLE_REF_RE = re.compile(r"^Table-", re.IGNORECASE)
+_APPENDIX_TABLE_RE = re.compile(r"^[A-Za-z]-")
+
+
+def _is_appendix_table(label: str) -> bool:
+    """An appendix table ref (``Table-A-10``) — a ``Table-`` whose body is a
+    letter-dash form, not a numeric article address."""
+    return bool(_TABLE_REF_RE.match(label)) and bool(
+        _APPENDIX_TABLE_RE.match(label[len("Table-"):])
+    )
+
+
+def _format_table_label(table_id: str) -> str:
+    """Display form of an appendix table id: ``Table-A-10`` → ``Table A-10``."""
+    return f"Table {table_id[len('Table-'):]}" if _TABLE_REF_RE.match(table_id) else table_id
+
+
+def _reduce_provision_ref(raw: str) -> str:
+    """Reduce a commencement provision ref to the provision it lives in.
+
+    Refs arrive at whatever granularity the amending clause operated, since
+    they're the clauses' resolved targets — a sentence/clause/subclause
+    (``4.2.1.1.(1)(b)``), a whole article (``3.1.4.2.``), or a numbered table
+    (``Table-11.2.1.1.B.``).  Permalinks exist only at the article level, so
+    everything collapses to its containing article:
+
+    - Sentence/clause/subclause: drop everything from the first ``(``.
+    - Table ``Table-<article>[.<letter>.]``: strip the ``Table-`` prefix and
+      keep the first four dotted segments — the article the table hangs off.
+      Its trailing table-letter (``.B.``, ``.D/E.``) is a fifth segment that
+      names *which* table on that article and isn't part of the address.
+      The 4th segment may carry a letter (``3.3.2.8A.``) — that stays.
+
+    Appendix tables (``Table-A-10``) carry no article address, so they're
+    handled separately — :func:`_is_appendix_table` routes them to a
+    ``ProvisionVersionTable`` lookup (the link lives on the provision side).
+    """
+    if _TABLE_REF_RE.match(raw):
+        body = raw[len("Table-"):]
+        if _APPENDIX_TABLE_RE.match(body):
+            return raw
+        segments = [s for s in body.split(".") if s]
+        article = ".".join(segments[:4])
+        return f"{article}." if article else raw
+    return raw.split("(", 1)[0].strip()
+
+
 def _commencement_schedule(
     regulation: Regulation,
 ) -> list[dict[str, Any]]:
@@ -397,25 +445,190 @@ def _commencement_schedule(
     commencement; Ontario regs routinely stagger later in-force dates for
     specific provisions.  Each record's ``resolved_provisions`` is a list of
     ``"<provision_id>|<division>"`` refs (bare-letter division per
-    reference_division_format); we split them for linking-free labelling.
-    The template renders this schedule only when it carries a staggered
-    (non-default) date — otherwise the header's EFFECTIVE date says it all.
+    reference_division_format) — the *targets* of the amending clauses the
+    commencement subsection names, at whatever granularity each clause
+    operated.  We split them into:
+
+    - ``provisions`` — sentence/clause/article/numbered-table refs reduced to
+      their containing article (:func:`_reduce_provision_ref`), **deduped by
+      provision** (one clause can touch a sentence five times; O. Reg. 88/19
+      defers 441 raw refs that collapse to far fewer articles).
+    - ``tables`` — appendix tables (``Table-A-10``), which have no article
+      address of their own; each links to the provision(s) that *own* it,
+      resolved on the provision side via ``ProvisionVersionTable``.
+
+    Both link to the version in force on the record's date — the version the
+    deferral brings into effect.  The template renders this schedule only
+    when it carries a staggered (non-default) date.
     """
+    code_name = regulation.edition.code_name
     rows: list[dict[str, Any]] = []
     for rec in regulation.commencement or []:
-        provisions = []
+        provisions: list[dict[str, Any]] = []
+        tables: list[dict[str, Any]] = []
+        seen_provisions: set[tuple[str, str]] = set()
+        seen_tables: set[str] = set()
         for ref in rec.get("resolved_provisions") or []:
-            provision_id, _, division = str(ref).partition("|")
-            provisions.append({"provision_id": provision_id, "division": division})
+            label, _, division = str(ref).partition("|")
+            if _is_appendix_table(label):
+                if label in seen_tables:
+                    continue
+                seen_tables.add(label)
+                tables.append({
+                    "table_id": label,
+                    "label": _format_table_label(label),
+                    "owners": [],
+                })
+                continue
+            provision_id = _reduce_provision_ref(label)
+            key = (division, provision_id)
+            if key in seen_provisions:
+                continue
+            seen_provisions.add(key)
+            provisions.append({
+                "provision_id": provision_id,
+                "division": division,
+                "url": None,
+            })
+        tables.sort(key=lambda t: _natural_key(t["table_id"]))
         rows.append({
             "date": _parse_iso_date(rec.get("effective_date")),
             "is_default": bool(rec.get("is_default")),
             "clause": rec.get("clause", ""),
             "text": rec.get("commencement_clause", ""),
             "provisions": provisions,
+            "tables": tables,
+            "affected_count": len(provisions) + len(tables),
         })
+    _link_commencement_provisions(regulation, code_name, rows)
+    for row in rows:
+        row["provision_groups"] = _group_provisions(row["provisions"])
     rows.sort(key=lambda r: (r["date"] or date.min, not r["is_default"]))
     return rows
+
+
+def _leading_part(provision_id: str) -> str:
+    """The Part number a provision belongs to — its first numeric segment
+    (``3.1.4.2.`` → ``3``, ``11.2.1.1.`` → ``11``).  Empty when the id
+    doesn't start with a number."""
+    match = re.match(r"\d+", provision_id)
+    return match.group(0) if match else ""
+
+
+def _group_provisions(
+    provisions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Group the (already-linked) provisions by Division then Part so a large
+    deferral (O. Reg. 191/14 defers 156) reads as a handful of labelled blocks
+    rather than one undifferentiated comma blob.
+
+    Grouping by ``(division, part)`` also fixes cross-division interleaving:
+    a flat natural sort on ``provision_id`` alone would sort ``1.1.2.1.`` (Div
+    A) next to ``1.3.1.1.`` (Div B).  Within each block, provisions are
+    natural-sorted; the template flows them into columns.
+    """
+    buckets: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for p in provisions:
+        buckets.setdefault((p["division"], _leading_part(p["provision_id"])), []).append(p)
+
+    def _group_key(key: tuple[str, str]) -> tuple[str, int, str]:
+        division, part = key
+        # Numeric Parts in order; any non-numeric Part sorts last.
+        return (division, int(part) if part.isdigit() else 1_000_000, part)
+
+    groups: list[dict[str, Any]] = []
+    for division, part in sorted(buckets, key=_group_key):
+        if division and part:
+            group_label = f"Div {division} · Part {part}"
+        elif part:
+            group_label = f"Part {part}"
+        elif division:
+            group_label = f"Div {division}"
+        else:
+            group_label = "Other"
+        items = sorted(
+            buckets[(division, part)], key=lambda p: _natural_key(p["provision_id"])
+        )
+        groups.append({"label": group_label, "provisions": items})
+    return groups
+
+
+def _dated_provision_url(
+    provision: CodeEditionProvision, day: date | None, code_name: str
+) -> str | None:
+    """Permalink for ``provision`` as it reads on ``day`` — the version in
+    force then, falling back to the earliest.  ``None`` when it has no
+    versions (renders as plain text rather than a dead link)."""
+    versions = sorted(provision.versions.all(), key=lambda v: v.version)
+    if not versions:
+        return None
+    chosen = next(
+        (v for v in versions if day and _version_contains(v, day)), versions[0]
+    )
+    return _provision_permalink_url(
+        code_name, provision.division, provision.provision_id, chosen.version
+    )
+
+
+def _link_commencement_provisions(
+    regulation: Regulation, code_name: str, rows: list[dict[str, Any]]
+) -> None:
+    """Fill in each schedule entry's permalink(s) in place.
+
+    Two batched lookups for the whole schedule (88/19 defers hundreds):
+
+    - **Provisions** — one ``provision_id__in`` query; each links to the
+      version in force on its record's date.  A ref resolving to no
+      provision/version keeps ``url=None``.
+    - **Appendix tables** — one ``ProvisionVersionTable`` query keyed by
+      ``table_id``; the link lives on the provision side, so a table can own
+      several provisions (``Table-A-12`` → four).  Each owner is listed as a
+      dated permalink.
+    """
+    prov_keys = {
+        (p["division"], p["provision_id"])
+        for row in rows for p in row["provisions"] if p["provision_id"]
+    }
+    lookup: dict[tuple[str, str], CodeEditionProvision] = {}
+    if prov_keys:
+        provisions = CodeEditionProvision.objects.filter(
+            edition=regulation.edition,
+            provision_id__in={pid for _, pid in prov_keys},
+        ).prefetch_related("versions")
+        lookup = {(p.division, p.provision_id): p for p in provisions}
+
+    # Appendix-table owners: table_id → distinct owning provisions.
+    table_ids = {t["table_id"] for row in rows for t in row["tables"]}
+    owners_by_table: dict[str, dict[int, CodeEditionProvision]] = {}
+    if table_ids:
+        pvts = (
+            ProvisionVersionTable.objects.filter(
+                version__provision__edition=regulation.edition,
+                table_id__in=table_ids,
+            )
+            .select_related("version__provision")
+            .prefetch_related("version__provision__versions")
+        )
+        for pvt in pvts:
+            prov = pvt.version.provision
+            owners_by_table.setdefault(pvt.table_id, {})[prov.pk] = prov
+
+    for row in rows:
+        day = row["date"]
+        for p in row["provisions"]:
+            matched = lookup.get((p["division"], p["provision_id"]))
+            if matched is not None:
+                p["url"] = _dated_provision_url(matched, day, code_name)
+        for t in row["tables"]:
+            owners = owners_by_table.get(t["table_id"], {}).values()
+            t["owners"] = [
+                {
+                    "provision_id": prov.provision_id,
+                    "division": prov.division,
+                    "url": _dated_provision_url(prov, day, code_name),
+                }
+                for prov in sorted(owners, key=lambda pr: _natural_key(pr.provision_id))
+            ]
 
 
 def _parse_iso_date(value: str | None) -> date | None:
@@ -434,10 +647,14 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
         Regulation.objects.select_related("edition__code", "amends"),
         pk=pk,
     )
-    clauses = list(
+    # ``clause_id`` is a CharField, so a DB ``order_by`` is lexicographic
+    # (1, 10, 11, 2, 3, …).  Re-sort in Python on the natural key so clauses
+    # read in numeric order (1, 2, 3, …, 10, 11, …) — the order a reader
+    # expects and the order the index nav mirrors.
+    clauses = sorted(
         regulation.clauses.select_related("regulation__edition__code")
-        .prefetch_related("contributed_to_versions__provision__edition__code")
-        .order_by("clause_id")
+        .prefetch_related("contributed_to_versions__provision__edition__code"),
+        key=lambda c: _natural_key(c.clause_id),
     )
     # Annotate each clause with the full list of provisions it affects
     # (resolved server-side so the template stays logic-free).  See

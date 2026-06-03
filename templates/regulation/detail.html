@@ -109,12 +109,50 @@
                     {% else %}
                     <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-highlight border border-highlight px-1.5 py-0.5">Deferred</span>
                     {% endif %}
-                    {% if row.provisions %}
-                    <span class="font-sans text-[11.5px] text-ink-2">
-                        {% for p in row.provisions %}<span class="font-mono">{{ p.provision_id }}{% if p.division %}<span class="text-ink-3">&nbsp;Div&nbsp;{{ p.division }}</span>{% endif %}</span>{% if not forloop.last %}<span class="text-ink-3">,</span> {% endif %}{% endfor %}
-                    </span>
-                    {% endif %}
                 </div>
+                {% comment %} Affected provisions — deduped to one entry per
+                   provision (88/19 defers 441 raw refs that collapse to far
+                   fewer articles) and default-collapsed behind a count toggle.
+                   Provisions are grouped by Division · Part and flowed into
+                   columns so a big deferral (191/14 defers 156) reads as a few
+                   labelled blocks, not one comma blob.  Appendix tables (no
+                   article address of their own) follow as their own block,
+                   each linking to the provision(s) that own the table.  Every
+                   link points at the version in force on this record's date
+                   (resolved in _commencement_schedule); anything that doesn't
+                   resolve stays as plain mono text. {% endcomment %}
+                {% if row.affected_count %}
+                <div class="mt-1.5" x-data="{ showProvs: false }">
+                    <button type="button" @click.stop="showProvs = !showProvs"
+                        class="flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-[0.06em] text-ink-3 hover:text-ink cursor-pointer">
+                        <span x-text="showProvs ? '&#9662;' : '&#9656;'" class="text-[9px]"></span>
+                        {{ row.affected_count }} provision{{ row.affected_count|pluralize }}
+                    </button>
+                    <div x-show="showProvs" x-cloak class="mt-2 space-y-3">
+                        {% for g in row.provision_groups %}
+                        <div>
+                            <div class="font-mono text-[9.5px] font-semibold uppercase tracking-[0.08em] text-ink-3 mb-1">{{ g.label }}</div>
+                            <div class="columns-2 sm:columns-3 lg:columns-4 gap-x-5 font-mono text-[11.5px] leading-[1.5]">
+                                {% for p in g.provisions %}
+                                <div class="break-inside-avoid">{% if p.url %}<a href="{{ p.url }}" class="text-secondary hover:text-secondary-2 hover:underline">{{ p.provision_id }}</a>{% else %}<span>{{ p.provision_id }}</span>{% endif %}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% if row.tables %}
+                        <div>
+                            <div class="font-mono text-[9.5px] font-semibold uppercase tracking-[0.08em] text-ink-3 mb-1">Tables</div>
+                            <div class="space-y-0.5 font-mono text-[11.5px] leading-[1.5]">
+                                {% for t in row.tables %}
+                                <div>{{ t.label }}{% if t.owners %} <span class="text-ink-3">&rarr;</span>
+                                    {% for o in t.owners %}{% if o.url %}<a href="{{ o.url }}" class="text-secondary hover:text-secondary-2 hover:underline">{{ o.provision_id }}{% if o.division %}<span class="text-ink-3">&nbsp;Div&nbsp;{{ o.division }}</span>{% endif %}</a>{% else %}<span>{{ o.provision_id }}{% if o.division %}<span class="text-ink-3">&nbsp;Div&nbsp;{{ o.division }}</span>{% endif %}</span>{% endif %}{% if not forloop.last %}<span class="text-ink-3">,</span> {% endif %}{% endfor %}{% endif %}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
                 {% if row.text %}<p class="mt-1 font-serif text-[12.5px] leading-[1.5] text-ink-3">{{ row.text }}</p>{% endif %}
             </li>
             {% endfor %}
@@ -202,8 +240,23 @@
 
                 {% comment %} The strike→substitute redline sits in the margin
                    note with the other metadata (not the main column).  Still
-                   serif — it's legal text — but sized to the aside. {% endcomment %}
-                {% if clause.strike_text %}
+                   serif — it's legal text — but sized to the aside.
+
+                   A single strike-sub directive projects cleanly onto the
+                   ``strike_text → sub_text`` columns.  But a clause with
+                   *multiple* directives (e.g. strike "and" from clause (b),
+                   add "and" to clause (c), add a new clause) collapses those
+                   columns to just the primary directive — a redline that shows
+                   one part with an empty substitution, which is more heat than
+                   light.  The verbatim instruction in the main column already
+                   tells the whole story, so for those we just say "Multiple".
+                {% endcomment %}
+                {% if clause.directives|length > 1 %}
+                <div class="mb-[10px]">
+                    <div class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3 mb-1">Change</div>
+                    <div class="font-serif text-[13px] italic text-ink-3">Multiple</div>
+                </div>
+                {% elif clause.strike_text %}
                 <div class="mb-[10px]">
                     <div class="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-3 mb-1">Change</div>
                     <div class="font-serif text-[13px] leading-[1.5]">
