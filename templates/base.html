@@ -20,6 +20,17 @@
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 
+    <!-- Cloudflare Web Analytics (manual beacon).
+         Token is a public site ID (served to every visitor in the page), not a
+         secret, so it lives here in plain text.  Deliberately NO `integrity`
+         attribute: the edge-injected variant carries an SRI hash that fails
+         (empty body) when tracker-blockers abort the request; the manual tag
+         skips SRI so it degrades silently instead of erroring in the console.
+         Cloudflare dashboard must be set to "Enable with JS Snippet
+         installation" (manual) so the edge does NOT also auto-inject a copy. -->
+    <script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+            data-cf-beacon='{"token": "523ebf3cb8284adbacacdffc59bd10f5"}'></script>
+
     <!-- ── Design theme tokens (semantic roles) ──────────────────────────
          Colors are named by ROLE, never by hue, so one class themes
          correctly in both light (A0) and dark (A2T+).  The hex lives here
