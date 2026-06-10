@@ -490,5 +490,10 @@ def search_results(request):
             # Threaded into the viewer's section-content request so a
             # provision drill-in attributes back to this search.
             "search_id": result.get("search_history_id"),
+            # Limitation notices detected from the query: a jurisdiction we
+            # don't cover yet (results still shown for Ontario), or an
+            # explicitly-named date outside coverage (no results — see partial).
+            "not_covered_province": result.get("not_covered_province"),
+            "date_out_of_range": result.get("date_out_of_range"),
         },
     )

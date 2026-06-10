@@ -1,5 +1,48 @@
 {% if success %}
 {% comment %}
+Limitation notices the LLM detected in the query. The province notice is
+non-blocking (Ontario results still follow); an explicitly-named out-of-coverage
+date is blocking — we show the explanation and no results rather than answer at a
+date the user didn't ask for. coverage_start/coverage_end come from the masthead
+context processor (real dates).
+{% endcomment %}
+{% if not_covered_province %}
+<div class="mb-4 border-l-[3px] border-secondary bg-surface-2 p-4">
+    <div class="flex">
+        <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        </div>
+        <div class="ml-3">
+            <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{{ not_covered_province }} isn&rsquo;t covered yet</h3>
+            <p class="mt-2 text-sm text-ink-2">
+                We cover Ontario for now &mdash; other jurisdictions are on the
+                <a href="{% url 'core:pricing' %}" class="font-semibold text-secondary underline hover:text-secondary-2">roadmap</a>.
+                {% if not date_out_of_range %}Showing Ontario results below.{% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% if date_out_of_range %}
+<div class="border-l-[3px] border-secondary bg-surface-2 p-4">
+    <div class="flex">
+        <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+        </div>
+        <div class="ml-3">
+            <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Outside our coverage</h3>
+            <p class="mt-2 text-sm text-ink-2">
+                {{ date_out_of_range }} is outside the period we cover{% if coverage_start and coverage_end %} ({{ coverage_start|date:'M j, Y' }} &ndash; {{ coverage_end|date:'M j, Y' }}){% endif %}. We don&rsquo;t have a code edition for that date, so there are no results to show.
+            </p>
+        </div>
+    </div>
+</div>
+{% else %}
+{% comment %}
 Parsed query keywords, stashed for the viewer overlay's section-content
 request so it can highlight matched terms in the provision body (parity
 with the results-card highlight). Read by sectionContentUrl() in search.html.
@@ -109,6 +152,7 @@ sectionContentUrl() in search.html.
     <p class="mt-2 font-serif text-base text-ink-2">Try adjusting your keywords or as-of date.</p>
 </div>
 {% endif %}
+{% endif %}{# date_out_of_range #}
 
 {% else %}
 {% if rate_limited %}
