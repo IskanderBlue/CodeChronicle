@@ -16,8 +16,7 @@ class RateLimitMiddleware:
 
     Limits:
     - Anonymous users: RATE_LIMIT_ANONYMOUS per day (per IP)
-    - Authenticated users (Free): RATE_LIMIT_AUTHENTICATED per day
-    - Authenticated users (Pro): Unlimited
+    - Authenticated users: Unlimited (early access)
     """
 
     def __init__(self, get_response):
@@ -59,49 +58,30 @@ class RateLimitMiddleware:
         """Check if user has exceeded their daily limit."""
         from core.models import SearchHistory
 
-        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
         if request.user.is_authenticated:
-            if getattr(request.user, "has_active_subscription", False):
-                return None
+            return None  # All authenticated users are unlimited during early access
 
-            # Authenticated but not Pro
-            search_count = SearchHistory.objects.filter(
-                user=request.user, timestamp__gte=today_start
-            ).count()
-            limit = settings.RATE_LIMIT_AUTHENTICATED
-
-            if search_count >= limit:
-                payload = {
-                    "error": f"Daily limit reached for free accounts ({limit} searches/day)",
-                    "upgrade_url": "/pricing",
-                    "searches_used": search_count,
-                    "limit": limit,
-                }
-                return self._build_rate_limit_response(request, payload, status_code=429)
-
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Anonymous user - rate limit by IP
+        ip = self.get_client_ip(request)
+        if not ip:
             return None
-        else:
-            # Anonymous user - rate limit by IP
-            ip = self.get_client_ip(request)
-            if not ip:
-                return None
 
-            search_count = SearchHistory.objects.filter(
-                ip_address=ip, user__isnull=True, timestamp__gte=today_start
-            ).count()
+        search_count = SearchHistory.objects.filter(
+            ip_address=ip, user__isnull=True, timestamp__gte=today_start
+        ).count()
 
-            limit = settings.RATE_LIMIT_ANONYMOUS
+        limit = settings.RATE_LIMIT_ANONYMOUS
 
-            if search_count >= limit:
-                payload = {
-                    "error": f"Daily limit reached for anonymous users ({limit} search/day)",
-                    "login_url": "/accounts/login/",
-                    "signup_url": "/accounts/signup/",
-                    "searches_used": search_count,
-                    "limit": limit,
-                }
-                return self._build_rate_limit_response(request, payload, status_code=429)
+        if search_count >= limit:
+            payload = {
+                "error": f"Daily limit reached for anonymous users ({limit} search/day)",
+                "login_url": "/accounts/login/",
+                "signup_url": "/accounts/signup/",
+                "searches_used": search_count,
+                "limit": limit,
+            }
+            return self._build_rate_limit_response(request, payload, status_code=429)
 
         return None
 

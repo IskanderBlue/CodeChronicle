@@ -1,5 +1,4 @@
 from __future__ import annotations
-from django.utils.html import escape
 """Display-tier grouping for ``CodeEditionProvisionVersion.notes``.
 
 The producer (CCM) emits each version note already classified as
@@ -133,7 +132,7 @@ def normalize_loaded_notes(raw: object) -> list[dict[str, str]]:
                 "tags notes at construction)."
             )
         kind = str(item["kind"])
-        text = escape(str(item["text"]).strip())
+        text = str(item["text"]).strip()
         if kind in ANOMALY_KINDS:
             raise ValueError(
                 f"version note has anomaly kind {kind!r}: {text!r}. A ready "
