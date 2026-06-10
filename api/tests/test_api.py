@@ -1,9 +1,11 @@
+import json
 from datetime import date
 from unittest.mock import patch
 
 import pytest
-from django.test import Client
+from django.test import Client, RequestFactory
 
+from api.views import _extract_search_params_from_request
 from core.models import Code, CodeEdition, User
 
 
@@ -136,8 +138,6 @@ class TestApiEndpoints:
     @patch("services.search_service.format_search_results", autospec=False)
     def test_search_date_province_overrides(self, mock_format, mock_execute, mock_parse):
         """date and province fields override LLM-parsed values in API search."""
-        import json
-
         self.client.force_login(self.paid_user)
         mock_parse.return_value = {"query": "fire separation", "province": "BC", "date": "2020-01-01"}
         mock_execute.return_value = {
@@ -169,3 +169,42 @@ class TestApiEndpoints:
         execute_call_args = mock_execute.call_args[0][0]
         assert execute_call_args["date"] == "1995-06-01"
         assert execute_call_args["province"] == "ON"
+
+
+class TestExtractSearchParams:
+    """Unit tests for _extract_search_params_from_request (no DB)."""
+
+    def setup_method(self):
+        self.factory = RequestFactory()
+
+    def _extract(self, **kwargs):
+        request = self.factory.post('/api/search', **kwargs)
+        return _extract_search_params_from_request(request)
+
+    def test_province_normalized_to_upper(self):
+        params = self._extract(data={"query": "fire", "province": "on"})
+        assert params["province"] == "ON"
+
+    def test_unknown_province_dropped(self):
+        params = self._extract(data={"query": "fire", "province": "ZZ"})
+        assert params["province"] is None
+
+    def test_json_province_whitelisted(self):
+        params = self._extract(
+            data=json.dumps({"query": "fire", "province": "bc"}),
+            content_type="application/json",
+        )
+        assert params["province"] == "BC"
+
+    def test_json_non_string_province_dropped(self):
+        params = self._extract(
+            data=json.dumps({"query": "fire", "province": 12}),
+            content_type="application/json",
+        )
+        assert params["province"] is None
+
+    def test_invalid_date_passed_through_for_run_search_to_reject(self):
+        # run_search owns date validation and returns a correctable error;
+        # dropping it here would silently fall back to the LLM-parsed date.
+        params = self._extract(data={"query": "fire", "date": "not-a-date"})
+        assert params["date"] == "not-a-date"

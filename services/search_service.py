@@ -6,12 +6,13 @@ between core/views.py (HTMX) and api/views.py (Django Ninja).
 from datetime import date
 from typing import Any
 
+import anthropic
 from coloured_logger import Logger
 
 from api.formatters import format_search_results
 from api.llm_parser import parse_user_query
 from api.search import execute_search
-from core.models import SearchHistory
+from core.models import CorpusCurrency, SearchHistory
 
 logger = Logger(__name__)
 
@@ -79,8 +80,6 @@ def run_search(
         # Coverage window (real dates, snapshotted at data load). Used both to
         # phrase the out-of-range message and to decide whether the user's
         # explicitly-named date is searchable at all.
-        from core.models import CorpusCurrency
-
         currency = CorpusCurrency.get_solo()
         coverage_start = currency.coverage_start if currency else None
         coverage_end = currency.coverage_end if currency else None
@@ -185,10 +184,14 @@ def run_search(
             "not_covered_province": not_covered_province,
         }
 
-    except Exception as e:
+    except (ValueError, anthropic.APIError) as e:
+        # Known failure modes: bad input reaching pipeline internals, or the
+        # Anthropic API failing (auth, rate limit, overload).
         error_msg = str(e)
         # Surface a friendlier message for Anthropic auth failures
-        if "401" in error_msg and "invalid x-api-key" in error_msg.lower():
+        if isinstance(e, anthropic.AuthenticationError) or (
+            "401" in error_msg and "invalid x-api-key" in error_msg.lower()
+        ):
             error_msg = (
                 "Search engine authentication failure. "
                 "Please check the ANTHROPIC_API_KEY in .env settings."
@@ -196,6 +199,13 @@ def run_search(
         logger.error("Search service error: %s", error_msg)
         return {
             "success": False,
-            "error": f"An unexpected error occurred: {error_msg}",
+            "error": f"Search failed: {error_msg}",
+            "results": [],
+        }
+    except Exception as e:
+        logger.error("Unexpected search service error: %s", e, exc_info=True)
+        return {
+            "success": False,
+            "error": f"An unexpected error occurred: {e}",
             "results": [],
         }
