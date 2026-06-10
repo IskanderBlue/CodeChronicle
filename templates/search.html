@@ -91,16 +91,17 @@
                     <label for="query"
                         class="flex items-center border-r border-rule px-[14px] font-mono text-[11px] tracking-[0.06em] text-ink-3">QUERY</label>
                     <input type="text" name="query" id="query" required value="{{ initial_query }}"
-                        placeholder="fire-resistance rating between dwelling units, Ontario, May 1993"
+                        placeholder="fire-resistance rating between dwelling units, Ontario, 2016"
                         class="w-full min-w-0 flex-1 border-0 bg-transparent px-4 py-[14px] font-serif text-[17px] text-ink placeholder:text-ink-3/60 focus:outline-none focus:ring-0">
                 </div>
-                <!-- JUR cell — locked to Ontario (the only jurisdiction we
-                     cover).  "JUR" carries its full word via <abbr>; the value
-                     is fixed ON with a hidden input so it still posts. -->
+                <!-- Jurisdiction cell — locked to Ontario (the only jurisdiction
+                     we cover).  Label spelled out in full (room on the row); the
+                     visible value is "Ontario" while a hidden input still posts
+                     the "ON" code. -->
                 <div class="flex items-center gap-1 border-t border-rule px-3 py-2 font-mono text-[11px] text-ink-3 sm:border-l sm:border-t-0 sm:py-0">
-                    <abbr title="Jurisdiction" class="cursor-help tracking-[0.06em] no-underline decoration-dotted underline-offset-2 hover:underline">JUR</abbr>
+                    <span class="tracking-[0.06em]">Jurisdiction</span>
                     <span class="text-rule">&middot;</span>
-                    <span class="font-semibold text-ink" title="Only Ontario is currently covered">ON</span>
+                    <span class="font-semibold text-ink" title="Only Ontario is currently covered">Ontario</span>
                     <input type="hidden" name="province" value="ON">
                 </div>
                 <!-- AS-OF cell (user-input role: ink → amber).  Defaults to the
@@ -109,6 +110,8 @@
                 <label class="flex items-center gap-2 border-t border-rule px-3 py-2 sm:border-l sm:border-t-0 sm:py-0">
                     <span class="font-mono text-[11px] tracking-[0.06em] text-ink-3">AS-OF</span>
                     <input type="date" name="date" value="{{ coverage_end|date:'Y-m-d' }}"
+                        {% if coverage_start %}min="{{ coverage_start|date:'Y-m-d' }}"{% endif %}
+                        {% if coverage_end %}max="{{ coverage_end|date:'Y-m-d' }}"{% endif %}
                         class="border border-ink-2 bg-panel px-2 py-1 font-mono text-[11px] font-semibold tracking-[0.04em] text-highlight focus:outline-none focus:ring-0 dark:[color-scheme:dark]">
                 </label>
             </div>
@@ -122,6 +125,76 @@
             Natural-language query &rarr; parsed jurisdiction, date &amp; keywords, searched against in-force editions
         </p>
     </form>
+
+    <!-- ── "How it works" — persistent, dismissible inline explainer ──────
+         Not a forced modal: it's an inline panel that auto-opens on a first
+         visit (no localStorage flag) and stays dismissed afterwards, but the
+         toggle re-opens it any time.  Scope dates come from the masthead
+         context processor (real corpus coverage). -->
+    <div class="mt-3"
+        x-data="{
+            open: false,
+            init() { try { this.open = !localStorage.getItem('cc-hiw-dismissed'); } catch (e) { this.open = false; } },
+            dismiss() { this.open = false; try { localStorage.setItem('cc-hiw-dismissed', '1'); } catch (e) {} }
+        }">
+        <button type="button" @click="open = !open"
+            class="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-3 hover:text-secondary"
+            :aria-expanded="open ? 'true' : 'false'">
+            <span x-text="open ? '–' : '?'" class="inline-block w-3 text-center font-semibold"></span>
+            How it works
+        </button>
+        <div x-show="open" x-cloak
+            class="mt-2 border border-rule bg-surface-2 p-4 text-sm text-ink-2">
+            <div class="grid gap-4 sm:grid-cols-2 sm:items-start">
+                {# Left column: the three "before you search" blocks, stacked. #}
+                <div class="space-y-4">
+                    <div>
+                        <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">What it does</p>
+                        <p class="mt-2 leading-relaxed">
+                            Get the version of building code provisions in force on a specific date.
+                            <br>
+                            We meticulously track amendments to each edition of a building code to show you the version in force on the
+                            <span class="font-mono text-[12px] text-ink">AS-OF</span> date alongside links to the chain of amendments as well as each specific version of a provision so you can trace the changes yourself.
+                        </p>
+                    </div>
+                    <div>
+                        <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">What we cover</p>
+                        <p class="mt-2 leading-relaxed">
+                            Ontario only for now{% if coverage_start and coverage_end %},
+                            from {{ coverage_start|date:'F Y' }} to {{ coverage_end|date:'F Y' }}{% endif %}.
+                            Set the <span class="font-mono text-[12px] text-ink">AS-OF</span> date to the
+                            construction or renovation date you care about.
+                        </p>
+                    </div>
+                    <div>
+                        <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Two ways to search</p>
+                        <p class="mt-2 leading-relaxed">
+                            Describe a topic in words, <em>or</em> type a specific article number
+                            such as <span class="font-mono text-[12px] text-ink">3.1.8.1.</span> to jump
+                            straight to it.
+                        </p>
+                    </div>
+                </div>
+                {# Right column: what you can do once results are showing. #}
+                <div>
+                    <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">Exploring a result</p>
+                    <p class="mt-2 leading-relaxed">Each result expands in place. From there you can:</p>
+                    <ul class="mt-2 list-disc space-y-1 pl-5 leading-relaxed">
+                        <li><span class="font-semibold text-ink">Open the full provision record</span> &mdash; its standalone page with the complete text.</li>
+                        <li>Jump to the <span class="font-semibold text-ink">regulation</span> behind the current wording, or any <span class="font-mono text-[12px] text-ink">O.&nbsp;Reg.</span> and clause along its <span class="font-semibold text-ink">amendment chain</span>, opening each past <span class="font-semibold text-ink">version</span> as it then read.</li>
+                        <li>Open any <span class="font-semibold text-ink">tables</span> cited in the provision.</li>
+                        <li>For grouped results, drill into the individual <span class="font-semibold text-ink">sub-provisions</span>.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="mt-4 flex justify-end">
+                <button type="button" @click="dismiss()"
+                    class="inline-flex items-center border border-rule px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
+                    Got it
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- 3px double rule separates the bar from results (publishing convention) -->
     <div class="my-[18px] border-t-[3px] border-double border-rule"></div>
@@ -152,6 +225,21 @@
             </svg>
             <h3 class="mt-3 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3">No search performed yet</h3>
             <p class="mt-2 font-serif text-base text-ink-2">Ask a question about a building code provision to get started.</p>
+            <!-- Example queries: one-click, auto-submitting.  Each fills the
+                 query box and runs through the normal form path (loading
+                 spinner + hx-post).  Covers both search modes — natural-language
+                 keywords and a specific article reference (e.g. 3.1.8.1.).
+                 All target Ontario / in-coverage dates so each returns a real
+                 result. -->
+            <p class="mt-6 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3">Try an example</p>
+            <div class="mt-3 flex flex-wrap justify-center gap-2">
+                {% for example in example_queries %}
+                <button type="button" data-example-query="{{ example.query }}"{% if example.date %} data-example-date="{{ example.date }}"{% endif %}
+                    class="border border-rule px-3 py-1.5 font-serif text-[14px] text-ink-2 hover:border-secondary hover:text-secondary">
+                    {{ example.query }}
+                </button>
+                {% endfor %}
+            </div>
         </div>
     </div>
 
@@ -163,6 +251,30 @@
                 evt.detail.shouldSwap = true;
                 evt.detail.isError = false;
             }
+        });
+
+        // Example-query chips: fill the query box and run the search through the
+        // normal form path, so the loading spinner + hx-post behave exactly as a
+        // typed-and-submitted search would. Delegated so it also covers chips in
+        // any future re-rendered empty state.
+        document.addEventListener('click', function (e) {
+            const chip = e.target.closest('[data-example-query]');
+            if (!chip) return;
+            const form = document.querySelector('form[hx-post]');
+            const input = document.getElementById('query');
+            if (!form || !input) return;
+            input.value = chip.getAttribute('data-example-query');
+            // If the example names a date, set the AS-OF picker to match — the
+            // picker is the date the search actually uses, so without this the
+            // "2016" in the chip text would be ignored.
+            const exDate = chip.getAttribute('data-example-date');
+            if (exDate) {
+                const dateInput = form.querySelector('input[name="date"]');
+                if (dateInput) dateInput.value = exDate;
+            }
+            document.getElementById('results-area').innerHTML =
+                document.getElementById('loading-tpl').innerHTML;
+            htmx.trigger(form, 'submit');
         });
     </script>
 
