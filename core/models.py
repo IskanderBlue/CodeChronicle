@@ -864,6 +864,11 @@ class CorpusCurrency(models.Model):
     corpus_label = models.CharField(max_length=200, default="Ontario Building Code")
     corpus_span = models.CharField(max_length=50, blank=True, default="")
     data_current_to = models.DateField(null=True, blank=True)
+    #: The corpus's first covered date as a real date — the start of
+    #: ``corpus_span`` (``MIN(effective_date)`` over the provenance corpus).
+    #: Backs the search "as-of" picker's lower bound and the out-of-coverage
+    #: date notice, so neither has to re-parse the formatted span string.
+    coverage_start = models.DateField(null=True, blank=True)
     #: The corpus's last covered date as a real date — the end of
     #: ``corpus_span`` (last in-force day for a closed corpus, else the most
     #: recent amendment).  Backs the search "as-of" default so it matches the
@@ -966,6 +971,10 @@ class CorpusCurrency(models.Model):
                 "corpus_label": label,
                 "corpus_span": span,
                 "data_current_to": data_current_to,
+                # ``first_eff`` is the same MIN that opens ``corpus_span``;
+                # store it discretely so the search picker/notice never has to
+                # parse it back out of the display string.
+                "coverage_start": first_eff,
                 "coverage_end": coverage_end,
             },
         )

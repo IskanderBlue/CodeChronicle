@@ -2,11 +2,13 @@
 Scoring engine for provision version search results.
 
 Receives a pre-filtered queryset of in-force versions and scores them
-against query terms using TF-IDF, synonym expansion, and fuzzy matching.
+against query terms using BM25-weighted keywords, synonym expansion, and
+fuzzy matching.
 """
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from math import log
 from typing import Any
 
@@ -54,25 +56,63 @@ def _fuzzy_match_score(query_term: str, target_terms: set[str], threshold: int =
     return 0.0
 
 
-def _tf(term: str, counts: dict[str, int]) -> float:
-    """Log-normalized term frequency."""
+# BM25 term-frequency parameters (standard Robertson/Walker values).  k1 caps
+# how much repetition can help — the TF component saturates at k1 + 1, so the
+# 269th occurrence of "fire" is worth barely more than the 5th.  b sets how
+# strongly that saturation point scales with document length: index-like
+# mega-provisions (Part 11 "Compliance Alternatives" tables mention every
+# topic in the code) need proportionally more evidence than a focused article.
+BM25_K1 = 1.2
+BM25_B = 0.75
+
+
+def _bm25_tf(term: str, counts: dict[str, int], length_norm: float) -> float:
+    """BM25-saturated term frequency.
+
+    ``length_norm`` is the document's ``1 - b + b * doc_len / avg_doc_len``
+    factor, precomputed once per document.  At average length the component is
+    exactly 1.0 for a single occurrence (same anchor as the old ``1 + log(tf)``
+    scheme) and asymptotes to ``k1 + 1`` no matter how often the term repeats.
+    """
     raw = counts.get(term, 0)
-    return (1 + log(raw)) if raw > 0 else 0.0
+    if raw <= 0:
+        return 0.0
+    return raw * (BM25_K1 + 1) / (raw + BM25_K1 * length_norm)
 
 
-def compute_idf(versions_qs: QuerySet[CodeEditionProvisionVersion]) -> dict[str, float]:
-    """Compute IDF weights from a queryset of provision versions."""
+@dataclass(frozen=True)
+class CorpusStats:
+    """Corpus-level scoring inputs, computed in one pass over keyword_counts."""
+
+    idf: dict[str, float] = field(default_factory=dict)
+    avg_doc_len: float = 0.0
+
+
+def compute_corpus_stats(
+    versions_qs: QuerySet[CodeEditionProvisionVersion],
+) -> CorpusStats:
+    """Compute IDF weights and average document length for a corpus.
+
+    Both come from the same pass over every version's ``keyword_counts``
+    (the JSON fields are the expensive part to fetch, so one pass matters).
+    A document's length is its total token count, ``sum(counts.values())``.
+    """
     total_docs = 0
+    total_len = 0
     doc_freq: dict[str, int] = {}
     for kw_counts in versions_qs.values_list("keyword_counts", flat=True):
         if not kw_counts:
             continue
         total_docs += 1
+        total_len += sum(kw_counts.values())
         for keyword in kw_counts:
             doc_freq[keyword] = doc_freq.get(keyword, 0) + 1
     if total_docs == 0:
-        return {}
-    return {kw: log(1 + total_docs / df) for kw, df in doc_freq.items()}
+        return CorpusStats()
+    return CorpusStats(
+        idf={kw: log(1 + total_docs / df) for kw, df in doc_freq.items()},
+        avg_doc_len=total_len / total_docs,
+    )
 
 
 # Trailing clause suffix on a reference, e.g. "3.2.1(1)" / "(1-3)" / "(1,2)".
@@ -135,18 +175,19 @@ def _match_reference(
 def score_versions(
     query: str,
     versions_qs: QuerySet[CodeEditionProvisionVersion],
-    idf_map: dict[str, float],
+    corpus_stats: CorpusStats,
     provision_references: list[str] | None = None,
     limit: int = SEARCH_RESULT_LIMIT,
     raw_query: str = "",
 ) -> list[dict[str, Any]]:
-    """Score provision versions against a query using TF-IDF + fuzzy matching.
+    """Score provision versions against a query using BM25 + fuzzy matching.
 
     Args:
         query: Space-joined keywords from the parsed user query.
         versions_qs: Pre-filtered queryset of in-force versions (with
             select_related and prefetch_related already applied).
-        idf_map: Pre-computed IDF weights for the corpus.
+        corpus_stats: Pre-computed IDF weights and average document length
+            for the corpus.
         provision_references: Explicit provision ID references from the query.
         limit: Max results to return.
         raw_query: The user's original typed text.  A keyword counts as a
@@ -183,7 +224,7 @@ def score_versions(
     indirect_terms = expanded_terms - direct_terms
 
     def get_idf(term: str) -> float:
-        return idf_map.get(term, 1.0)
+        return corpus_stats.idf.get(term, 1.0)
 
     # Filter the queryset to candidates matching keywords or references
     from django.db.models import Q
@@ -267,9 +308,23 @@ def score_versions(
             direct_matched = direct_terms & all_terms
             indirect_matched = indirect_terms & all_terms
             if direct_matched or indirect_matched:
-                numerator = sum(_tf(t, kw_counts) * get_idf(t) for t in direct_matched)
+                # BM25 length factor: how far this document sits above or
+                # below corpus-average length.  Without it the Part 11
+                # "Compliance Alternatives" mega-tables — which mention every
+                # term in the code at high counts — top-rank every query.
+                doc_len = sum(kw_counts.values())
+                length_norm = (
+                    1 - BM25_B + BM25_B * (doc_len / corpus_stats.avg_doc_len)
+                    if corpus_stats.avg_doc_len > 0
+                    else 1.0
+                )
+                numerator = sum(
+                    _bm25_tf(t, kw_counts, length_norm) * get_idf(t)
+                    for t in direct_matched
+                )
                 numerator += 0.9 * sum(
-                    _tf(t, kw_counts) * get_idf(t) for t in indirect_matched
+                    _bm25_tf(t, kw_counts, length_norm) * get_idf(t)
+                    for t in indirect_matched
                 )
                 norm_terms = direct_terms if direct_matched else indirect_terms
                 denom = sum(get_idf(t) for t in norm_terms)

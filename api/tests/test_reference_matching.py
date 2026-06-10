@@ -8,7 +8,7 @@ from datetime import date
 
 import pytest
 
-from api.search.engine import _match_reference, _ref_parts, score_versions
+from api.search.engine import CorpusStats, _match_reference, _ref_parts, score_versions
 from core.models import (
     Code,
     CodeEdition,
@@ -100,7 +100,7 @@ def test_table_reference_resolves_through_score_versions(edition_with_table):
     ).select_related("provision__edition__code")
 
     results = score_versions(
-        "", qs, {}, provision_references=["table-3.1.4.7"],
+        "", qs, CorpusStats(), provision_references=["table-3.1.4.7"],
     )
 
     assert len(results) == 1
@@ -121,5 +121,5 @@ def test_refs_only_all_unparseable_returns_empty_without_scanning(
     # "A-" -> (False, ()) : a division prefix with no dotted core, so the
     # engine skips it and the filter Q stays empty.
     with django_assert_num_queries(0):
-        results = score_versions("", qs, {}, provision_references=["A-"])
+        results = score_versions("", qs, CorpusStats(), provision_references=["A-"])
     assert results == []

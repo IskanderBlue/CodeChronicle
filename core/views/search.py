@@ -148,10 +148,29 @@ def _build_viewer_navigation(
     return {"previous": previous_params, "next": next_params}
 
 
+# One-click example queries shown in the empty search state. Curated (not
+# data-driven) because only one edition is loaded; each must return a real
+# result, and the set deliberately spans both search modes — natural-language
+# keywords and a bare article reference (exercises extract_section_references).
+# An optional ``date`` sets the AS-OF picker on click, so an example that names
+# a year actually searches that year (the picker always overrides the date the
+# LLM reads from the text). Dates sit inside the covered window.
+EXAMPLE_QUERIES = [
+    {"query": "fire separation between dwelling units, Ontario, 2016", "date": "2016-01-01"},
+    {"query": "guards and handrails for a stairway"},
+    {"query": "spatial separation and exposing building face"},
+    {"query": "3.1.8.1."},
+]
+
+
 def home(request):
     """Main search page."""
     initial_query = request.GET.get("q", "")
-    return render(request, "search.html", {"initial_query": initial_query})
+    return render(
+        request,
+        "search.html",
+        {"initial_query": initial_query, "example_queries": EXAMPLE_QUERIES},
+    )
 
 
 def viewer_edition_nav(request: HttpRequest):
@@ -490,5 +509,10 @@ def search_results(request):
             # Threaded into the viewer's section-content request so a
             # provision drill-in attributes back to this search.
             "search_id": result.get("search_history_id"),
+            # Limitation notices detected from the query: a jurisdiction we
+            # don't cover yet (results still shown for Ontario), or an
+            # explicitly-named date outside coverage (no results — see partial).
+            "not_covered_province": result.get("not_covered_province"),
+            "date_out_of_range": result.get("date_out_of_range"),
         },
     )

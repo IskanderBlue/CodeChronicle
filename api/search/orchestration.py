@@ -17,7 +17,7 @@ from core.models import (
     RegulationClause,
 )
 
-from .engine import SEARCH_RESULT_LIMIT, compute_idf, score_versions
+from .engine import SEARCH_RESULT_LIMIT, compute_corpus_stats, score_versions
 
 
 def _clause_through_prefetch() -> Prefetch:
@@ -110,12 +110,12 @@ def execute_search(params: dict[str, Any]) -> dict[str, Any]:
         "provision__edition__regulations",
     )
 
-    idf_map = compute_idf(in_force_qs)
+    corpus_stats = compute_corpus_stats(in_force_qs)
 
     results = score_versions(
         query=" ".join(keywords),
         versions_qs=in_force_qs,
-        idf_map=idf_map,
+        corpus_stats=corpus_stats,
         provision_references=provision_references,
         raw_query=params.get("raw_query", ""),
     )
