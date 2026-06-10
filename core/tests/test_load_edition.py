@@ -14,6 +14,7 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     CodeEditionProvisionVersionClause,
+    EditionTransition,
     ProvisionVersionTable,
     Regulation,
     RegulationClause,
@@ -621,3 +622,66 @@ class TestLoadEdition:
         assert links[0].apply_order == 0
         assert links[1].clause.regulation.reg_id == "99/99"
         assert links[1].apply_order == 1
+
+
+@pytest.mark.django_db
+class TestMappingCoverage:
+    """``mapping_coverage`` → ``EditionTransition`` rows (the lineage
+    resolver's covered-transition record)."""
+
+    def _load_with_coverage(self, edition_json: Path, tmp_path: Path) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        data["mapping_coverage"] = [
+            {"old_edition": "1997", "new_edition": "2006"},
+        ]
+        out = tmp_path / "OBC_1997_coverage.json"
+        out.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(out))
+
+    def test_creates_transition_rows(self, edition_json: Path, tmp_path: Path) -> None:
+        # The declaration names 2006, which must already exist (a coverage
+        # claim over an unloaded edition is meaningless).
+        code = Code.objects.create(code="OBC")
+        CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        self._load_with_coverage(edition_json, tmp_path)
+
+        transition = EditionTransition.objects.get()
+        assert transition.old_edition.edition_id == "1997"
+        assert transition.new_edition.edition_id == "2006"
+
+    def test_skips_declaration_naming_unloaded_edition(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        # No 2006 edition exists: skip with a warning, don't fail the load.
+        self._load_with_coverage(edition_json, tmp_path)
+        assert EditionTransition.objects.count() == 0
+
+    def test_reload_without_coverage_clears_stale_claim(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """Reloading an edition CASCADE-deletes its cross-edition mapping
+        rows, so a coverage claim left standing would make the resolver mint
+        false "discontinued" verdicts — the wipe must be symmetric."""
+        code = Code.objects.create(code="OBC")
+        CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        self._load_with_coverage(edition_json, tmp_path)
+        assert EditionTransition.objects.count() == 1
+
+        call_command("load_edition", "--source", str(edition_json))
+        assert EditionTransition.objects.count() == 0
+
+
+@pytest.mark.django_db
+class TestFirstEditionDateSeed:
+    def test_load_seeds_known_first_edition_date(self, edition_json: Path) -> None:
+        """Seeded on every load (not only by migration): Code rows can be
+        wiped and recreated, which would lose a one-time migration seed."""
+        call_command("load_edition", "--source", str(edition_json))
+        code = Code.objects.get(code="OBC")
+        assert code.first_edition_date == date(1975, 12, 31)

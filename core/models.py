@@ -2,11 +2,14 @@
 Core models for CodeChronicle.
 """
 
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.db.models import Count, Max, Min
 from django.utils import timezone
+from djstripe.models import Customer, Subscription
 
 from core.provision_notes import GroupedNotes, group_notes
 
@@ -85,8 +88,6 @@ class User(AbstractBaseUser, PermissionsMixin):
             return True
 
         # 2. Check Stripe via dj-stripe
-        from djstripe.models import Customer, Subscription
-
         customer = Customer.objects.filter(subscriber=self).first()
         if not customer and self.stripe_customer_id:
             # Fall back to the raw Stripe id when dj-stripe hasn't linked the
@@ -261,6 +262,14 @@ class Code(models.Model):
         default="code",
         choices=[("code", "code"), ("guide", "guide")],
     )
+    #: Real-world in-force date of the code's *first edition ever* (OBC:
+    #: 1975-12-31) — a seeded fact, not derivable from loaded data, since
+    #: real edition history extends before our corpus window.  Lets the
+    #: lineage resolver tell "this is the first edition" (predecessor
+    #: endpoint) from "earlier editions exist but aren't covered" (no data
+    #: yet).  Null = unknown → the resolver defaults to "no data yet".
+    #: Seeded by ``load_edition`` (so it survives a codes wipe + reload).
+    first_edition_date = models.DateField(null=True, blank=True)
 
     class Meta:
         db_table = "codes"
@@ -280,6 +289,8 @@ class CodeEdition(models.Model):
     # django-stubs plugin infers these from the related_name on the FK side.
     regulations: "models.Manager[Regulation]"
     provisions: "models.Manager[CodeEditionProvision]"
+    # FK id-shadow, plugin-only — declared for Pyright.
+    code_id: int
 
     code = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="editions")
     edition_id = models.CharField(max_length=50)
@@ -558,7 +569,8 @@ class CodeEditionProvision(models.Model):
     # Reverse relations (see note on CodeEdition).
     versions: "models.Manager[CodeEditionProvisionVersion]"
     children: "models.Manager[CodeEditionProvision]"
-    # FK id-shadow, plugin-only — declared for Pyright.
+    # FK id-shadows, plugin-only — declared for Pyright.
+    edition_id: int
     parent_id: int | None
 
     if TYPE_CHECKING:
@@ -845,6 +857,46 @@ class ProvisionMapping(models.Model):
         return f"{self.old_provision} → {self.new_provision} ({self.mapping_type})"
 
 
+class EditionTransition(models.Model):
+    """Declares that an old→new edition transition's provision mapping is covered.
+
+    Written by ``load_edition`` from the CCM payload's ``mapping_coverage``
+    key.  CCM emits ``ProvisionMapping`` rows only where identity *changed*,
+    so on a covered transition the absence of a row positively asserts "same
+    division/id continues" — but only if we know the transition was mapped at
+    all.  This row is that knowledge: it lets the lineage resolver
+    (``core.provision_lineage``) distinguish **discontinued** (covered, no
+    row, no same-id match) from **no data yet** (transition never mapped).
+
+    Coverage is declared explicitly rather than inferred from mapping-row
+    existence: inference conflates "not mapped yet" with "mapped, zero
+    identity changes", and a partial/failed load would silently read as
+    covered.
+    """
+
+    old_edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="transitions_forward",
+    )
+    new_edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="transitions_back",
+    )
+    loaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "edition_transitions"
+        verbose_name = "Edition Transition"
+        verbose_name_plural = "Edition Transitions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["old_edition", "new_edition"],
+                name="edition_transition_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.old_edition} → {self.new_edition}"
+
+
 class CorpusCurrency(models.Model):
     """Precomputed masthead provenance stamp — one row (a singleton).
 
@@ -911,10 +963,6 @@ class CorpusCurrency(models.Model):
         - ``corpus_label`` = a provenance code's display name, else the Ontario
           default.
         """
-        from datetime import date, timedelta
-
-        from django.db.models import Count, Max, Min
-
         def _fmt(d: date) -> str:
             # ISO 8601 calendar date (e.g. "2014-01-01").
             return d.isoformat()

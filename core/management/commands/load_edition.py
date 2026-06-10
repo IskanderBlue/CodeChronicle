@@ -8,6 +8,7 @@ from typing import Any
 from coloured_logger import Logger
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Count, Q
 
 from core.models import (
     Code,
@@ -16,6 +17,7 @@ from core.models import (
     CodeEditionProvisionVersion,
     CodeEditionProvisionVersionClause,
     CorpusCurrency,
+    EditionTransition,
     ProvinceCode,
     ProvisionMapping,
     ProvisionVersionTable,
@@ -72,6 +74,16 @@ class Command(BaseCommand):
     DEFAULT_SOURCE_DIR = Path("..") / "CodeChronicleMapping" / "data" / "outputs"
     #: The only edition currently in scope to load (OBC 2012).
     DEFAULT_FILE = "OBC_2012.json"
+
+    #: Real-world first-edition in-force dates, seeded onto ``Code`` on every
+    #: load (not a data migration — Code rows can be wiped and recreated by a
+    #: reload, which would lose a one-time migration seed).  Not in the CCM
+    #: JSON: the payload describes one edition, this is a fact about the
+    #: code's whole real-world history.  Backs the lineage resolver's
+    #: "first edition" endpoint detection.
+    FIRST_EDITION_DATES = {
+        "OBC": date(1975, 12, 31),
+    }
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
@@ -163,6 +175,9 @@ class Command(BaseCommand):
             mapping_count = self._load_provision_mappings(
                 code, version_lookup, data.get("provision_mappings", []),
             )
+            coverage_count = self._load_mapping_coverage(
+                code, data.get("mapping_coverage", []),
+            )
 
         # Refresh the masthead provenance stamp once per load — outside the
         # atomic block, so it snapshots committed data.  (Computing the
@@ -172,8 +187,8 @@ class Command(BaseCommand):
 
         logger.info(
             "Loaded %s %s: %d regulations, %d clauses, %d assets, %d provisions, "
-            "%d versions, %d version-clause links, %d tables, %d mappings; "
-            "corpus current to %s",
+            "%d versions, %d version-clause links, %d tables, %d mappings, "
+            "%d covered transitions; corpus current to %s",
             code_str,
             edition_str,
             len(reg_lookup),
@@ -184,16 +199,21 @@ class Command(BaseCommand):
             clause_link_count,
             table_count,
             mapping_count,
+            coverage_count,
             currency.data_current_to,
         )
 
     def _load_edition(self, data: dict[str, Any]) -> tuple[Code, CodeEdition]:
+        code_defaults: dict[str, Any] = {
+            "display_name": data.get("display_name", ""),
+            "is_national": data.get("is_national", False),
+        }
+        # Only set when known — never null out a date seeded by other means
+        # (e.g. admin) for a code this dict hasn't caught up with.
+        if data["code"] in self.FIRST_EDITION_DATES:
+            code_defaults["first_edition_date"] = self.FIRST_EDITION_DATES[data["code"]]
         code, _ = Code.objects.update_or_create(
-            code=data["code"],
-            defaults={
-                "display_name": data.get("display_name", ""),
-                "is_national": data.get("is_national", False),
-            },
+            code=data["code"], defaults=code_defaults,
         )
         edition, _ = CodeEdition.objects.update_or_create(
             code=code,
@@ -219,6 +239,15 @@ class Command(BaseCommand):
         # CASCADE on RegulationAsset.regulation cleans up assets too.
         edition.provisions.all().delete()
         edition.regulations.all().delete()
+
+        # The CASCADE above also kills cross-edition mapping rows touching
+        # this edition, so any coverage claim over those rows must die with
+        # them — a stale EditionTransition with its rows gone would make the
+        # lineage resolver mint false "discontinued" verdicts.  The payload's
+        # mapping_coverage re-declares whatever this load still covers.
+        EditionTransition.objects.filter(
+            Q(old_edition=edition) | Q(new_edition=edition)
+        ).delete()
 
         return code, edition
 
@@ -781,12 +810,43 @@ class Command(BaseCommand):
 
         return len(mappings_to_create)
 
+    def _load_mapping_coverage(
+        self, code: Code, mapping_coverage: list[dict[str, Any]]
+    ) -> int:
+        """Persist the payload's explicit transition-coverage declarations.
+
+        Each entry asserts "the old→new edition transition's provision
+        mapping is fully represented by this payload's provision_mappings" —
+        including the case of zero rows (nothing changed identity).  Both
+        editions must already exist; a declaration naming an unloaded
+        edition is skipped with a warning rather than failing the load.
+        """
+        created = 0
+        for entry in mapping_coverage:
+            old_edition_id = str(entry["old_edition"])
+            new_edition_id = str(entry["new_edition"])
+            old_edition = CodeEdition.objects.filter(
+                code=code, edition_id=old_edition_id
+            ).first()
+            new_edition = CodeEdition.objects.filter(
+                code=code, edition_id=new_edition_id
+            ).first()
+            if not old_edition or not new_edition:
+                logger.warning(
+                    "Skipping mapping_coverage %s -> %s: edition not loaded",
+                    old_edition_id, new_edition_id,
+                )
+                continue
+            EditionTransition.objects.get_or_create(
+                old_edition=old_edition, new_edition=new_edition,
+            )
+            created += 1
+        return created
+
     def _update_version_counts(
         self,
         prov_lookup: dict[tuple[str, str], CodeEditionProvision],
     ) -> None:
-        from django.db.models import Count
-
         counts = (
             CodeEditionProvisionVersion.objects
             .filter(provision__in=prov_lookup.values())

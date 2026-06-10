@@ -12,6 +12,8 @@ from core.models import (
     Regulation,
     RegulationClause,
 )
+from core.permalinks import provision_permalink_url
+from core.views.regulation import _group_provisions, _reduce_provision_ref
 
 
 @pytest.fixture
@@ -372,21 +374,17 @@ class TestEditionChainView:
 
 @pytest.mark.django_db
 class TestProvisionPermalinkUrl:
-    """``_provision_permalink_url`` must route division-less editions (OBC 1997,
+    """``provision_permalink_url`` must route division-less editions (OBC 1997,
     division="") to the no-division route — a ``<str:division>`` segment can't
     be empty, so the normal route raises ``NoReverseMatch``."""
 
     def test_with_division_uses_full_route(self):
-        from core.views.regulation import _provision_permalink_url
-
-        url = _provision_permalink_url("OBC_2024", "B", "3.1.1.1", 2)
+        url = provision_permalink_url("OBC_2024", "B", "3.1.1.1", 2)
         assert url == "/provision/OBC_2024/B/3.1.1.1/v2/"
 
     def test_empty_division_uses_no_division_route(self):
-        from core.views.regulation import _provision_permalink_url
-
         # Must not raise NoReverseMatch, and must omit the division segment.
-        url = _provision_permalink_url("OBC_1997", "", "3.1.1.1", 1)
+        url = provision_permalink_url("OBC_1997", "", "3.1.1.1", 1)
         assert url == "/provision/OBC_1997/3.1.1.1/v1/"
 
 
@@ -417,8 +415,6 @@ class TestReduceProvisionRef:
         ("Table-A-13", "Table-A-13"),
     ])
     def test_reduces_to_containing_article(self, ref: str, expected: str):
-        from core.views.regulation import _reduce_provision_ref
-
         assert _reduce_provision_ref(ref) == expected
 
 
@@ -432,8 +428,6 @@ class TestGroupProvisions:
         return [{"provision_id": pid, "division": div, "url": None} for pid, div in refs]
 
     def test_groups_by_division_then_part_in_order(self):
-        from core.views.regulation import _group_provisions
-
         groups = _group_provisions(self._provs(
             ("11.2.1.1.", "B"), ("3.1.3.1.", "B"), ("1.1.2.1.", "A"),
             ("3.2.2.6.", "B"),
@@ -448,14 +442,10 @@ class TestGroupProvisions:
         assert [p["provision_id"] for p in part3["provisions"]] == ["3.1.3.1.", "3.2.2.6."]
 
     def test_division_less_edition_labels_part_only(self):
-        from core.views.regulation import _group_provisions
-
         groups = _group_provisions(self._provs(("3.1.1.1.", ""), ("3.2.1.1.", "")))
         assert [g["label"] for g in groups] == ["Part 3"]
 
     def test_appendix_tables_join_division_part_9(self):
-        from core.views.regulation import _group_provisions
-
         tables = [{"table_id": "Table-A-10", "label": "Table A-10",
                    "division": "B", "owners": []}]
         # A Part 9 provision already present; the table should join it, not
@@ -467,8 +457,6 @@ class TestGroupProvisions:
         assert [t["table_id"] for t in part9["tables"]] == ["Table-A-10"]
 
     def test_appendix_table_alone_creates_part_9(self):
-        from core.views.regulation import _group_provisions
-
         tables = [{"table_id": "Table-A-8", "label": "Table A-8",
                    "division": "B", "owners": []}]
         groups = _group_provisions([], tables)
