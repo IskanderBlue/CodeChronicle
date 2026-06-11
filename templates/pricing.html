@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
 
+{% block title %}Pricing - CodeChronicle{% endblock %}
+
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="text-center mb-12">
@@ -11,73 +13,164 @@
         </p>
     </div>
 
-    <div
-        class="mt-12 space-y-4 sm:mt-16 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0">
+    {% comment %} Plan boxes with row-aligned comparison.  ONE grid holds
+       both boxes so every feature row shares its height across the two
+       columns — each Free entry reads directly against its Pro equivalent.
+       The "box" around each plan is drawn per cell (header carries
+       top/left/right, rows carry left/right, the last row adds bottom);
+       the current plan's box gets the secondary accent.  Rows come from
+       PRICING_COMPARISON in core/views/pages.py; free=None renders as the
+       muted dash. {% endcomment %}
+    <div class="mt-12 sm:mt-16 grid grid-cols-2 gap-x-3 sm:gap-x-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0">
         {% for plan in plans %}
         {% comment %} Current plan gets accent-ruled emphasis, not a coloured
            ribbon; price figure is serif. {% endcomment %}
-        <div class="border {% if plan.is_current %}border-secondary{% else %}border-rule{% endif %} divide-y divide-rule bg-surface-2">
-            <div class="p-6">
-                <div class="flex items-center justify-between gap-2">
-                    <h2 class="font-serif text-xl font-semibold text-ink">{{ plan.name }}</h2>
-                    {% if plan.is_current %}
-                    <span class="border border-secondary px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary">Current</span>
-                    {% endif %}
-                </div>
-                <p class="mt-8">
-                    <span class="font-serif text-4xl font-bold text-ink">${{ plan.price }}</span>
-                    <span class="text-base font-medium text-ink-3">/mo</span>
-                </p>
-
-                {% if plan.id == 'free' %}
-                <a href="{% url 'account_signup' %}"
-                    class="mt-8 block w-full border border-ink-2 py-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 text-center hover:bg-surface">
-                    {% if plan.is_current %}Current Plan{% else %}Choose Free{% endif %}
-                </a>
-                {% else %}
-                    {% if plan.is_current %}
-                    <form action="{% url 'core:stripe_portal' %}" method="POST">
-                        {% csrf_token %}
-                        <button type="submit"
-                            class="mt-8 block w-full border border-ink-2 py-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 text-center hover:bg-surface">
-                            Manage Subscription
-                        </button>
-                    </form>
-                    {% elif user.is_authenticated %}
-                    <form action="{% url 'core:create_checkout_session' %}" method="POST">
-                        {% csrf_token %}
-                        <button type="submit"
-                            class="mt-8 block w-full bg-secondary border border-transparent py-2 text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast text-center hover:bg-secondary-2">
-                            Upgrade to Pro
-                        </button>
-                    </form>
-                    {% else %}
-                    <a href="{% url 'account_signup' %}"
-                        class="mt-8 block w-full bg-secondary border border-transparent py-2 text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast text-center hover:bg-secondary-2">
-                        Sign up to upgrade
-                    </a>
-                    {% endif %}
+        <div class="border border-b-0 {% if plan.is_current %}border-secondary{% else %}border-rule{% endif %} bg-surface-2 p-4 sm:p-6">
+            <div class="flex items-center justify-between gap-2">
+                <h2 class="font-serif text-xl font-semibold text-ink">{{ plan.name }}</h2>
+                {% if plan.is_current %}
+                <span class="border border-secondary px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary">Current</span>
                 {% endif %}
             </div>
-            <div class="pt-6 pb-8 px-6">
-                <h3 class="font-mono text-[11px] font-semibold text-ink-2 uppercase tracking-[0.08em]">What's
-                    included</h3>
-                <ul role="list" class="mt-6 space-y-4">
-                    {% for feature in plan.features %}
-                    <li class="flex space-x-3">
-                        <svg class="flex-shrink-0 h-5 w-5 text-secondary"
-                            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd"
-                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                clip-rule="evenodd" />
-                        </svg>
-                        <span class="text-sm text-ink-2">{{ feature }}</span>
-                    </li>
-                    {% endfor %}
-                </ul>
-            </div>
+            <p class="mt-8">
+                <span class="font-serif text-4xl font-bold text-ink">${{ plan.price }}</span>
+                <span class="text-base font-medium text-ink-3">/mo</span>
+            </p>
+
+            {% if plan.id == 'free' %}
+            <a href="{% url 'account_signup' %}"
+                class="mt-8 block w-full border border-ink-2 py-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 text-center hover:bg-surface">
+                {% if plan.is_current %}Current Plan{% else %}Choose Free{% endif %}
+            </a>
+            {% else %}
+                {% if plan.is_current %}
+                <form action="{% url 'core:stripe_portal' %}" method="POST">
+                    {% csrf_token %}
+                    <button type="submit"
+                        class="mt-8 block w-full border border-ink-2 py-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 text-center hover:bg-surface">
+                        Manage Subscription
+                    </button>
+                </form>
+                {% elif user.is_authenticated %}
+                <form action="{% url 'core:create_checkout_session' %}" method="POST">
+                    {% csrf_token %}
+                    <button type="submit"
+                        class="mt-8 block w-full bg-secondary border border-transparent py-2 text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast text-center hover:bg-secondary-2">
+                        Upgrade to Pro
+                    </button>
+                </form>
+                {% else %}
+                <a href="{% url 'account_signup' %}"
+                    class="mt-8 block w-full bg-secondary border border-transparent py-2 text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast text-center hover:bg-secondary-2">
+                    Sign up to upgrade
+                </a>
+                {% endif %}
+            {% endif %}
         </div>
         {% endfor %}
+
+        {% for row in comparison %}
+        <div class="border-l border-r {% if free_current %}border-secondary{% else %}border-rule{% endif %} {% if forloop.last %}border-b{% endif %} bg-surface-2 px-4 sm:px-6 {% if forloop.last %}pb-6{% endif %}">
+            <p class="border-t border-rule py-4 text-sm {% if row.free %}text-ink-2{% else %}text-ink-3{% endif %}">
+                {% if row.free %}{{ row.free }}{% else %}&mdash;{% endif %}
+            </p>
+        </div>
+        <div class="border-l border-r {% if pro_current %}border-secondary{% else %}border-rule{% endif %} {% if forloop.last %}border-b{% endif %} bg-surface-2 px-4 sm:px-6 {% if forloop.last %}pb-6{% endif %}">
+            <p class="border-t border-rule py-4 text-sm text-ink-2">{{ row.pro }}</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% comment %} Lower half carried over from the early-access page: the
+       partner/support pitch and the roadmap stay relevant after the tier
+       split goes live. {% endcomment %}
+    <!-- Early Partner / Support Section -->
+    <div class="mt-12 border border-rule bg-surface-2 p-8">
+        <div class="text-center mb-6">
+            <h2 class="font-serif text-2xl font-bold text-ink">Support Development / Early Partner Access</h2>
+            <p class="mt-2 text-ink-2">
+                For individuals or firms who want to shape what gets built next.
+            </p>
+        </div>
+        <div class="grid sm:grid-cols-3 gap-6 mt-6">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 border border-rule text-secondary">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <h3 class="mt-3 text-sm font-semibold text-ink">Support Continued Development</h3>
+            </div>
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 border border-rule text-secondary">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                </div>
+                <h3 class="mt-3 text-sm font-semibold text-ink">Influence Roadmap & Coverage</h3>
+            </div>
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 border border-rule text-secondary">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <h3 class="mt-3 text-sm font-semibold text-ink">Early Access to Upcoming Features</h3>
+            </div>
+        </div>
+        <div class="mt-6 text-center text-sm text-ink-2">
+            <p>Interested in API access or firm/team usage?</p>
+        </div>
+        <div class="mt-4 text-center">
+            <a href="mailto:support@codechronicle.ca"
+                class="inline-flex items-center px-6 py-3 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2">
+                <svg class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Contact Us
+            </a>
+        </div>
+        <p class="mt-4 text-center text-xs text-ink-3 italic">
+            This product is being built in collaboration with practicing engineers. Early partners help shape what gets built next.
+        </p>
+    </div>
+
+    <!-- Roadmap -->
+    <div class="mt-12 border border-rule bg-surface-2 p-8">
+        <h2 class="font-serif text-2xl font-bold text-ink text-center mb-6">Roadmap</h2>
+
+        <div class="max-w-md mx-auto">
+            <ol class="space-y-3">
+                <li class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 flex items-center justify-center h-6 w-6 border border-rule text-secondary font-mono text-xs font-bold">1</span>
+                    <span class="text-sm text-ink-2">Ontario codes back to 1997</span>
+                </li>
+                <li class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 flex items-center justify-center h-6 w-6 border border-rule text-secondary font-mono text-xs font-bold">2</span>
+                    <span class="text-sm text-ink-2">Current Ontario code (OBC2024)</span>
+                </li>
+                <li class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 flex items-center justify-center h-6 w-6 border border-rule text-secondary font-mono text-xs font-bold">3</span>
+                    <span class="text-sm text-ink-2">Supplementary standards for 2012, 2006</span>
+                </li>
+                <li class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 flex items-center justify-center h-6 w-6 border border-rule text-secondary font-mono text-xs font-bold">4</span>
+                    <span class="text-sm text-ink-2">Ontario codes back to 1975</span>
+                </li>
+                <li class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 flex items-center justify-center h-6 w-6 border border-rule text-secondary font-mono text-xs font-bold">5</span>
+                    <span class="text-sm text-ink-2">National codes</span>
+                </li>
+                <li class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 flex items-center justify-center h-6 w-6 border border-rule text-secondary font-mono text-xs font-bold">6</span>
+                    <span class="text-sm text-ink-2">Other provincial codes</span>
+                </li>
+            </ol>
+        </div>
+
+        <p class="mt-8 text-center text-sm text-ink-3">
+            Roadmap subject to supporter requests.
+        </p>
     </div>
 </div>
 {% endblock %}

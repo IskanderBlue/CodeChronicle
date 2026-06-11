@@ -98,7 +98,7 @@ Split settings in `code_chronicle/settings/`: `base.py`, `development.py`, `prod
 
 ### Rate Limiting & Subscriptions
 
-Anonymous: 1 search/day (per IP). Authenticated free: 3/day. Pro (via Stripe/dj-stripe or `pro_courtesy` flag): unlimited. Enforced by `core.middleware.RateLimitMiddleware`.
+Anonymous: 1 search/day (per IP), enforced by `core.middleware.RateLimitMiddleware`. Authenticated users (free and Pro): unlimited searches. Content gating lives in `core/access.py` behind `FREE_TIER_GATING_ENABLED` (default off): when on, anonymous and non-Pro users are scoped to the editions in `FREE_TIER_CODE_NAMES` (OBC 2006); Pro (Stripe/dj-stripe or `pro_courtesy` flag) is unrestricted. Go-live checklist: `tasks/free-tier-obc2006-scope.md`.
 
 ## Temporary Files
 

@@ -2,8 +2,19 @@
    subtree around the active provision.
    Context: `sections` (list of dicts) with `provision_id`, `title`,
    `division`, `active_versions`, `is_active`; `active_node_id` /
-   `active_provision_id` for highlighting; `transition_active` flag. {% endcomment %}
-{% if sections %}
+   `active_provision_id` for highlighting; `transition_active` flag.
+   `locked_edition_name` set = the edition is outside the user's free-tier
+   scope; render the upsell teaser instead of content. {% endcomment %}
+{% if locked_edition_name %}
+<div class="border-l-[3px] border-secondary bg-surface-2 p-4 m-4">
+    <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{{ locked_edition_name }} is Pro content</h3>
+    <p class="mt-2 text-sm text-ink-2">
+        The free plan covers the Ontario Building Code 2006 and its amendment
+        history. <a href="{% url 'core:pricing' %}" class="font-semibold text-secondary underline hover:text-secondary-2">See plans</a>
+        to unlock every edition.
+    </p>
+</div>
+{% elif sections %}
 <div class="divide-y divide-rule">
     {% for section in sections %}
     <div id="section-{{ section.provision_id|slugify }}"

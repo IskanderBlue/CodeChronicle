@@ -1,142 +1,120 @@
 # Free tier scoped to OBC 2006; paid unrestricted
 
-**Status: DRAFT 2026-06-10 — direction set, open questions below need
-answers before implementation.**
+**Status: IMPLEMENTED 2026-06-10 behind `FREE_TIER_GATING_ENABLED` (default
+off — no user-facing change until flipped). Go-live checklist below.**
 
 ## Goal
 
-Replace the current count-based tier split with a **content-scoped** one:
+Replace the count-based tier split with a **content-scoped** one:
 
-- **Free** (anonymous + signed-in non-Pro): queries and browsing limited to
+- **Free** (anonymous + signed-in non-Pro — same scope for both; signup
+  only removes the anonymous daily cap): queries and browsing limited to
   **OBC 2006** — its provisions, its provision versions/amendment history,
   and the regulations that amend it. Nothing from other editions.
 - **Paid** (Stripe sub or `pro_courtesy`): unrestricted — all loaded
   editions, all surfaces.
 
-The pricing page must be updated to describe the new split.
+## Decisions (2026-06-10)
 
-## Where the code is today (verified 2026-06-10)
+1. **Anonymous vs signed-in free**: same OBC 2006 scope for both; signup
+   removes the anonymous per-IP daily cap only.
+2. **Lock vs hide**: teaser/lock. Free users *see* that other editions
+   exist (locked nav entries, "N results in OBC 2012" notice, 403 teaser
+   pages) with an upgrade CTA — never a silent omission.
+3. **Rollout**: built behind `FREE_TIER_GATING_ENABLED` (settings/env,
+   default off). Flip when Pro is purchasable; nothing changes for users
+   until then.
+4. **Guides**: deferred — no guide edition is loaded yet. Membership is
+   purely by `CodeEdition.code_name` in `FREE_TIER_CODE_NAMES`, so when a
+   2006 guide loads, adding its code_name to the env var puts it in free
+   scope without code changes.
 
-- `core/middleware.py` `RateLimitMiddleware`: anonymous users get
-  `RATE_LIMIT_ANONYMOUS`/day per IP on `POST /search-results/`;
-  **authenticated users are currently unlimited** (the free-3/day in
-  CLAUDE.md §Rate Limiting is stale). There is no content gating anywhere.
-- Pro check: `User.has_active_subscription` (`core/models.py:76`) —
-  `pro_courtesy` OR active dj-stripe subscription. Also referenced at
-  `api/views.py:82`.
-- The **live** pricing page is `templates/pricing_early_access.html`
-  (placeholder; "Early Access — free for now, unlimited"). The full Stripe
-  plan-cards template `templates/pricing.html` is preserved but unrouted
-  (`core/views/pages.py:22` renders the early-access one; TODO says restore
-  once the business bank account exists).
-- Editions are `CodeEdition` rows keyed `(code, edition_id)`; canonical name
-  is `code_name` = `f"{code.code}_{edition_id}"` (e.g. `OBC_2006`).
-  `config/code_metadata.py:get_applicable_codes(province, date)` picks
-  in-force editions for a search date.
+## What was built
 
-## Design
+### Gate (single source of truth)
 
-### Single source of truth for the gate
+`core/access.py`:
 
-One helper, e.g. `core/access.py`:
+- `user_is_unrestricted(user)` — True while gating is off, or for an
+  authenticated user with `has_active_subscription` (`pro_courtesy` OR
+  active dj-stripe sub).
+- `edition_allowed(user, code_name)` — unrestricted OR code_name in
+  `settings.FREE_TIER_CODE_NAMES`.
+- `partition_results(user, results)` — splits search results into
+  (allowed, {edition: dropped count}) for the teaser notice.
 
-```python
-FREE_TIER_CODE_NAMES = {"OBC_2006"}  # settings-backed, not hardcoded
+Settings (`code_chronicle/settings/base.py`): `FREE_TIER_GATING_ENABLED`
+(env, default False), `FREE_TIER_CODE_NAMES` (env CSV, default `OBC_2006`).
 
-def edition_allowed(user, code_edition: CodeEdition) -> bool: ...
-def user_is_unrestricted(user) -> bool:  # has_active_subscription
-```
+### Gated surfaces
 
-Every surface below calls this — no surface re-derives tier logic.
-`FREE_TIER_CODE_NAMES` should live in settings so the free window can widen
-without a deploy-time code change.
+1. **Search execution** (`services/search_service.py:run_search`): results
+   partitioned after `execute_search`, before formatting; locked counts
+   returned as `locked_editions` and rendered as a teaser notice in
+   `search_results_partial.html` (covers the all-locked case, e.g. a 2014
+   as-of date resolving entirely to OBC 2012). `applicable_codes`,
+   `top_results_metadata`, and SearchHistory `top_results` are filtered
+   too. Cross-edition transition pairs degrade safely: the formatter
+   already renders an unpaired member plainly (`api/formatters.py`
+   "Unpaired" branch).
+2. **Viewer section-content**: locked editions render an upsell teaser in
+   the partial (no content, no engagement event).
+3. **Viewer edition-nav**: adjacent locked editions stay *listed* but link
+   to pricing instead of carrying the `data-edition-result` payload.
+4. **Viewer edition-dates**: deliberately NOT gated — it exposes only
+   in-force date ranges (no provision content) and powers the teaser.
+5. **Provision permalink / regulation detail / edition chain**
+   (`core/views/regulation.py`): 403 with a `locked_edition.html` teaser
+   page naming the edition (gate runs after the lookup so the page can
+   name it; garbage URLs still 404 first).
+6. **API app**: nothing to gate — `/api/*` is already paid-only via
+   `_require_paid_api_access`, and paid means unrestricted.
 
-### Surfaces to gate (choke points)
+Tests: `core/tests/test_access.py` (helper units + all gated surfaces,
+pro/free/anonymous, gating on/off).
 
-1. **Search execution** (`core/views/search.py:search_results` →
-   `api/search.execute_search` → `get_applicable_codes`). For free users,
-   intersect the applicable-editions list with the free set *after* the
-   normal date-based resolution. When editions were dropped, say so in the
-   results header ("N results in OBC 2012 hidden — upgrade to see them" or
-   at minimum "results limited to OBC 2006 on the free plan") rather than
-   silently returning less. The AS-OF picker stays usable — a 2014 as-of
-   date for a free user resolves to OBC 2012, which then filters to
-   nothing; that case needs an explicit notice, not an empty result.
-2. **Viewer endpoints** (`/viewer/edition-nav/`, `/viewer/edition-dates/`,
-   `/viewer/section-content/` — `core/urls.py:19-21`): reject or lock
-   requests for non-free editions; edition-nav should still *list* other
-   editions but render them as locked/upsell entries (see teaser question
-   below).
-3. **Provision permalink** (`/provision/<code_edition>/…` —
-   `core/urls.py:27-40`): `code_edition` is in the URL; gate on it. Free
-   users keep full version-history access *within* OBC 2006 (that history
-   — amendments — is explicitly part of the free offer).
-4. **Regulation detail** (`/regulation/<pk>/`): allowed for free iff the
-   regulation belongs to / amends OBC 2006 (`Regulation.code_edition` FK).
-5. **Edition chain** (`/edition/<pk>/chain/`): gate on the edition.
-6. **Cross-edition links** the UI emits: transition-compare pairs and the
-   incoming provision-lineage rows (`tasks/provision-lineage.md`) will link
-   2006 → 2012. For free users these must render as locked upsell links,
-   not 403 surprises after click-through. Lineage implementation should
-   take the gate helper as a rendering input from day one.
-7. **API app** (`/api/search`, `/api/codes`, `/api/history`): mirror the
-   same filtering; `/api/codes` should mark non-free editions as
-   `locked: true` rather than omitting them.
+### Lineage / cross-edition links (pending integration)
 
-### What does NOT change
+The provision-lineage UI (other branch work, `core/provision_lineage.py`)
+must render cross-edition links through `core.access.edition_allowed` from
+day one: a 2006→2012 lineage link for a free user renders as a locked
+upsell link, not a 403 surprise after click-through. The 403 teaser is the
+backstop if a link slips through ungated.
 
-- LLM parsing, QueryCache (caches the *parse*, which is tier-independent).
-- SearchHistory recording.
-- Loading/admin paths.
+## Go-live checklist (flip `FREE_TIER_GATING_ENABLED=True`)
 
-### Pricing page
+Blocked on Pro being purchasable (business bank account → route
+`templates/pricing.html` live, `core/views/pages.py:22`). Then:
 
-- Update **`pricing_early_access.html`** (the live page) — its "Early
-  Access = unlimited everything" card is what this change invalidates.
-- Update **`pricing.html`** (the dormant Stripe page) in the same pass so
-  the two don't skew: Free card lists "OBC 2006 — all provisions, full
-  amendment history"; Pro card lists "every loaded edition (2006, 2012, …),
-  cross-edition history & compare".
-- Decide whether this change is the trigger to route `pricing.html` live
-  (it only makes sense to gate content once there's a purchasable Pro —
-  see open questions).
-- Also sweep other copy stating the old limits: `templates/base.html`,
-  `templates/settings.html`, rate-limit upsell partial
-  (`templates/partials/search_results_partial.html`), CLAUDE.md §Rate
-  Limiting (already stale), AGENTS.md:33.
-
-### Rate limits
-
-Content scoping replaces the *content* dimension only. Decide whether the
-anonymous per-IP daily cap stays as an abuse guard (recommended: yes, keep
-it, it's orthogonal). The middleware grows the edition gate or a new
-`core/access.py` is consulted from the views — prefer the views/service
-layer over the middleware, since the gate needs route params (edition ids)
-that the middleware would have to re-parse.
-
-## Open questions (blocking)
-
-1. **Anonymous vs signed-in free** — same OBC 2006 scope for both, with
-   signup only removing the daily cap? Or is sign-in required for any
-   browsing beyond search results?
-2. **Lock vs hide** — do free users *see* that 2012 results/links exist
-   (teaser + upgrade CTA — better conversion, more UI work) or are other
-   editions invisible? Recommendation: teaser, since lineage/compare
-   already surface the cross-edition structure.
-3. **Stripe go-live coupling** — gating content while `pricing` still
-   renders the early-access placeholder means free users lose access with
-   nothing to buy. Does this task wait on the bank account / live
-   `pricing.html`, or do early-access signups get `pro_courtesy`
-   grandfathered?
-4. **Guides** (`CodeEdition.is_guide`) — does the 2006 *guide* edition (if
-   loaded) count as part of the free scope?
-
-## Test plan
-
-- Free user: search with 2014 as-of date → OBC 2012 filtered, notice shown.
-- Free user: direct URL to a 2012 provision permalink / regulation /
-  viewer section-content → locked response (and HTMX partial, not JSON,
-  for HTMX requests — same split as `RateLimitMiddleware`).
-- Pro user (`pro_courtesy=True` fixture, as in `api/tests/test_api.py:21`):
-  all of the above unrestricted.
-- Pricing page renders new copy in both templates.
+1. **Grandfather or notify existing accounts.** Flipping the flag drops
+   every non-`pro_courtesy` account to OBC 2006. Decide per-account
+   `pro_courtesy` grandfathering for early-access signups, or email them
+   before the flip.
+2. ~~Restore the Stripe pricing page~~ **DONE 2026-06-10**: the `pricing`
+   view (`core/views/pages.py`) now branches on the flag — off serves the
+   early-access placeholder, on serves `pricing.html` with the
+   content-scoped Free ($0, OBC 2006) / Pro ($29, every edition) cards
+   (`_pricing_plans`). Page and gate flip together; no skew possible.
+   Verify the $29 price and feature copy are still right before go-live.
+3. **Stripe must actually work** when the flag flips: the Pro card's
+   "Upgrade to Pro" posts to `create_checkout_session`, which needs live
+   keys + `STRIPE_PRO_PRICE_ID` (blocked on the business bank account).
+4. Sweep remaining copy if wording changed: `templates/base.html`,
+   `templates/settings.html`, the rate-limit upsell partial.
+   `pricing_early_access.html` needs no retirement — it simply stops
+   being served.
+5. Set `FREE_TIER_GATING_ENABLED=True` in the production env; confirm
+   `FREE_TIER_CODE_NAMES` (add the 2006 guide's code_name if loaded and
+   it should be free).
+6. Smoke-test the teaser surfaces as an anonymous user: search with a
+   2014 as-of date (notice + zero results), a 2012 permalink (403 teaser),
+   viewer next-edition (locked link), `/pricing/` (plan cards).
+7. **Revisit the example-query chips** (`EXAMPLE_QUERIES`,
+   `core/views/search.py`): the transition-demo chip ("when must a
+   maintenance inspection be conducted, Ontario, 2014") resolves to the
+   OBC 2006 C ↔ 2012 C 1.10.2.4. cross-edition pair — post-flip, a free
+   user gets the 2006 side plus the locked-results teaser instead of the
+   full compare card. The corpus has only 8 overlapping mapping pairs
+   total (2026-06-11 scan), none entirely inside OBC 2006, so a
+   free-tier-safe transition demo doesn't exist yet; accept the teaser or
+   revisit once more transitions load.
