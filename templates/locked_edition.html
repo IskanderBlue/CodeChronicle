@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ edition_display_name }} — Pro content - CodeChronicle{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-16">
+    <div class="border border-rule bg-surface-2">
+        <div class="border-l-[3px] border-secondary p-8">
+            <div class="flex items-start gap-3">
+                <svg class="h-6 w-6 flex-shrink-0 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <div>
+                    <h1 class="font-mono text-[12px] font-semibold uppercase tracking-[0.08em] text-ink">
+                        {{ edition_display_name }} is Pro content
+                    </h1>
+                    <p class="mt-3 font-serif text-base text-ink-2">
+                        The free plan covers the Ontario Building Code 2006 &mdash;
+                        all of its provisions and its full amendment history.
+                        Content from other editions, including this page, is part
+                        of the Pro plan.
+                    </p>
+                    <p class="mt-4 text-sm text-ink-2">
+                        <a href="{% url 'core:pricing' %}" class="font-semibold text-secondary underline hover:text-secondary-2">See plans</a>
+                        {% if not user.is_authenticated %}
+                        or <a href="{% url 'account_login' %}" class="font-semibold text-secondary underline hover:text-secondary-2">log in</a>
+                        if you already have access.
+                        {% else %}
+                        to unlock every edition.
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -7,7 +7,10 @@ import json
 from django.db import connection
 from ninja import NinjaAPI, Schema
 
+from core.events import record_event
 from core.ip_utils import extract_client_ip
+from core.models import CodeEdition, EngagementEvent, SearchHistory
+from services.search_service import PROVINCE_NAMES, run_search
 
 api = NinjaAPI(
     title="CodeChronicle API",
@@ -118,8 +121,6 @@ def _require_paid_api_access(request):
 
 def _load_code_rows_from_db() -> list[dict[str, str | int]]:
     """Primary source for code listings."""
-    from core.models import CodeEdition
-
     editions = CodeEdition.objects.select_related("code").all()
     rows: list[dict[str, str | int]] = []
     for edition in editions:
@@ -179,12 +180,27 @@ def health_check(request):
     return {"status": "ok", "database": "ok"}
 
 
+def _normalize_province(value: str | None) -> str | None:
+    """Uppercase a province override; drop anything not a known code.
+
+    ``date`` gets no such treatment here on purpose — ``run_search``
+    validates it and returns a correctable message, whereas a silently
+    dropped override would fall back to the LLM-parsed date.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    code = value.strip().upper()
+    return code if code in PROVINCE_NAMES else None
+
+
 def _extract_search_params_from_request(request) -> dict[str, str | None]:
     """
     Extract query, date, and province from form-encoded or JSON bodies.
 
     Returns a dict with keys ``query``, ``date``, and ``province``.
     ``query`` is an empty string when absent; the other two are ``None``.
+    ``province`` is normalized to a known upper-case two-letter code or
+    ``None``.
     """
     params: dict[str, str | None] = {"query": "", "date": None, "province": None}
 
@@ -193,7 +209,7 @@ def _extract_search_params_from_request(request) -> dict[str, str | None]:
     if isinstance(form_query, str) and form_query.strip():
         params["query"] = form_query.strip()
         params["date"] = request.POST.get("date") or None
-        params["province"] = request.POST.get("province") or None
+        params["province"] = _normalize_province(request.POST.get("province"))
         return params
 
     raw_body = request.body.decode("utf-8").strip() if request.body else ""
@@ -216,9 +232,7 @@ def _extract_search_params_from_request(request) -> dict[str, str | None]:
     if isinstance(date, str) and date.strip():
         params["date"] = date.strip()
 
-    province = body.get("province")
-    if isinstance(province, str) and province.strip():
-        params["province"] = province.strip()
+    params["province"] = _normalize_province(body.get("province"))
 
     return params
 
@@ -248,8 +262,6 @@ def search(request):
             "error": "Query is required.",
             "meta": None,
         }
-
-    from services.search_service import run_search
 
     ip = extract_client_ip(request.META)
 
@@ -290,8 +302,6 @@ def get_search_history(request):
     if denied:
         return denied
 
-    from core.models import SearchHistory
-
     history = SearchHistory.objects.filter(user=request.user).order_by("-timestamp")[:20]
 
     results = [
@@ -317,9 +327,6 @@ def record_engagement(request, payload: EventPayload):
     included.  It executes no search, so ``RateLimitMiddleware`` (which only
     guards ``/search-results/``) leaves it untouched.
     """
-    from core.events import record_event
-    from core.models import EngagementEvent
-
     valid = {choice.value for choice in EngagementEvent.EventType}
     if payload.event_type not in valid:
         return 400, {"success": False, "error": f"Unknown event_type: {payload.event_type}"}

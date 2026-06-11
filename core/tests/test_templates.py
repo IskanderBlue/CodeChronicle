@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Any
 
 import pytest
 from django.template import Context, Template
@@ -9,7 +10,11 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    CodeEditionProvisionVersionClause,
+    Regulation,
+    RegulationClause,
 )
+from core.provision_lineage import LineageDirection, LineageLink
 
 ELAWS_SAMPLE = (
     '<p class="Psection-e">2.2.1.1. Objectives</p>'
@@ -604,6 +609,311 @@ def test_provenance_banner_shows_base_regulation():
     assert "403/97" in html
     assert "Original" in html
     assert "base regulation" in html
+
+
+def _lineage_link(**overrides: Any) -> LineageLink:
+    """An unsaved LineageLink wired to OBC 2012 B 9.10.18.7. — the template
+    only reads attributes, so nothing touches the DB."""
+    code = Code(code="OBC", display_name="Ontario Building Code")
+    edition = CodeEdition(
+        code=code, edition_id="2012", year=2012, effective_date=date(2014, 1, 1),
+    )
+    fields: dict[str, Any] = {
+        "provision": CodeEditionProvision(
+            provision_id="9.10.18.7.", level="article", division="B",
+        ),
+        "edition": edition,
+        "url": "/provision/OBC_2012/B/9.10.18.7./v0/",
+        "version": 0,
+        "mapping_type": "renumbered",
+        "same_id": False,
+        "same_edition": False,
+        "verb": "renumbered to",
+        "locked": False,
+    }
+    fields.update(overrides)
+    return LineageLink(**fields)
+
+
+def _rail(result_extra):
+    base = {"id": "9.10.18.6.", "division": "B", "code_edition": "OBC_2006"}
+    return render_to_string(
+        "partials/_provenance_rail.html", {"result": {**base, **result_extra}}
+    )
+
+
+class TestLineageRows:
+    """Lineage rows on the provenance rail — links above/below the chain."""
+
+    def test_linked_successor_row(self):
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[_lineage_link()],
+        )})
+        assert "OBC 2012" in html
+        assert "renumbered to" in html
+        assert "/provision/OBC_2012/B/9.10.18.7./v0/" in html
+        assert "9.10.18.7." in html
+        # No version chip: the other edition's version numbering would read
+        # as this edition's (the URL still pins the hand-off version).
+        assert "View this version" not in html
+        # Same division as the source result → no redundant division label.
+        assert "Div. B" not in html
+
+    def test_same_id_row_uses_continues_verb(self):
+        link = _lineage_link(mapping_type="", same_id=True, verb="continues as")
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[link],
+        )})
+        assert "continues as" in html
+        # The verb carries the meaning; no "(same number)" suffix.
+        assert "(same number)" not in html
+
+    def test_outside_corpus_leg_renders_extra_row(self):
+        # One verdict, two legs (the real 2006 B 12.3.4.6. split: one leg
+        # in-Code, one delegated to SB-10): the linked row AND the
+        # out-of-corpus leg marker render together, naming the target
+        # document when the disposition recorded it.
+        link = _lineage_link(mapping_type="split", verb="split into")
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[link], outside_corpus=True,
+            outside_reference="SB-10",
+        )})
+        assert "split into" in html
+        assert "Some content moved to SB-10, not yet covered" in html
+
+    def test_outside_corpus_leg_without_reference_stays_generic(self):
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[_lineage_link()], outside_corpus=True,
+        )})
+        assert "Some content moved to a document not yet covered" in html
+
+    def test_not_processed_marker_names_the_reference(self):
+        # Standalone not_processed (whole content left the corpus, e.g.
+        # Part 12 → SB-12): the no-data marker names the destination
+        # instead of the generic "not yet mapped" wording.
+        code = Code(code="OBC")
+        e2012 = CodeEdition(code=code, edition_id="2012", year=2012,
+                            effective_date=date(2014, 1, 1))
+        html = _rail({"lineage_successors": LineageDirection(
+            state="no_data_yet", edition=e2012, outside_reference="SB-12",
+        )})
+        assert "Content moved to SB-12, not yet covered" in html
+        assert "not yet mapped" not in html
+
+    def test_division_crossing_link_names_target_division(self):
+        link = _lineage_link(
+            provision=CodeEditionProvision(
+                provision_id="3.1.1.3.", level="article", division="C",
+            ),
+            url="/provision/OBC_2012/C/3.1.1.3./v0/",
+        )
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[link],
+        )})
+        assert "Div. C" in html
+
+    def test_locked_link_upsells_to_pricing(self):
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[_lineage_link(locked=True)],
+        )})
+        assert "Pro" in html
+        assert "/pricing/" in html
+        # Never the raw target URL — it would 403 after click-through.
+        assert "/provision/OBC_2012/B/9.10.18.7./v0/" not in html
+
+    def test_intra_edition_renumber_reads_this_edition(self):
+        link = _lineage_link(same_edition=True, verb="renumbered from")
+        html = _rail({"lineage_predecessors": LineageDirection(
+            state="linked", links=[link],
+        )})
+        assert "This edition" in html
+
+    def test_marker_rows(self):
+        code = Code(code="OBC")
+        e2006 = CodeEdition(code=code, edition_id="2006", year=2006,
+                            effective_date=date(2006, 12, 31))
+        e2012 = CodeEdition(code=code, edition_id="2012", year=2012,
+                            effective_date=date(2014, 1, 1))
+        pred_disc = _rail({"lineage_predecessors": LineageDirection(
+            state="discontinued", edition=e2006,
+        )})
+        assert "New in this edition" in pred_disc
+        assert "no OBC 2006 predecessor" in pred_disc
+        succ_disc = _rail({"lineage_successors": LineageDirection(
+            state="discontinued", edition=e2012,
+        )})
+        assert "Discontinued" in succ_disc
+        assert "no OBC 2012 successor" in succ_disc
+        not_mapped = _rail({"lineage_successors": LineageDirection(
+            state="no_data_yet", edition=e2012,
+        )})
+        assert "Transition to OBC 2012 not yet mapped" in not_mapped
+        beyond_corpus = _rail({"lineage_successors": LineageDirection(
+            state="no_data_yet", edition=None,
+        )})
+        assert "Later editions not yet mapped" in beyond_corpus
+        first_edition = _rail({"lineage_predecessors": LineageDirection(
+            state="endpoint",
+        )})
+        assert "First edition" in first_edition
+
+    def test_successor_endpoint_renders_nothing(self):
+        html = _rail({"lineage_successors": LineageDirection(state="endpoint")})
+        plain = _rail({})
+        assert html == plain
+
+
+def _band(result_extra: dict[str, Any], **context: Any) -> str:
+    base = {
+        "version": CodeEditionProvisionVersion(
+            version=0,
+            effective_date=date(2014, 1, 1),
+            ineffective_date=date(2025, 1, 1),
+        ),
+        "copy_text": "x",
+    }
+    return render_to_string(
+        "partials/_provenance_band.html",
+        {"result": {**base, **result_extra}, **context},
+    )
+
+
+class TestProvenanceBand:
+    """The IN FORCE band — label and commencement ⓘ edges."""
+
+    def test_amended_label_dropped_in_compare_panes(self):
+        # The side-by-side transition panes equalize band widths: the pane
+        # header already names the amending regulation, so the label drops
+        # the "· amended" suffix there (its width made the two bands wrap,
+        # and so size, differently at equal pane widths).
+        result = {"clause": {"commencement": None}}
+        assert "amended" in _band(result)
+        assert "amended" not in _band(result, compare_pane=True)
+
+    def test_from_info_renders_for_base_versions(self):
+        # A base version proves its From edge with the base regulation's own
+        # commencement record (formatter fallback) — same popup as a clause.
+        record = {
+            "regulation": "332/12", "clause": "4.4.1.1(1)", "is_default": True,
+            "effective_date": "2014-01-01", "source": "parsed",
+            "commencement_clause": "Comes into force on January 1, 2014.",
+        }
+        html = _band({"from_commencement": record})
+        assert "Why this date?" in html
+        assert "Comes into force on January 1, 2014." in html
+        assert "O. Reg. 332/12" in html
+
+    def test_until_info_renders_without_next_version(self):
+        # An edition-final version proves its Until edge with the replacing
+        # edition's base regulation — no next_version needed.
+        record = {
+            "regulation": "163/24", "clause": "1(1)", "is_default": True,
+            "effective_date": "2025-01-01", "source": "parsed",
+            "commencement_clause": "Comes into force on January 1, 2025.",
+        }
+        html = _band({
+            "until_commencement": record,
+            "until_commencement_date": date(2025, 1, 1),
+        })
+        assert "Why does it end here?" in html
+        assert "Comes into force on January 1, 2025." in html
+        assert "1 January 2025" in html
+
+    def test_never_in_force_version_does_not_claim_a_period(self):
+        # An empty window — zero-duration or revoked before commencement —
+        # is a chain link that never operated: the band drops the in-force
+        # claim and the dates get honest edge labels instead of From/Until.
+        html = _band({
+            "version": CodeEditionProvisionVersion(
+                version=1,
+                effective_date=date(2016, 1, 1),
+                ineffective_date=date(2014, 1, 1),
+            ),
+            "clause": {"commencement": None},
+        })
+        assert "Never in force" in html
+        assert "amended" not in html
+        assert "Scheduled" in html
+        assert "Superseded" in html
+        assert "1 January 2016" in html
+        assert "1 January 2014" in html
+        # No duration for a period that never ran ("0 minutes" was nonsense).
+        assert "Dur." not in html
+
+
+class TestNeverInForceRail:
+    """The PROVENANCE box must not assert commencement for never-operated
+    versions — neither the amendment-chain rows nor the Next row."""
+
+    @pytest.fixture
+    def chain(self, db):
+        code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+        edition = CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        prov = CodeEditionProvision.objects.create(
+            edition=edition, provision_id="1.10.2.4.", level="article", division="C",
+        )
+        v0 = CodeEditionProvisionVersion.objects.create(
+            provision=prov, version=0,
+            effective_date=date(2011, 1, 1), ineffective_date=date(2016, 1, 1),
+        )
+        # Revoked before commencement: due 2016-01-01, edition replaced 2014.
+        v1 = CodeEditionProvisionVersion.objects.create(
+            provision=prov, version=1,
+            effective_date=date(2016, 1, 1), ineffective_date=date(2014, 1, 1),
+        )
+        reg = Regulation.objects.create(
+            reg_id="315/10", edition=edition, role="amendment",
+            effective_date=date(2011, 1, 1),
+        )
+        clause = RegulationClause.objects.create(regulation=reg, clause_id="3(3)")
+        CodeEditionProvisionVersionClause.objects.create(
+            version=v1, clause=clause, apply_order=0,
+        )
+        return v0, v1
+
+    def test_chain_row_and_next_row_say_never_in_force(self, chain):
+        v0, v1 = chain
+        html = _rail({
+            "version": v0,
+            "amendment_chain": [v0, v1],
+            "next_version": v1,
+        })
+        assert "Never in force" in html        # chain row for v1
+        assert "(never in force)" in html      # Next row
+        assert "In force 2016-01-01" not in html
+        assert "not in force until" not in html
+
+    def test_operating_next_version_keeps_the_date(self, chain):
+        v0, v1 = chain
+        v1.effective_date = date(2013, 1, 1)
+        v1.ineffective_date = date(2016, 1, 1)
+        html = _rail({
+            "version": v0,
+            "amendment_chain": [v0, v1],
+            "next_version": v1,
+        })
+        assert "In force 2013-01-01" in html
+        assert "(not in force until 2013-01-01)" in html
+        assert "Never in force" not in html
+
+
+def test_permalink_nav_chip_title_says_never_in_force():
+    html = render_to_string(
+        "regulation/_permalink_nav_item.html",
+        {"item": {"provision_id": "1.10.2.4.", "versions": [
+            {"version": 0, "effective_date": date(2011, 1, 1),
+             "ineffective_date": date(2016, 1, 1), "never_in_force": False,
+             "url": "/x/v0/"},
+            {"version": 1, "effective_date": date(2016, 1, 1),
+             "ineffective_date": date(2014, 1, 1), "never_in_force": True,
+             "url": "/x/v1/"},
+        ]}},
+    )
+    assert "in force 1 Jan 2011 to 1 Jan 2016" in html
+    assert 'title="never in force"' in html
 
 
 def test_revoked_version_renders_tombstone_warning():

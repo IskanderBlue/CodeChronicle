@@ -8,6 +8,7 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from core.ip_utils import extract_client_ip
+from core.models import SearchHistory
 
 
 class RateLimitMiddleware:
@@ -48,7 +49,6 @@ class RateLimitMiddleware:
                     "rate_limited": True,
                     "signup_url": payload.get("signup_url", ""),
                     "login_url": payload.get("login_url", ""),
-                    "upgrade_url": payload.get("upgrade_url", ""),
                 },
                 status=status_code,
             )
@@ -56,9 +56,10 @@ class RateLimitMiddleware:
 
     def check_rate_limit(self, request):
         """Check if user has exceeded their daily limit."""
-        from core.models import SearchHistory
-
-        today = timezone.now().date()
+        # Range filter instead of __date so the timestamp index serves the
+        # count (__date casts the column). Day boundary is UTC midnight,
+        # matching what __date did under TIME_ZONE="UTC".
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
         if request.user.is_authenticated:
             return None  # All authenticated users are unlimited
@@ -69,7 +70,7 @@ class RateLimitMiddleware:
                 return None
 
             search_count = SearchHistory.objects.filter(
-                ip_address=ip, user__isnull=True, timestamp__date=today
+                ip_address=ip, user__isnull=True, timestamp__gte=today_start
             ).count()
 
             limit = settings.RATE_LIMIT_ANONYMOUS

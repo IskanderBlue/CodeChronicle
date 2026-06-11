@@ -12,8 +12,16 @@
 <div class="@container border border-secondary bg-secondary-soft" x-data="{ copied: false, cmOpen: false, cmOpenUntil: false }">
     <div class="flex flex-wrap items-stretch">
         {# Label cell — solid accent fill #}
+        {% comment %} compare_pane: the side-by-side transition panes drop the
+           "· amended" suffix — the pane header already names the amending
+           regulation, and the suffix's extra width made the two bands wrap
+           (and so size) differently at equal pane widths. {% endcomment %}
+        {% comment %} never_in_force: an empty half-open window (zero-duration
+           or revoked before commencement) — the version is a chain link that
+           never operated, so the band must not assert an in-force period.
+           Edge labels switch to Scheduled/Superseded; rail and Dur. drop. {% endcomment %}
         <div class="flex items-center bg-secondary px-3.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-secondary-contrast">
-            {% if result.clause %}In force &middot; amended{% else %}In force{% endif %}
+            {% if result.version.never_in_force %}Never in force{% elif result.clause and not compare_pane %}In force &middot; amended{% else %}In force{% endif %}
         </div>
 
         {# FROM ─ rail ─ UNTIL ─ DURATION #}
@@ -21,13 +29,14 @@
             {% if result.version %}
             <div class="shrink-0">
                 <div class="flex items-center gap-1">
-                    <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">From</span>
+                    <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">{% if result.version.never_in_force %}Scheduled{% else %}From{% endif %}</span>
                     {% comment %} Commencement provenance — the *why* behind this
-                       version's in-force date.  The clause that produced this
-                       version carries the resolved CommencementProvenance entry
-                       (RegulationClause.commencement); the button opens the same
-                       popup the regulation page uses. {% endcomment %}
-                    {% if result.clause.commencement %}
+                       version's in-force date.  For an amended version it's the
+                       producing clause's resolved CommencementProvenance entry;
+                       a base version carries the base regulation's own record
+                       (both resolved into from_commencement by the formatter);
+                       the button opens the same popup the regulation page uses. {% endcomment %}
+                    {% if result.from_commencement %}
                     <button type="button" @click.stop="cmOpen = true"
                         title="Why this date? — commencement provenance"
                         class="text-ink-3 hover:text-secondary cursor-pointer">
@@ -44,7 +53,7 @@
                is wide (@xl ≈ 36rem); below that it's hidden so the narrow
                side-by-side compare panes get a compact date band instead of a
                flex-1 rail that wraps asymmetrically between the two versions. {% endcomment %}
-            {% if result.band %}
+            {% if result.band and not result.version.never_in_force %}
             <div class="relative hidden h-1.5 self-center bg-rule-2 @xl:block @xl:min-w-[100px] @xl:flex-1">
                 <div class="absolute inset-y-0 bg-secondary" style="left: {{ result.band.span_left_pct }}%; width: {{ result.band.span_width_pct }}%;"></div>
                 {% if result.band.tick_pct is not None %}
@@ -55,12 +64,12 @@
 
             <div class="shrink-0">
                 <div class="flex items-center gap-1">
-                    <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">Until</span>
+                    <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">{% if result.version.never_in_force %}Superseded{% else %}Until{% endif %}</span>
                     {% comment %} Proof of the END: this version stops the day the
-                       NEXT version comes into force, so the Until popup shows the
-                       next version's CommencementProvenance (resolved in the view
-                       as result.next_commencement). {% endcomment %}
-                    {% if result.next_commencement %}
+                       NEXT version comes into force — or, for an edition-final
+                       version, the day the next base edition replaces it.  Both
+                       resolve into result.until_commencement (formatter). {% endcomment %}
+                    {% if result.until_commencement %}
                     <button type="button" @click.stop="cmOpenUntil = true"
                         title="Why does it end here? — next version's commencement"
                         class="text-ink-3 hover:text-secondary cursor-pointer">
@@ -75,7 +84,7 @@
             {% comment %} Duration: hidden in the compact (narrow-container) band —
                it's derivable from From/Until, and its varying width ("4 years" vs
                "1 year") was the other driver of asymmetric wrap between panes. {% endcomment %}
-            {% if result.version.ineffective_date %}
+            {% if result.version.ineffective_date and not result.version.never_in_force %}
             <div class="hidden shrink-0 @xl:block">
                 <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">Dur.</div>
                 <div class="font-mono text-[14px] font-semibold leading-tight text-ink">{{ result.version.effective_date|timesince:result.version.ineffective_date }}</div>
@@ -106,10 +115,10 @@
             <svg x-show="copied" x-cloak class="h-4 w-4 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
         </button>
     </div>
-    {% if result.clause.commencement %}
-    {% include "partials/_commencement_modal.html" with commencement=result.clause.commencement effective_date=result.version.effective_date %}
+    {% if result.from_commencement %}
+    {% include "partials/_commencement_modal.html" with commencement=result.from_commencement effective_date=result.version.effective_date %}
     {% endif %}
-    {% if result.next_commencement %}
-    {% include "partials/_commencement_modal.html" with commencement=result.next_commencement effective_date=result.next_version.effective_date state="cmOpenUntil" %}
+    {% if result.until_commencement %}
+    {% include "partials/_commencement_modal.html" with commencement=result.until_commencement effective_date=result.until_commencement_date state="cmOpenUntil" %}
     {% endif %}
 </div>

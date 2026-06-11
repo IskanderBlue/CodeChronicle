@@ -10,6 +10,12 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
+from api.formatters import (
+    _build_copy_text,
+    replacement_commencement,
+    select_commencement_record,
+)
+from core.access import edition_allowed
 from core.events import record_event
 from core.models import (
     CodeEdition,
@@ -20,6 +26,8 @@ from core.models import (
     Regulation,
     RegulationClause,
 )
+from core.permalinks import provision_permalink_url
+from core.provision_lineage import annotate_lineage_locks, resolve_lineage
 
 from .search import _active_versions
 
@@ -41,27 +49,6 @@ from .search import _active_versions
 _ITEM_RE = re.compile(r"\(Item \d+\)")
 _PAREN_RE = re.compile(r"\([^)]*\)")
 _TABLE_LETTER_RE = re.compile(r"[A-Z]\.$")
-
-
-def _provision_permalink_url(
-    code_name: str, division: str, provision_id: str, version: int
-) -> str:
-    """Reverse a provision permalink, routing around empty divisions.
-
-    A ``<str:division>`` path segment can't be empty, so division-less
-    editions (e.g. OBC 1997, ``division=""``) must use the sibling
-    ``provision_permalink_no_division`` route or ``reverse`` raises
-    ``NoReverseMatch``.
-    """
-    if division:
-        return reverse(
-            "core:provision_permalink",
-            args=[code_name, division, provision_id, version],
-        )
-    return reverse(
-        "core:provision_permalink_no_division",
-        args=[code_name, provision_id, version],
-    )
 
 
 def _reduce_target_id(clause: RegulationClause) -> str:
@@ -118,7 +105,7 @@ def _fallback_targets(clause: RegulationClause) -> list[dict[str, Any]]:
     )
     return [{
         "label": f"{prov.get_level_display()} {prov.provision_id}".strip(),
-        "url": _provision_permalink_url(
+        "url": provision_permalink_url(
             prov.edition.code_name, prov.division, prov.provision_id, chosen.version
         ),
         "level": prov.level,
@@ -210,7 +197,7 @@ def _clause_targets(clause: RegulationClause) -> list[dict[str, Any]]:
         label = f"{prov.get_level_display()} {prov.provision_id}".strip()
         targets.append({
             "label": label,
-            "url": _provision_permalink_url(
+            "url": provision_permalink_url(
                 prov.edition.code_name, prov.division, prov.provision_id, v.version
             ),
             "level": prov.level,
@@ -298,7 +285,8 @@ def _related_links(
                 "version": v.version,
                 "effective_date": v.effective_date,
                 "ineffective_date": v.ineffective_date,
-                "url": _provision_permalink_url(
+                "never_in_force": v.never_in_force,
+                "url": provision_permalink_url(
                     code_name, provision.division, provision.provision_id, v.version
                 ),
             }
@@ -325,7 +313,7 @@ def _sibling_link(
     return {
         "provision_id": provision.provision_id,
         "version": chosen.version,
-        "url": _provision_permalink_url(
+        "url": provision_permalink_url(
             code_name, provision.division, provision.provision_id, chosen.version
         ),
     }
@@ -337,17 +325,17 @@ def _provenance_result(
     code_name: str,
     division: str,
     provision_id: str,
+    user: Any = None,
 ) -> dict[str, Any]:
     """The ``result`` shape the search provenance banner expects.
 
     Mirrors the subset of ``api.formatters._format_single_result`` the
     ``_provenance_banner.html`` partial reads — version, amending clause,
-    base regulation, full chain and next version — so the permalink can
-    reuse the same banner.  ``band`` is None (no query date here), which the
-    partial already treats as "no query-date rail / coverage cell".
+    base regulation, full chain, next version, and lineage rows — so the
+    permalink can reuse the same banner.  ``band`` is None (no query date
+    here), which the partial already treats as "no query-date rail /
+    coverage cell".  ``user`` feeds the free-tier gate on lineage links.
     """
-    from api.formatters import _build_copy_text
-
     chain = list(matched.versions.order_by("version"))
     base_regulation = Regulation.objects.filter(
         edition=matched.edition, role="base"
@@ -367,16 +355,47 @@ def _provenance_result(
         next_version=next_version,
     )
     next_clause = next_version.last_contributing_clause if next_version else None
+    lineage = resolve_lineage([matched])[matched.pk]
+    annotate_lineage_locks([lineage], user)
+    # Commencement proof for both band edges, mirroring
+    # api.formatters._format_single_result: a base version's From falls back
+    # to the base regulation's own schedule, and an edition-final version's
+    # Until falls back to the replacing edition's base regulation.
+    from_commencement = clause.commencement if clause else None
+    if from_commencement is None and clause is None and base_regulation is not None:
+        from_commencement = select_commencement_record(
+            base_regulation.commencement,
+            provision_id,
+            division,
+            target_version.effective_date,
+        )
+    until_commencement = next_clause.commencement if next_clause else None
+    until_commencement_date = next_version.effective_date if next_version else None
+    if (
+        until_commencement is None
+        and next_version is None
+        and target_version.ineffective_date is not None
+    ):
+        until_commencement = replacement_commencement(
+            matched.edition,
+            provision_id,
+            division,
+            target_version.ineffective_date,
+        )
+        until_commencement_date = (
+            target_version.ineffective_date if until_commencement else None
+        )
     return {
         "version": target_version,
         "clause": clause,
         "is_base": clause is None,
         "base_regulation": base_regulation,
         "next_version": next_version,
-        # Proof of the version's END: the next version's commencement (this
-        # version stops the day the next one comes into force).  Mirrors the
-        # band's From popup, which proves the START.
-        "next_commencement": next_clause.commencement if next_clause else None,
+        "lineage_predecessors": lineage.predecessors,
+        "lineage_successors": lineage.successors,
+        "from_commencement": from_commencement,
+        "until_commencement": until_commencement,
+        "until_commencement_date": until_commencement_date,
         "amendment_chain": chain,
         "copy_text": copy_text,
         "band": None,
@@ -589,7 +608,7 @@ def _dated_provision_url(
     chosen = next(
         (v for v in versions if day and _version_contains(v, day)), versions[0]
     )
-    return _provision_permalink_url(
+    return provision_permalink_url(
         code_name, provision.division, provision.provision_id, chosen.version
     )
 
@@ -665,12 +684,36 @@ def _parse_iso_date(value: str | None) -> date | None:
         return None
 
 
+def _locked_edition_response(
+    request: HttpRequest, edition: CodeEdition
+) -> HttpResponse:
+    """A 403 teaser page for content outside the user's free-tier scope.
+
+    Gating happens *after* the object lookup so the page can name the
+    edition; a free user following a cross-edition link sees what exists
+    and how to unlock it, never a bare 403 or a silent 404.
+    """
+    return render(
+        request,
+        "locked_edition.html",
+        {
+            "edition": edition,
+            "edition_display_name": (
+                f"{edition.code.code} {edition.edition_id}".strip()
+            ),
+        },
+        status=403,
+    )
+
+
 def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     """Show a single regulation with all its clauses."""
     regulation = get_object_or_404(
         Regulation.objects.select_related("edition__code", "amends"),
         pk=pk,
     )
+    if not edition_allowed(request.user, regulation.edition.code_name):
+        return _locked_edition_response(request, regulation.edition)
     # ``clause_id`` is a CharField, so a DB ``order_by`` is lexicographic
     # (1, 10, 11, 2, 3, …).  Re-sort in Python on the natural key so clauses
     # read in numeric order (1, 2, 3, …, 10, 11, …) — the order a reader
@@ -735,6 +778,8 @@ def provision_permalink(
         division=division,
         provision_id=provision_id,
     )
+    if not edition_allowed(request.user, matched.edition.code_name):
+        return _locked_edition_response(request, matched.edition)
     target_version = get_object_or_404(
         CodeEditionProvisionVersion, provision=matched, version=version,
     )
@@ -844,12 +889,13 @@ def provision_permalink(
         "provision_id": provision_id,
         "version_number": version,
         "effective_date": anchor_date,
+        "never_in_force": target_version.never_in_force,
         "nav_up": nav_up,
         "nav_down": nav_down,
         "nav_prev": nav_prev,
         "nav_next": nav_next,
         "provenance": _provenance_result(
-            matched, target_version, code_name, division, provision_id
+            matched, target_version, code_name, division, provision_id, request.user
         ),
         "sections": sections,
         "active_node_id": provision_id,
@@ -864,6 +910,8 @@ def edition_chain(request: HttpRequest, pk: int) -> HttpResponse:
         CodeEdition.objects.select_related("code"),
         pk=pk,
     )
+    if not edition_allowed(request.user, edition.code_name):
+        return _locked_edition_response(request, edition)
     regulations = (
         edition.regulations
         .select_related("amends")

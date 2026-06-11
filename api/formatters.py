@@ -11,7 +11,14 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple
 from api.band import compute_band_geometry, parse_iso_date
 from api.search.engine import _ref_parts
 from config.code_metadata import get_code_display_name
-from core.models import CodeEditionProvision, CodeEditionProvisionVersion
+from core.models import (
+    CodeEdition,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
+    EditionTransition,
+    Regulation,
+)
+from core.provision_lineage import annotate_lineage_locks, resolve_lineage
 
 logger = logging.getLogger(__name__)
 
@@ -319,10 +326,105 @@ def _build_score_explanation(
     return "Matched your search."
 
 
+def _record_covers_provision(
+    record: Dict[str, Any], provision_id: str, division: str
+) -> bool:
+    """Does a commencement record's ``resolved_provisions`` name this provision?
+
+    Refs arrive as ``"<ref>|<division>"`` with the ref at whatever granularity
+    the commencement clause resolved — a sentence (``1.10.2.3.(2)``), a whole
+    article (``1.10.2.4.``) — and with an inconsistent trailing dot
+    (``4.2.1.1.(1).|C`` vs ``1.10.2.3.(2)|C``).  Reduce the ref to its dotted
+    address and prefix-match, so a record resolving a sentence also covers its
+    article and a record resolving an article covers its containers.
+    """
+    target = provision_id.rstrip(".")
+    if not target:
+        return False
+    for raw in record.get("resolved_provisions") or []:
+        ref, _, ref_division = raw.partition("|")
+        if ref_division != (division or ""):
+            continue
+        address = ref.split("(", 1)[0].rstrip(".")
+        if address == target or address.startswith(target + "."):
+            return True
+    return False
+
+
+def select_commencement_record(
+    records: Any,
+    provision_id: str,
+    division: str,
+    on_date: date | None,
+) -> Dict[str, Any] | None:
+    """The commencement record that explains why ``on_date`` is the date.
+
+    A record can only explain a date it actually sets, so candidates are
+    filtered to ``effective_date == on_date`` first — a schedule that doesn't
+    mention the date yields None rather than a plausible-but-wrong popup.
+    Among candidates, one naming this provision wins (staggered schedules pin
+    later dates onto specific provisions), then the default record, then a
+    sole survivor.
+    """
+    if not records or on_date is None:
+        return None
+    iso = on_date.isoformat()
+    candidates = [r for r in records if r.get("effective_date") == iso]
+    for record in candidates:
+        if _record_covers_provision(record, provision_id, division):
+            return record
+    for record in candidates:
+        if record.get("is_default"):
+            return record
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def replacement_commencement(
+    edition: CodeEdition,
+    provision_id: str,
+    division: str,
+    on_date: date | None,
+    records_memo: Dict[int, Any] | None = None,
+) -> Dict[str, Any] | None:
+    """Why an edition-final version ends: the NEXT edition's base regulation.
+
+    A provision's last version has no next version to prove its end — the
+    edition itself was replaced.  ``EditionTransition`` names the replacing
+    edition (it isn't derivable from the version chain), and that edition's
+    base regulation's commencement schedule carries the record for the
+    takeover date.  The same date guard as ``select_commencement_record``
+    applies, so staggered old-edition endings (e.g. a 2016 ineffective date
+    inside a 2014 replacement) simply yield no record rather than a wrong one.
+
+    ``records_memo`` (old-edition pk → base-reg commencement records) lets a
+    results page resolve many provisions with one lookup per edition.
+    """
+    if records_memo is not None and edition.pk in records_memo:
+        records = records_memo[edition.pk]
+    else:
+        transition = (
+            EditionTransition.objects.filter(old_edition=edition)
+            .order_by("new_edition__effective_date")
+            .first()
+        )
+        base = (
+            Regulation.objects.filter(
+                edition=transition.new_edition_id, role=Regulation.Role.BASE
+            ).first()
+            if transition is not None
+            else None
+        )
+        records = base.commencement if base is not None else None
+        if records_memo is not None:
+            records_memo[edition.pk] = records
+    return select_commencement_record(records, provision_id, division, on_date)
+
+
 def _format_single_result(
     result: Dict[str, Any],
     query_date: date | None = None,
     terms: Iterable[str] | None = None,
+    replacement_memo: Dict[int, Any] | None = None,
 ) -> Dict[str, Any]:
     code_edition = result.get("code_edition", "Unknown")
     provision = result.get("provision")
@@ -416,12 +518,46 @@ def _format_single_result(
         next_version=next_version,
     )
 
-    # Commencement provenance for the band's "Until" edge: this version ends
-    # exactly when the NEXT version comes into force, so the proof of the end
-    # is the next version's CommencementProvenance (its contributing clause's
-    # resolved entry).  Lets the band show why the version started AND ended.
+    # Commencement provenance for the band's two edges, so every version can
+    # show why it started AND ended — amended or not.
+    #
+    # From: the producing clause's resolved entry; a base version (no clause)
+    # falls back to the base regulation's own commencement schedule, picking
+    # the record for this provision (staggered schedules pin later dates onto
+    # specific provisions).
+    #
+    # Until: this version ends exactly when the NEXT version comes into force,
+    # so the proof is the next version's clause entry.  An edition-final
+    # version (no next version, ineffective) ends because the next edition's
+    # base regulation replaced it — that schedule carries the record.
+    provision_ref = str(result.get("id", ""))
+    division_ref = result.get("division", "")
+    from_commencement = most_recent_clause.commencement if most_recent_clause else None
+    if from_commencement is None and most_recent_clause is None and version and base_regulation:
+        from_commencement = select_commencement_record(
+            base_regulation.commencement,
+            provision_ref,
+            division_ref,
+            version.effective_date,
+        )
     next_clause = next_version.last_contributing_clause if next_version else None
-    next_commencement = next_clause.commencement if next_clause else None
+    until_commencement = next_clause.commencement if next_clause else None
+    until_commencement_date = next_version.effective_date if next_version else None
+    if (
+        until_commencement is None
+        and next_version is None
+        and version is not None
+        and version.ineffective_date is not None
+        and provision is not None
+    ):
+        until_commencement = replacement_commencement(
+            provision.edition,
+            provision_ref,
+            division_ref,
+            version.ineffective_date,
+            replacement_memo,
+        )
+        until_commencement_date = version.ineffective_date if until_commencement else None
 
     return {
         "id": result.get("id"),
@@ -464,7 +600,9 @@ def _format_single_result(
         "provision": provision,
         "base_regulation": base_regulation,
         "next_version": next_version,
-        "next_commencement": next_commencement,
+        "from_commencement": from_commencement,
+        "until_commencement": until_commencement,
+        "until_commencement_date": until_commencement_date,
         "amendment_chain": all_versions,
         "appendix_notes": appendix_notes,
         "transition_provision_version": transition_provision_version,
@@ -909,22 +1047,51 @@ def _nest_child_results(
     return [r for r in results if _nest_result_key(r) not in absorbed_child_keys]
 
 
+def _attach_lineage(formatted: List[Dict[str, Any]], user: Any = None) -> None:
+    """Stamp lineage rows onto every result, one batched resolver call.
+
+    Runs on the still-flat list, BEFORE grouping/pairing/nesting: transition
+    panes and nested children keep references to these same dicts, so every
+    rail render site (result rail, compare panes, banner) sees the keys
+    without walking the grouped structure.  Kept as separate keys next to
+    ``amendment_chain`` — never spliced into it (that list means "versions
+    of this provision in this edition"; lineage entries carry their own
+    edition/division/id and prebuilt URLs).
+    """
+    lineage = resolve_lineage(
+        [r["provision"] for r in formatted if r.get("provision")]
+    )
+    annotate_lineage_locks(lineage.values(), user)
+    for result in formatted:
+        provision = result.get("provision")
+        lin = lineage.get(provision.pk) if provision is not None else None
+        result["lineage_predecessors"] = lin.predecessors if lin else None
+        result["lineage_successors"] = lin.successors if lin else None
+
+
 def format_search_results(
     results: List[Dict[str, Any]],
     query_date: date | str | None = None,
     terms: Iterable[str] | None = None,
+    user: Any = None,
 ) -> List[Dict[str, Any]]:
     """Transform raw search results into a format suitable for the frontend.
 
     ``query_date`` (a ``date`` or ISO string) drives the IN FORCE band's
     query tick + coverage; omit it and the band still renders its date span.
     ``terms`` (parsed query keywords) are highlighted in the provision body;
-    omit or pass empty to skip highlighting.
+    omit or pass empty to skip highlighting.  ``user`` feeds the free-tier
+    gate on lineage links (None reads as anonymous — most restrictive).
     """
     parsed_query_date = parse_iso_date(query_date)
+    # Shared per-call memo: edition-final results resolve their replacing
+    # edition's base-reg commencement once per edition, not once per result.
+    replacement_memo: Dict[int, Any] = {}
     formatted = [
-        _format_single_result(result, parsed_query_date, terms) for result in results
+        _format_single_result(result, parsed_query_date, terms, replacement_memo)
+        for result in results
     ]
+    _attach_lineage(formatted, user)
     formatted.sort(key=lambda item: item.get("score", 0), reverse=True)
     grouped = group_formatted_results(formatted, query_date=parsed_query_date)
     merged = merge_transition_compare_results(grouped)

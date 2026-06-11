@@ -8,10 +8,14 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    EditionTransition,
+    ProvisionMapping,
     ProvisionVersionTable,
     Regulation,
     RegulationClause,
 )
+from core.permalinks import provision_permalink_url
+from core.views.regulation import _group_provisions, _reduce_provision_ref
 
 
 @pytest.fixture
@@ -372,22 +376,62 @@ class TestEditionChainView:
 
 @pytest.mark.django_db
 class TestProvisionPermalinkUrl:
-    """``_provision_permalink_url`` must route division-less editions (OBC 1997,
+    """``provision_permalink_url`` must route division-less editions (OBC 1997,
     division="") to the no-division route — a ``<str:division>`` segment can't
     be empty, so the normal route raises ``NoReverseMatch``."""
 
     def test_with_division_uses_full_route(self):
-        from core.views.regulation import _provision_permalink_url
-
-        url = _provision_permalink_url("OBC_2024", "B", "3.1.1.1", 2)
+        url = provision_permalink_url("OBC_2024", "B", "3.1.1.1", 2)
         assert url == "/provision/OBC_2024/B/3.1.1.1/v2/"
 
     def test_empty_division_uses_no_division_route(self):
-        from core.views.regulation import _provision_permalink_url
-
         # Must not raise NoReverseMatch, and must omit the division segment.
-        url = _provision_permalink_url("OBC_1997", "", "3.1.1.1", 1)
+        url = provision_permalink_url("OBC_1997", "", "3.1.1.1", 1)
         assert url == "/provision/OBC_1997/3.1.1.1/v1/"
+
+
+@pytest.mark.django_db
+class TestPermalinkLineageRows:
+    """The permalink page's provenance rail carries the lineage rows
+    (``_provenance_result`` calls the resolver for the matched provision)."""
+
+    @pytest.fixture
+    def mapped_editions(self, db):
+        code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+        e2006 = CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31), ineffective_date=date(2014, 1, 1),
+        )
+        e2012 = CodeEdition.objects.create(
+            code=code, edition_id="2012", year=2012, effective_date=date(2014, 1, 1),
+        )
+        EditionTransition.objects.create(old_edition=e2006, new_edition=e2012)
+        old = CodeEditionProvision.objects.create(
+            edition=e2006, provision_id="9.10.18.6.", level="article", division="B",
+        )
+        new = CodeEditionProvision.objects.create(
+            edition=e2012, provision_id="9.10.18.7.", level="article", division="B",
+        )
+        for prov in (old, new):
+            CodeEditionProvisionVersion.objects.create(
+                provision=prov, version=0, title="Smoke Alarms",
+                effective_date=prov.edition.effective_date,
+            )
+        ProvisionMapping.objects.create(
+            old_provision=old, new_provision=new, mapping_type="renumbered",
+        )
+        return {"old": old, "new": new}
+
+    def test_permalink_shows_successor_row(self, client: Client, mapped_editions):
+        content = client.get("/provision/OBC_2006/B/9.10.18.6./v0/").content.decode()
+        assert "renumbered to" in content
+        assert "/provision/OBC_2012/B/9.10.18.7./v0/" in content
+        assert "OBC 2012" in content
+
+    def test_permalink_shows_predecessor_row(self, client: Client, mapped_editions):
+        content = client.get("/provision/OBC_2012/B/9.10.18.7./v0/").content.decode()
+        assert "renumbered from" in content
+        assert "/provision/OBC_2006/B/9.10.18.6./v0/" in content
 
 
 class TestReduceProvisionRef:
@@ -417,8 +461,6 @@ class TestReduceProvisionRef:
         ("Table-A-13", "Table-A-13"),
     ])
     def test_reduces_to_containing_article(self, ref: str, expected: str):
-        from core.views.regulation import _reduce_provision_ref
-
         assert _reduce_provision_ref(ref) == expected
 
 
@@ -432,8 +474,6 @@ class TestGroupProvisions:
         return [{"provision_id": pid, "division": div, "url": None} for pid, div in refs]
 
     def test_groups_by_division_then_part_in_order(self):
-        from core.views.regulation import _group_provisions
-
         groups = _group_provisions(self._provs(
             ("11.2.1.1.", "B"), ("3.1.3.1.", "B"), ("1.1.2.1.", "A"),
             ("3.2.2.6.", "B"),
@@ -448,14 +488,10 @@ class TestGroupProvisions:
         assert [p["provision_id"] for p in part3["provisions"]] == ["3.1.3.1.", "3.2.2.6."]
 
     def test_division_less_edition_labels_part_only(self):
-        from core.views.regulation import _group_provisions
-
         groups = _group_provisions(self._provs(("3.1.1.1.", ""), ("3.2.1.1.", "")))
         assert [g["label"] for g in groups] == ["Part 3"]
 
     def test_appendix_tables_join_division_part_9(self):
-        from core.views.regulation import _group_provisions
-
         tables = [{"table_id": "Table-A-10", "label": "Table A-10",
                    "division": "B", "owners": []}]
         # A Part 9 provision already present; the table should join it, not
@@ -467,8 +503,6 @@ class TestGroupProvisions:
         assert [t["table_id"] for t in part9["tables"]] == ["Table-A-10"]
 
     def test_appendix_table_alone_creates_part_9(self):
-        from core.views.regulation import _group_provisions
-
         tables = [{"table_id": "Table-A-8", "label": "Table A-8",
                    "division": "B", "owners": []}]
         groups = _group_provisions([], tables)

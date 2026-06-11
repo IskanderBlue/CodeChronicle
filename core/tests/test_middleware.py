@@ -1,12 +1,14 @@
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.http import JsonResponse
 from django.test import RequestFactory
+from django.utils import timezone
 
 from core.middleware import RateLimitMiddleware
-from core.models import SearchHistory
+from core.models import SearchHistory, User
 
 
 @pytest.mark.django_db
@@ -97,7 +99,6 @@ class TestRateLimitMiddleware:
 
     def test_authenticated_free_user_not_rate_limited(self, settings):
         """Authenticated free users should never be rate limited."""
-        from core.models import User
         settings.RATE_LIMIT_AUTHENTICATED = 3
         user = User.objects.create_user(email="free@example.com", password="testpass")
         # Create more searches than the old limit
@@ -114,6 +115,31 @@ class TestRateLimitMiddleware:
             HTTP_HX_REQUEST="true",
         )
         request.user = user
+        response = self.middleware.check_rate_limit(request)
+        assert response is None
+
+    def test_yesterdays_searches_do_not_count(self, settings):
+        """The daily window starts at UTC midnight; older rows are ignored."""
+        settings.RATE_LIMIT_ANONYMOUS = 1
+        history = SearchHistory.objects.create(
+            user=None,
+            ip_address="127.0.0.1",
+            query="q",
+            parsed_params={},
+            result_count=0,
+            top_results=[],
+        )
+        # timestamp is auto_now_add; backdate via update()
+        SearchHistory.objects.filter(pk=history.pk).update(
+            timestamp=timezone.now() - timedelta(days=1)
+        )
+        request = self.factory.post(
+            "/search-results/",
+            HTTP_HX_REQUEST="true",
+            REMOTE_ADDR="127.0.0.1",
+        )
+        request.user = AnonymousUser()
+
         response = self.middleware.check_rate_limit(request)
         assert response is None
 

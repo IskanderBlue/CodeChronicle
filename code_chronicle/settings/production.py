@@ -7,7 +7,13 @@ import os
 import dj_database_url
 
 from .base import *  # noqa: F401, F403
-from .base import ANTHROPIC_API_KEY, SECRET_KEY  # noqa: F811
+from .base import (  # noqa: F811
+    ANTHROPIC_API_KEY,
+    SECRET_KEY,
+    STRIPE_LIVE_SECRET_KEY,
+    STRIPE_PRO_PRICE_ID,
+    STRIPE_TEST_SECRET_KEY,
+)
 
 DEBUG = False
 
@@ -131,6 +137,27 @@ DEFAULT_FROM_EMAIL = _resolve_runtime_setting(
 SERVER_EMAIL = os.environ.get("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 ACCOUNT_EMAIL_VERIFICATION = os.environ.get("ACCOUNT_EMAIL_VERIFICATION", "mandatory")
+
+# Stripe — base.py reads these from os.environ, which the GCP deployment
+# never populates (the container env-file carries only GCP_PROJECT_ID,
+# DJANGO_SETTINGS_MODULE, ALLOWED_HOSTS). Resolve through the
+# app_runtime_secrets bundle like email; env vars still win for
+# compose-style deploys. Live mode defaults on: this is production.
+STRIPE_LIVE_SECRET_KEY = _resolve_runtime_setting(
+    "STRIPE_LIVE_SECRET_KEY", default=STRIPE_LIVE_SECRET_KEY
+)
+STRIPE_TEST_SECRET_KEY = _resolve_runtime_setting(
+    "STRIPE_TEST_SECRET_KEY", default=STRIPE_TEST_SECRET_KEY
+)
+STRIPE_LIVE_MODE = _resolve_runtime_setting("STRIPE_LIVE_MODE", default="true").lower() == "true"
+STRIPE_PRO_PRICE_ID = _resolve_runtime_setting("STRIPE_PRO_PRICE_ID", default=STRIPE_PRO_PRICE_ID)
+
+# Free-tier content gate: flip by adding FREE_TIER_GATING_ENABLED=true to
+# the app_runtime_secrets bundle and restarting the web container (the
+# bundle is read once per process). Defaults off, matching base.py.
+FREE_TIER_GATING_ENABLED = (
+    _resolve_runtime_setting("FREE_TIER_GATING_ENABLED", default="false").lower() == "true"
+)
 
 # Hashed static filenames for cache busting (e.g. tailwind.a1b2c3d4.css)
 STORAGES = {

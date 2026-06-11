@@ -1,0 +1,14 @@
+{% comment %} ── One lineage link row ──
+   Shared by the predecessor and successor blocks of _provenance_rail.html.
+   Context: `link` (a core.provision_lineage.LineageLink — url/verb/locks
+   prebuilt in Python; never rebuild URLs here, the target's
+   edition/division/id differ from the enclosing result's) and `result`
+   (the enclosing result mapping, used only to omit the division when it
+   matches). The URL pins the hand-off version but the number is NOT shown:
+   the other edition's version numbering would read as this edition's. A
+   locked link (free-tier gate) upsells to pricing instead of 403ing after
+   click-through.
+{% endcomment %}
+<p>
+    <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition.code.code }} {{ link.edition.edition_id }}{% endif %} &middot;</span> {{ link.verb }} {% if link.locked %}<a href="{% url 'core:pricing' %}" @click.stop class="text-ink-3 hover:text-secondary" title="Available on Pro">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }} &mdash; Pro</a>{% else %}<a href="{{ link.url }}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}</a>{% endif %}
+</p>

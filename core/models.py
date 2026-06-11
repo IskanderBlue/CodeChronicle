@@ -2,11 +2,14 @@
 Core models for CodeChronicle.
 """
 
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.db.models import Count, Max, Min
 from django.utils import timezone
+from djstripe.models import Customer, Subscription
 
 from core.provision_notes import GroupedNotes, group_notes
 
@@ -85,8 +88,6 @@ class User(AbstractBaseUser, PermissionsMixin):
             return True
 
         # 2. Check Stripe via dj-stripe
-        from djstripe.models import Customer, Subscription
-
         customer = Customer.objects.filter(subscriber=self).first()
         if not customer and self.stripe_customer_id:
             # Fall back to the raw Stripe id when dj-stripe hasn't linked the
@@ -261,6 +262,14 @@ class Code(models.Model):
         default="code",
         choices=[("code", "code"), ("guide", "guide")],
     )
+    #: Real-world in-force date of the code's *first edition ever* (OBC:
+    #: 1975-12-31) — a seeded fact, not derivable from loaded data, since
+    #: real edition history extends before our corpus window.  Lets the
+    #: lineage resolver tell "this is the first edition" (predecessor
+    #: endpoint) from "earlier editions exist but aren't covered" (no data
+    #: yet).  Null = unknown → the resolver defaults to "no data yet".
+    #: Seeded by ``load_edition`` (so it survives a codes wipe + reload).
+    first_edition_date = models.DateField(null=True, blank=True)
 
     class Meta:
         db_table = "codes"
@@ -280,6 +289,8 @@ class CodeEdition(models.Model):
     # django-stubs plugin infers these from the related_name on the FK side.
     regulations: "models.Manager[Regulation]"
     provisions: "models.Manager[CodeEditionProvision]"
+    # FK id-shadow, plugin-only — declared for Pyright.
+    code_id: int
 
     code = models.ForeignKey(Code, on_delete=models.CASCADE, related_name="editions")
     edition_id = models.CharField(max_length=50)
@@ -558,7 +569,8 @@ class CodeEditionProvision(models.Model):
     # Reverse relations (see note on CodeEdition).
     versions: "models.Manager[CodeEditionProvisionVersion]"
     children: "models.Manager[CodeEditionProvision]"
-    # FK id-shadow, plugin-only — declared for Pyright.
+    # FK id-shadows, plugin-only — declared for Pyright.
+    edition_id: int
     parent_id: int | None
 
     if TYPE_CHECKING:
@@ -681,6 +693,24 @@ class CodeEditionProvisionVersion(models.Model):
 
     def __str__(self):
         return f"{self.provision} v{self.version}"
+
+    @property
+    def never_in_force(self) -> bool:
+        """This version never governed a single day.
+
+        In-force windows are half-open ``[effective, ineffective)``, so a
+        zero-duration window (superseded the day it was to commence — common
+        for base v0s amended on the edition's own start date) or an inverted
+        one (revoked before its deferred commencement arrived, e.g. OBC 2006
+        1.10.2.4. v1: due 2016-01-01, edition replaced 2014-01-01) is empty.
+        Both are emitted deliberately — the version is still a link in the
+        amendment chain; it just never operated.  Surfaces must say "never
+        in force" rather than rendering the dates as an in-force period.
+        """
+        return (
+            self.ineffective_date is not None
+            and self.ineffective_date <= self.effective_date
+        )
 
     @property
     def last_contributing_clause(self) -> "RegulationClause | None":
@@ -845,6 +875,113 @@ class ProvisionMapping(models.Model):
         return f"{self.old_provision} → {self.new_provision} ({self.mapping_type})"
 
 
+class ProvisionDisposition(models.Model):
+    """Per-provision override of the covered-transition default.
+
+    On a covered transition the absence of a mapping row already reads
+    "no successor" (CCM emits a total mapping; see ``EditionTransition``).
+    A disposition says more than absence can:
+
+    - ``discontinued`` — an authoritative tombstone with provenance
+      (``source``/``reasoning``), valuable where a reader might assume
+      continuity (id reuse: 2006 C 1.3.5.4. is an edition-specific
+      transition rule; the 2012 article at the same number is unrelated
+      content).
+    - ``not_processed`` — the content's fate lies outside our corpus
+      (e.g. OBC 2006 Part 12 delegated to Supplementary Standard SB-12);
+      rendered as the existing "not yet covered" marker, not a new state.
+
+    Ingested by ``load_edition`` from the payload's
+    ``provision_discontinuations`` key and from ``provision_mappings``
+    rows carrying the ``"not_processed"`` sentinel.  The lineage resolver
+    (``core.provision_lineage``) uses these to refine the covered-no-row
+    marker; a ``not_processed`` record coexisting with mapping rows is a
+    multi-leg verdict (e.g. a split with one leg outside the corpus), not
+    a contradiction — the resolver surfaces it as an extra leg row.
+    """
+
+    # FK id-shadows, plugin-only — declared for Pyright.
+    provision_id: int
+    new_edition_id: int
+
+    class Status(models.TextChoices):
+        DISCONTINUED = "discontinued", "Discontinued"
+        NOT_PROCESSED = "not_processed", "Not processed"
+
+    provision = models.ForeignKey(
+        CodeEditionProvision, on_delete=models.CASCADE, related_name="dispositions",
+    )
+    new_edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="incoming_dispositions",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices)
+    #: Where the content went, when known and outside the corpus — a
+    #: document reference like "SB-10" ("" when unknown).  Sentinel
+    #: mapping rows carry it in ``new_division`` (the field is document
+    #: abuse there, never a real division); explicit entries in an
+    #: optional ``target_reference`` key.  Named in the not-yet-covered
+    #: lineage markers ("Some content moved to SB-10, not yet covered").
+    target_reference = models.CharField(max_length=50, blank=True, default="")
+    source = models.CharField(max_length=50, blank=True, default="")
+    reasoning = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "provision_dispositions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provision", "new_edition"],
+                name="provision_disposition_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.provision} -> {self.new_edition}: {self.status}"
+
+
+class EditionTransition(models.Model):
+    """Declares that an old→new edition transition's provision mapping is covered.
+
+    Written by ``load_edition`` from the CCM payload's ``mapping_coverage``
+    key.  CCM emits a **total** mapping for a covered transition — every
+    carried-forward provision gets a row, identity carries included — so
+    the absence of a row, tombstone, and sentinel positively asserts "no
+    successor".  But only if we know the transition was mapped at all;
+    this row is that knowledge: it lets the lineage resolver
+    (``core.provision_lineage``) distinguish **discontinued** (covered, no
+    row) from **no data yet** (transition never mapped).
+
+    Coverage is declared explicitly rather than inferred from mapping-row
+    existence: inference conflates "not mapped yet" with "mapped, zero
+    identity changes", and a partial/failed load would silently read as
+    covered.
+    """
+
+    # FK id-shadow, plugin-only — declared for Pyright (see CodeEdition).
+    new_edition_id: int
+
+    old_edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="transitions_forward",
+    )
+    new_edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="transitions_back",
+    )
+    loaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "edition_transitions"
+        verbose_name = "Edition Transition"
+        verbose_name_plural = "Edition Transitions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["old_edition", "new_edition"],
+                name="edition_transition_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.old_edition} → {self.new_edition}"
+
+
 class CorpusCurrency(models.Model):
     """Precomputed masthead provenance stamp — one row (a singleton).
 
@@ -911,10 +1048,6 @@ class CorpusCurrency(models.Model):
         - ``corpus_label`` = a provenance code's display name, else the Ontario
           default.
         """
-        from datetime import date, timedelta
-
-        from django.db.models import Count, Max, Min
-
         def _fmt(d: date) -> str:
             # ISO 8601 calendar date (e.g. "2014-01-01").
             return d.isoformat()

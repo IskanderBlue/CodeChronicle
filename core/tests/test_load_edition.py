@@ -14,6 +14,9 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     CodeEditionProvisionVersionClause,
+    EditionTransition,
+    ProvisionDisposition,
+    ProvisionMapping,
     ProvisionVersionTable,
     Regulation,
     RegulationClause,
@@ -621,3 +624,167 @@ class TestLoadEdition:
         assert links[0].apply_order == 0
         assert links[1].clause.regulation.reg_id == "99/99"
         assert links[1].apply_order == 1
+
+
+@pytest.mark.django_db
+class TestMappingCoverage:
+    """``mapping_coverage`` → ``EditionTransition`` rows (the lineage
+    resolver's covered-transition record)."""
+
+    def _load_with_coverage(self, edition_json: Path, tmp_path: Path) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        data["mapping_coverage"] = [
+            {"old_edition": "1997", "new_edition": "2006"},
+        ]
+        out = tmp_path / "OBC_1997_coverage.json"
+        out.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(out))
+
+    def test_creates_transition_rows(self, edition_json: Path, tmp_path: Path) -> None:
+        # The declaration names 2006, which must already exist (a coverage
+        # claim over an unloaded edition is meaningless).
+        code = Code.objects.create(code="OBC")
+        CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        self._load_with_coverage(edition_json, tmp_path)
+
+        transition = EditionTransition.objects.get()
+        assert transition.old_edition.edition_id == "1997"
+        assert transition.new_edition.edition_id == "2006"
+
+    def test_skips_declaration_naming_unloaded_edition(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        # No 2006 edition exists: skip with a warning, don't fail the load.
+        self._load_with_coverage(edition_json, tmp_path)
+        assert EditionTransition.objects.count() == 0
+
+    def test_reload_without_coverage_clears_stale_claim(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """Reloading an edition CASCADE-deletes its cross-edition mapping
+        rows, so a coverage claim left standing would make the resolver mint
+        false "discontinued" verdicts — the wipe must be symmetric."""
+        code = Code.objects.create(code="OBC")
+        CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        self._load_with_coverage(edition_json, tmp_path)
+        assert EditionTransition.objects.count() == 1
+
+        call_command("load_edition", "--source", str(edition_json))
+        assert EditionTransition.objects.count() == 0
+
+
+@pytest.mark.django_db
+class TestProvisionDispositions:
+    """``provision_discontinuations`` + ``not_processed`` sentinel mapping
+    rows → ``ProvisionDisposition`` records (the lineage resolver's
+    per-provision override of the covered-transition default)."""
+
+    def _load(self, edition_json: Path, tmp_path: Path, **extra) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        data.update(extra)
+        out = tmp_path / "OBC_1997_dispositions.json"
+        out.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(out))
+
+    def test_creates_from_discontinuations(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        code = Code.objects.create(code="OBC")
+        CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        self._load(edition_json, tmp_path, provision_discontinuations=[{
+            "old_provision_id": "1.1.3.2.", "old_division": "Division A",
+            "old_edition": "1997", "new_edition": "2006",
+            "status": "discontinued", "source": "agent-adjudicated",
+            "reasoning": "No successor content anywhere in the new edition.",
+        }])
+
+        disp = ProvisionDisposition.objects.get()
+        assert disp.provision.provision_id == "1.1.3.2."
+        assert disp.new_edition.edition_id == "2006"
+        assert disp.status == ProvisionDisposition.Status.DISCONTINUED
+        assert disp.source == "agent-adjudicated"
+        assert "successor content" in disp.reasoning
+        assert disp.target_reference == ""  # optional key, absent here
+
+    def test_creates_from_not_processed_sentinel_rows(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        """A sentinel mapping row becomes a disposition, never a mapping."""
+        code = Code.objects.create(code="OBC")
+        CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        self._load(edition_json, tmp_path, provision_mappings=[{
+            "old_provision_id": "1.1.3.2.", "old_division": "Division A",
+            "old_edition": "1997",
+            "new_provision_id": "not_processed", "new_division": "SB-12",
+            "new_edition": "2006", "mapping_type": "renumbered",
+            "notes": "Content delegated to Supplementary Standard SB-12.",
+        }])
+
+        assert ProvisionMapping.objects.count() == 0
+        disp = ProvisionDisposition.objects.get()
+        assert disp.status == ProvisionDisposition.Status.NOT_PROCESSED
+        assert "SB-12" in disp.reasoning
+        # The sentinel's new_division names the target document (it is
+        # never a real division) — captured so markers can say where.
+        assert disp.target_reference == "SB-12"
+
+    def test_skips_unknown_provision(
+        self, edition_json: Path, tmp_path: Path,
+    ) -> None:
+        code = Code.objects.create(code="OBC")
+        CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        self._load(edition_json, tmp_path, provision_discontinuations=[{
+            "old_provision_id": "9.9.9.9.", "old_division": "Division B",
+            "old_edition": "1997", "new_edition": "2006",
+            "status": "discontinued",
+        }])
+        assert ProvisionDisposition.objects.count() == 0
+
+    def test_reload_clears_dispositions_targeting_the_edition(
+        self, edition_json: Path,
+    ) -> None:
+        """Rows targeting the reloaded edition were declared by its payload;
+        the old-side CASCADE can't reach them, so the wipe must — a stale
+        override must not outlive the load that asserted it."""
+        call_command("load_edition", "--source", str(edition_json))
+        code = Code.objects.get(code="OBC")
+        e1997 = CodeEdition.objects.get(code=code, edition_id="1997")
+        e2006 = CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        old_prov = CodeEditionProvision.objects.create(
+            edition=e2006, provision_id="1.2.3.4.", level="article",
+        )
+        ProvisionDisposition.objects.create(
+            provision=old_prov, new_edition=e1997,
+            status=ProvisionDisposition.Status.DISCONTINUED,
+        )
+
+        call_command("load_edition", "--source", str(edition_json))
+        assert ProvisionDisposition.objects.count() == 0
+
+
+@pytest.mark.django_db
+class TestFirstEditionDateSeed:
+    def test_load_seeds_known_first_edition_date(self, edition_json: Path) -> None:
+        """Seeded on every load (not only by migration): Code rows can be
+        wiped and recreated, which would lose a one-time migration seed."""
+        call_command("load_edition", "--source", str(edition_json))
+        code = Code.objects.get(code="OBC")
+        assert code.first_edition_date == date(1975, 12, 31)

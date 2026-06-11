@@ -145,3 +145,32 @@ class TestContributingClauseOrdering:
         )
         assert version.first_contributing_clause is None
         assert version.last_contributing_clause is None
+
+
+class TestNeverInForce:
+    """never_in_force — an empty half-open window [effective, ineffective)."""
+
+    def test_inverted_window(self):
+        # Revoked before its deferred commencement (OBC 2006 1.10.2.4. v1).
+        v = CodeEditionProvisionVersion(
+            effective_date=date(2016, 1, 1), ineffective_date=date(2014, 1, 1),
+        )
+        assert v.never_in_force is True
+
+    def test_zero_duration_window(self):
+        # Superseded the day it was to commence (base v0 amended on the
+        # edition's own start date).
+        v = CodeEditionProvisionVersion(
+            effective_date=date(2014, 1, 1), ineffective_date=date(2014, 1, 1),
+        )
+        assert v.never_in_force is True
+
+    def test_operating_windows_are_not_flagged(self):
+        closed = CodeEditionProvisionVersion(
+            effective_date=date(2014, 1, 1), ineffective_date=date(2016, 1, 1),
+        )
+        open_ended = CodeEditionProvisionVersion(
+            effective_date=date(2014, 1, 1), ineffective_date=None,
+        )
+        assert closed.never_in_force is False
+        assert open_ended.never_in_force is False
