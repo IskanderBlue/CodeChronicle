@@ -285,6 +285,7 @@ def _related_links(
                 "version": v.version,
                 "effective_date": v.effective_date,
                 "ineffective_date": v.ineffective_date,
+                "never_in_force": v.never_in_force,
                 "url": provision_permalink_url(
                     code_name, provision.division, provision.provision_id, v.version
                 ),
@@ -888,6 +889,7 @@ def provision_permalink(
         "provision_id": provision_id,
         "version_number": version,
         "effective_date": anchor_date,
+        "never_in_force": target_version.never_in_force,
         "nav_up": nav_up,
         "nav_down": nav_down,
         "nav_prev": nav_prev,

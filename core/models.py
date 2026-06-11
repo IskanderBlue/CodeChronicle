@@ -695,6 +695,24 @@ class CodeEditionProvisionVersion(models.Model):
         return f"{self.provision} v{self.version}"
 
     @property
+    def never_in_force(self) -> bool:
+        """This version never governed a single day.
+
+        In-force windows are half-open ``[effective, ineffective)``, so a
+        zero-duration window (superseded the day it was to commence — common
+        for base v0s amended on the edition's own start date) or an inverted
+        one (revoked before its deferred commencement arrived, e.g. OBC 2006
+        1.10.2.4. v1: due 2016-01-01, edition replaced 2014-01-01) is empty.
+        Both are emitted deliberately — the version is still a link in the
+        amendment chain; it just never operated.  Surfaces must say "never
+        in force" rather than rendering the dates as an in-force period.
+        """
+        return (
+            self.ineffective_date is not None
+            and self.ineffective_date <= self.effective_date
+        )
+
+    @property
     def last_contributing_clause(self) -> "RegulationClause | None":
         """The final clause applied to produce this version, in apply order.
 

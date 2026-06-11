@@ -16,8 +16,12 @@
            "· amended" suffix — the pane header already names the amending
            regulation, and the suffix's extra width made the two bands wrap
            (and so size) differently at equal pane widths. {% endcomment %}
+        {% comment %} never_in_force: an empty half-open window (zero-duration
+           or revoked before commencement) — the version is a chain link that
+           never operated, so the band must not assert an in-force period.
+           Edge labels switch to Scheduled/Superseded; rail and Dur. drop. {% endcomment %}
         <div class="flex items-center bg-secondary px-3.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-secondary-contrast">
-            {% if result.clause and not compare_pane %}In force &middot; amended{% else %}In force{% endif %}
+            {% if result.version.never_in_force %}Never in force{% elif result.clause and not compare_pane %}In force &middot; amended{% else %}In force{% endif %}
         </div>
 
         {# FROM ─ rail ─ UNTIL ─ DURATION #}
@@ -25,7 +29,7 @@
             {% if result.version %}
             <div class="shrink-0">
                 <div class="flex items-center gap-1">
-                    <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">From</span>
+                    <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">{% if result.version.never_in_force %}Scheduled{% else %}From{% endif %}</span>
                     {% comment %} Commencement provenance — the *why* behind this
                        version's in-force date.  For an amended version it's the
                        producing clause's resolved CommencementProvenance entry;
@@ -49,7 +53,7 @@
                is wide (@xl ≈ 36rem); below that it's hidden so the narrow
                side-by-side compare panes get a compact date band instead of a
                flex-1 rail that wraps asymmetrically between the two versions. {% endcomment %}
-            {% if result.band %}
+            {% if result.band and not result.version.never_in_force %}
             <div class="relative hidden h-1.5 self-center bg-rule-2 @xl:block @xl:min-w-[100px] @xl:flex-1">
                 <div class="absolute inset-y-0 bg-secondary" style="left: {{ result.band.span_left_pct }}%; width: {{ result.band.span_width_pct }}%;"></div>
                 {% if result.band.tick_pct is not None %}
@@ -60,7 +64,7 @@
 
             <div class="shrink-0">
                 <div class="flex items-center gap-1">
-                    <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">Until</span>
+                    <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">{% if result.version.never_in_force %}Superseded{% else %}Until{% endif %}</span>
                     {% comment %} Proof of the END: this version stops the day the
                        NEXT version comes into force — or, for an edition-final
                        version, the day the next base edition replaces it.  Both
@@ -80,7 +84,7 @@
             {% comment %} Duration: hidden in the compact (narrow-container) band —
                it's derivable from From/Until, and its varying width ("4 years" vs
                "1 year") was the other driver of asymmetric wrap between panes. {% endcomment %}
-            {% if result.version.ineffective_date %}
+            {% if result.version.ineffective_date and not result.version.never_in_force %}
             <div class="hidden shrink-0 @xl:block">
                 <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">Dur.</div>
                 <div class="font-mono text-[14px] font-semibold leading-tight text-ink">{{ result.version.effective_date|timesince:result.version.ineffective_date }}</div>

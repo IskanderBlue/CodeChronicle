@@ -73,7 +73,7 @@
                     <p class="flex items-baseline justify-between gap-2">
                         <span>{% if entry_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}{% endif %}</span>
                         <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.08em] text-secondary">&larr; current</span></p>
-                    <p class="font-normal text-[10px] text-ink-3">In force {{ entry.effective_date|date:"Y-m-d" }}</p>
+                    <p class="font-normal text-[10px] text-ink-3">{% if entry.never_in_force %}Never in force{% else %}In force {{ entry.effective_date|date:"Y-m-d" }}{% endif %}</p>
                 </div>
                 {% else %}
                 <div class="text-[11px] text-ink-3">
@@ -81,7 +81,7 @@
                         <span>{% if entry_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}{% endif %}</span>
                         <a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id entry.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id entry.version %}{% endif %}" @click.stop class="shrink-0 font-mono text-[10px] text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ entry.version }} &rarr;</a>
                     </p>
-                    <p class="text-[10px]">In force {{ entry.effective_date|date:"Y-m-d" }}</p>
+                    <p class="text-[10px]">{% if entry.never_in_force %}Never in force{% else %}In force {{ entry.effective_date|date:"Y-m-d" }}{% endif %}</p>
                 </div>
                 {% endif %}
                 {% endif %}
@@ -94,7 +94,7 @@
         {% if result.next_version %}
         {% with next_clause=result.next_version.last_contributing_clause %}
         <p class="flex items-baseline justify-between gap-2 italic text-ink-3">
-            <span>Next: {% if next_clause %}{% if next_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' next_clause.regulation.pk %}#clause-{{ next_clause.pk }}" @click.stop class="not-italic text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</a> {% else %}O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }} {% endif %}{% endif %}(not in force until {{ result.next_version.effective_date|date:"Y-m-d" }})</span>
+            <span>Next: {% if next_clause %}{% if next_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' next_clause.regulation.pk %}#clause-{{ next_clause.pk }}" @click.stop class="not-italic text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</a> {% else %}O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }} {% endif %}{% endif %}{% if result.next_version.never_in_force %}(never in force){% else %}(not in force until {{ result.next_version.effective_date|date:"Y-m-d" }}){% endif %}</span>
             <a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.next_version.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.next_version.version %}{% endif %}" @click.stop class="shrink-0 font-mono text-[10px] not-italic text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ result.next_version.version }} &rarr;</a>
         </p>
         {% endwith %}

@@ -10,6 +10,9 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    CodeEditionProvisionVersionClause,
+    Regulation,
+    RegulationClause,
 )
 from core.provision_lineage import LineageDirection, LineageLink
 
@@ -695,63 +698,6 @@ class TestLineageRows:
             state="no_data_yet", edition=e2012, outside_reference="SB-12",
         )})
         assert "Content moved to SB-12, not yet covered" in html
-
-
-def _band(result_extra: dict[str, Any], **context: Any) -> str:
-    base = {
-        "version": CodeEditionProvisionVersion(
-            version=0,
-            effective_date=date(2014, 1, 1),
-            ineffective_date=date(2025, 1, 1),
-        ),
-        "copy_text": "x",
-    }
-    return render_to_string(
-        "partials/_provenance_band.html",
-        {"result": {**base, **result_extra}, **context},
-    )
-
-
-class TestProvenanceBand:
-    """The IN FORCE band — label and commencement ⓘ edges."""
-
-    def test_amended_label_dropped_in_compare_panes(self):
-        # The side-by-side transition panes equalize band widths: the pane
-        # header already names the amending regulation, so the label drops
-        # the "· amended" suffix there (its width made the two bands wrap,
-        # and so size, differently at equal pane widths).
-        result = {"clause": {"commencement": None}}
-        assert "amended" in _band(result)
-        assert "amended" not in _band(result, compare_pane=True)
-
-    def test_from_info_renders_for_base_versions(self):
-        # A base version proves its From edge with the base regulation's own
-        # commencement record (formatter fallback) — same popup as a clause.
-        record = {
-            "regulation": "332/12", "clause": "4.4.1.1(1)", "is_default": True,
-            "effective_date": "2014-01-01", "source": "parsed",
-            "commencement_clause": "Comes into force on January 1, 2014.",
-        }
-        html = _band({"from_commencement": record})
-        assert "Why this date?" in html
-        assert "Comes into force on January 1, 2014." in html
-        assert "O. Reg. 332/12" in html
-
-    def test_until_info_renders_without_next_version(self):
-        # An edition-final version proves its Until edge with the replacing
-        # edition's base regulation — no next_version needed.
-        record = {
-            "regulation": "163/24", "clause": "1(1)", "is_default": True,
-            "effective_date": "2025-01-01", "source": "parsed",
-            "commencement_clause": "Comes into force on January 1, 2025.",
-        }
-        html = _band({
-            "until_commencement": record,
-            "until_commencement_date": date(2025, 1, 1),
-        })
-        assert "Why does it end here?" in html
-        assert "Comes into force on January 1, 2025." in html
-        assert "1 January 2025" in html
         assert "not yet mapped" not in html
 
     def test_division_crossing_link_names_target_division(self):
@@ -815,6 +761,159 @@ class TestProvenanceBand:
         html = _rail({"lineage_successors": LineageDirection(state="endpoint")})
         plain = _rail({})
         assert html == plain
+
+
+def _band(result_extra: dict[str, Any], **context: Any) -> str:
+    base = {
+        "version": CodeEditionProvisionVersion(
+            version=0,
+            effective_date=date(2014, 1, 1),
+            ineffective_date=date(2025, 1, 1),
+        ),
+        "copy_text": "x",
+    }
+    return render_to_string(
+        "partials/_provenance_band.html",
+        {"result": {**base, **result_extra}, **context},
+    )
+
+
+class TestProvenanceBand:
+    """The IN FORCE band — label and commencement ⓘ edges."""
+
+    def test_amended_label_dropped_in_compare_panes(self):
+        # The side-by-side transition panes equalize band widths: the pane
+        # header already names the amending regulation, so the label drops
+        # the "· amended" suffix there (its width made the two bands wrap,
+        # and so size, differently at equal pane widths).
+        result = {"clause": {"commencement": None}}
+        assert "amended" in _band(result)
+        assert "amended" not in _band(result, compare_pane=True)
+
+    def test_from_info_renders_for_base_versions(self):
+        # A base version proves its From edge with the base regulation's own
+        # commencement record (formatter fallback) — same popup as a clause.
+        record = {
+            "regulation": "332/12", "clause": "4.4.1.1(1)", "is_default": True,
+            "effective_date": "2014-01-01", "source": "parsed",
+            "commencement_clause": "Comes into force on January 1, 2014.",
+        }
+        html = _band({"from_commencement": record})
+        assert "Why this date?" in html
+        assert "Comes into force on January 1, 2014." in html
+        assert "O. Reg. 332/12" in html
+
+    def test_until_info_renders_without_next_version(self):
+        # An edition-final version proves its Until edge with the replacing
+        # edition's base regulation — no next_version needed.
+        record = {
+            "regulation": "163/24", "clause": "1(1)", "is_default": True,
+            "effective_date": "2025-01-01", "source": "parsed",
+            "commencement_clause": "Comes into force on January 1, 2025.",
+        }
+        html = _band({
+            "until_commencement": record,
+            "until_commencement_date": date(2025, 1, 1),
+        })
+        assert "Why does it end here?" in html
+        assert "Comes into force on January 1, 2025." in html
+        assert "1 January 2025" in html
+
+    def test_never_in_force_version_does_not_claim_a_period(self):
+        # An empty window — zero-duration or revoked before commencement —
+        # is a chain link that never operated: the band drops the in-force
+        # claim and the dates get honest edge labels instead of From/Until.
+        html = _band({
+            "version": CodeEditionProvisionVersion(
+                version=1,
+                effective_date=date(2016, 1, 1),
+                ineffective_date=date(2014, 1, 1),
+            ),
+            "clause": {"commencement": None},
+        })
+        assert "Never in force" in html
+        assert "amended" not in html
+        assert "Scheduled" in html
+        assert "Superseded" in html
+        assert "1 January 2016" in html
+        assert "1 January 2014" in html
+        # No duration for a period that never ran ("0 minutes" was nonsense).
+        assert "Dur." not in html
+
+
+class TestNeverInForceRail:
+    """The PROVENANCE box must not assert commencement for never-operated
+    versions — neither the amendment-chain rows nor the Next row."""
+
+    @pytest.fixture
+    def chain(self, db):
+        code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+        edition = CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        prov = CodeEditionProvision.objects.create(
+            edition=edition, provision_id="1.10.2.4.", level="article", division="C",
+        )
+        v0 = CodeEditionProvisionVersion.objects.create(
+            provision=prov, version=0,
+            effective_date=date(2011, 1, 1), ineffective_date=date(2016, 1, 1),
+        )
+        # Revoked before commencement: due 2016-01-01, edition replaced 2014.
+        v1 = CodeEditionProvisionVersion.objects.create(
+            provision=prov, version=1,
+            effective_date=date(2016, 1, 1), ineffective_date=date(2014, 1, 1),
+        )
+        reg = Regulation.objects.create(
+            reg_id="315/10", edition=edition, role="amendment",
+            effective_date=date(2011, 1, 1),
+        )
+        clause = RegulationClause.objects.create(regulation=reg, clause_id="3(3)")
+        CodeEditionProvisionVersionClause.objects.create(
+            version=v1, clause=clause, apply_order=0,
+        )
+        return v0, v1
+
+    def test_chain_row_and_next_row_say_never_in_force(self, chain):
+        v0, v1 = chain
+        html = _rail({
+            "version": v0,
+            "amendment_chain": [v0, v1],
+            "next_version": v1,
+        })
+        assert "Never in force" in html        # chain row for v1
+        assert "(never in force)" in html      # Next row
+        assert "In force 2016-01-01" not in html
+        assert "not in force until" not in html
+
+    def test_operating_next_version_keeps_the_date(self, chain):
+        v0, v1 = chain
+        v1.effective_date = date(2013, 1, 1)
+        v1.ineffective_date = date(2016, 1, 1)
+        html = _rail({
+            "version": v0,
+            "amendment_chain": [v0, v1],
+            "next_version": v1,
+        })
+        assert "In force 2013-01-01" in html
+        assert "(not in force until 2013-01-01)" in html
+        assert "Never in force" not in html
+
+
+def test_permalink_nav_chip_title_says_never_in_force():
+    html = render_to_string(
+        "regulation/_permalink_nav_item.html",
+        {"item": {"provision_id": "1.10.2.4.", "versions": [
+            {"version": 0, "effective_date": date(2011, 1, 1),
+             "ineffective_date": date(2016, 1, 1), "never_in_force": False,
+             "url": "/x/v0/"},
+            {"version": 1, "effective_date": date(2016, 1, 1),
+             "ineffective_date": date(2014, 1, 1), "never_in_force": True,
+             "url": "/x/v1/"},
+        ]}},
+    )
+    assert "in force 1 Jan 2011 to 1 Jan 2016" in html
+    assert 'title="never in force"' in html
 
 
 def test_revoked_version_renders_tombstone_warning():

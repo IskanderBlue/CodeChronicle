@@ -17,7 +17,7 @@
             <span class="font-mono font-semibold">{{ provision_id }}</span>
         </h1>
         <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">
-            Version {{ version_number }}{% if effective_date %} — in force {{ effective_date|date:"j F Y" }}{% endif %}
+            Version {{ version_number }}{% if never_in_force %} — never in force{% elif effective_date %} — in force {{ effective_date|date:"j F Y" }}{% endif %}
         </p>
     </div>
 
