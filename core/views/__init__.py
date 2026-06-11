@@ -9,7 +9,7 @@ from .billing import (
     stripe_success,
 )
 from .history import history
-from .pages import pricing, privacy_policy, terms_of_service, user_settings
+from .pages import data_sources, pricing, privacy_policy, terms_of_service, user_settings
 from .regulation import edition_chain, provision_permalink, regulation_detail
 from .search import (
     home,
@@ -22,6 +22,7 @@ from .search import (
 __all__ = [
     "create_checkout_session",
     "create_customer_portal_session",
+    "data_sources",
     "edition_chain",
     "history",
     "home",

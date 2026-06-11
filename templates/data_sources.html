@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+
+{% block title %}Data Sources - CodeChronicle{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="text-center mb-10">
+        <h1 class="font-serif text-4xl font-bold text-ink sm:text-5xl">
+            Data Sources
+        </h1>
+        <p class="mt-4 text-sm text-ink-3">
+            Where the corpus comes from, how it is processed, and what it covers
+        </p>
+    </div>
+
+    <div class="border border-rule bg-surface-2 p-8 space-y-8">
+        <p class="text-ink-2">
+            CodeChronicle is a historical research tool: it reconstructs what building code
+            provisions said on a given date, with every reconstruction traceable to the
+            regulation that made it so. This page describes the sources behind that corpus
+            {% if corpus_span %}({{ corpus_label }}, {{ corpus_span }}){% endif %}
+            and the limits of what it covers.
+        </p>
+
+        <section>
+            <h2 class="font-serif text-xl font-bold text-ink mb-3">Where the data comes from</h2>
+            <p class="text-ink-2 mb-3">
+                All substantive content comes from <strong class="text-ink">the regulations
+                themselves</strong>: the base regulation that enacts each code edition and every
+                amending regulation (O.&nbsp;Reg.) filed against it. Supporting sources are used
+                for verification and presentation, never as a substitute for the regulations:
+            </p>
+            <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2">
+                <li>Base and amending regulations as published on
+                    <a href="https://www.ontario.ca/laws" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">Ontario&rsquo;s e-Laws</a>,
+                    the Province of Ontario&rsquo;s official online source of law — the
+                    substantive record</li>
+                {% if has_gazette_sources %}
+                <li>For editions predating e-Laws online publication (1997 and older), amending
+                    regulations as filed in <strong class="text-ink">The Ontario Gazette</strong>,
+                    from scans preserved by the
+                    <a href="https://archive.org" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">Internet Archive</a></li>
+                {% endif %}
+                {% if has_handbook_sources %}
+                <li>For the 2024 edition, the code handbooks and published corrections
+                    downloaded from
+                    <a href="https://www.ontario.ca" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">ontario.ca</a></li>
+                {% endif %}
+                <li>e-Laws consolidation snapshots
+                    {% if consolidation_count %}({{ consolidation_count }} and counting){% endif %}
+                    — used to <strong class="text-ink">verify</strong> our reconstructions and for
+                    formatting, only; they are not the source of substantive content</li>
+            </ul>
+            <p class="text-ink-2 mt-3">
+                Legislative text is reproduced from these sources, &copy; King&rsquo;s Printer for
+                Ontario. CodeChronicle is not affiliated with or endorsed by the Province of
+                Ontario, and what we present is <strong class="text-ink">not an official
+                copy</strong> of the law — official consolidated law is published on e-Laws.
+            </p>
+        </section>
+
+        <section>
+            <h2 class="font-serif text-xl font-bold text-ink mb-3">How it is processed</h2>
+            <p class="text-ink-2 mb-3">
+                The corpus is a reconstruction from the legislative record, not a copy of a
+                consolidation:
+            </p>
+            <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2">
+                <li>The base regulation is parsed into individual provisions
+                    (parts, sections, subsections, articles)</li>
+                <li>Each amending regulation is parsed into its directives — what it revokes,
+                    substitutes, or adds, and when each change takes effect</li>
+                <li>Applying those directives in filing order yields every provision&rsquo;s
+                    version history: what it said, over which dates, and the exact regulation
+                    and clause behind each change — the amendment chains shown throughout
+                    the site</li>
+                <li>The reconstruction is then checked against e-Laws consolidation snapshots;
+                    discrepancies, gaps, and editorial notes in the sources are preserved as
+                    provenance notes and disclosed on the affected provision, never silently
+                    patched</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2 class="font-serif text-xl font-bold text-ink mb-3">Coverage</h2>
+            {% if editions %}
+            <table class="w-full text-sm text-ink-2">
+                <thead>
+                    <tr class="border-b border-rule text-left font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">
+                        <th class="py-2 pr-4 font-semibold">Edition</th>
+                        <th class="py-2 pr-4 font-semibold">In force from</th>
+                        <th class="py-2 pr-4 font-semibold">Until</th>
+                        <th class="py-2 font-semibold text-right">Amending regs</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for edition in editions %}
+                    <tr class="border-b border-rule/60">
+                        <td class="py-2 pr-4 font-mono text-[12px] text-ink">{{ edition.code.display_name|default:edition.code.code }} {{ edition.year }}</td>
+                        <td class="py-2 pr-4">{{ edition.effective_date|date:'M j, Y' }}</td>
+                        <td class="py-2 pr-4">{% if edition.ineffective_date %}{{ edition.ineffective_date|date:'M j, Y' }}{% else %}&mdash;{% endif %}</td>
+                        <td class="py-2 text-right font-mono text-[12px]">{{ edition.amendment_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p class="text-ink-2 mt-3 text-sm">
+                An edition is published here only once every regulation that amended it has been
+                parsed and applied, and the resulting reconstruction verified against the
+                consolidation record. This table is generated from the same database the search
+                runs against, so it always reflects what is actually loaded.
+            </p>
+            {% else %}
+            <p class="text-ink-2">No editions are currently loaded.</p>
+            {% endif %}
+            {% if data_current_to %}
+            <p class="text-ink-2 mt-3">
+                The corpus is current to <strong class="text-ink">{{ data_current_to|date:'F j, Y' }}</strong> —
+                the same stamp shown in the masthead, recomputed from the corpus every time data
+                is loaded, never hand-set.
+            </p>
+            {% endif %}
+        </section>
+
+        <section>
+            <h2 class="font-serif text-xl font-bold text-ink mb-3">Limitations</h2>
+            <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2">
+                <li>Ontario only, for now — other jurisdictions&rsquo; codes are not yet covered</li>
+                <li>Coverage begins with the earliest edition in the table above; earlier code
+                    history exists but is not yet loaded</li>
+                <li>Reconstruction quality depends on the source record; known imperfections are
+                    disclosed as provenance notes on the affected provisions</li>
+                <li>For any decision that matters, verify against the official consolidation on
+                    e-Laws — see our <a href="{% url 'core:terms_of_service' %}" class="text-secondary hover:underline">Terms of Service</a></li>
+            </ul>
+        </section>
+
+        <section>
+            <h2 class="font-serif text-xl font-bold text-ink mb-3">Questions and corrections</h2>
+            <p class="text-ink-2">
+                If you spot an error in the data or have a question about sourcing, contact us at
+                <a href="mailto:rob@codechronicle.ca" class="text-secondary hover:underline">rob@codechronicle.ca</a>.
+            </p>
+        </section>
+    </div>
+</div>
+{% endblock %}

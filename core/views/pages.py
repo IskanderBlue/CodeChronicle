@@ -7,7 +7,10 @@ from typing import Any
 from allauth.account.forms import ChangePasswordForm
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count, Q
 from django.shortcuts import render
+
+from core.models import CodeEdition
 
 from .billing import _sync_subscription_status
 
@@ -20,6 +23,49 @@ def terms_of_service(request):
 def privacy_policy(request):
     """Privacy Policy page."""
     return render(request, "privacy_policy.html")
+
+
+def data_sources(request):
+    """Data sourcing & coverage page.
+
+    The coverage table is generated from the same tables the search reads,
+    so it can't drift from what the product actually serves.  "Edition" here
+    means the provenance corpus units — rows with amending regulations
+    loaded — not the per-consolidation snapshot rows (``source='elaws'``)
+    or legacy MCP entries, which are internal.  Only verified editions are
+    listed, mirroring the publish gate (CCM only ships an edition JSON to
+    prod once its amendment chain is complete AND its reconstruction's
+    discrepancies have been reviewed — the ``verified`` flag).  Deliberately
+    ungated (like viewer edition-dates): metadata only, no provision content.
+    """
+    editions = list(
+        CodeEdition.objects.select_related("code")
+        .filter(regulations__isnull=False, verified=True)
+        .distinct()
+        .annotate(
+            amendment_count=Count(
+                "regulations", filter=Q(regulations__role="amendment"), distinct=True
+            )
+        )
+        .order_by("effective_date")
+    )
+    consolidation_count = CodeEdition.objects.filter(source="elaws").count()
+    # Era-specific source bullets, keyed to what's actually loaded:
+    # pre-e-Laws editions (1997 and older) draw their amending regulations
+    # from Ontario Gazette scans on the Internet Archive; OBC 2024+ draws on
+    # handbooks and corrections downloaded from ontario.ca.
+    has_gazette_sources = any(e.year <= 1997 for e in editions)
+    has_handbook_sources = any(e.year >= 2024 for e in editions)
+    return render(
+        request,
+        "data_sources.html",
+        {
+            "editions": editions,
+            "consolidation_count": consolidation_count,
+            "has_gazette_sources": has_gazette_sources,
+            "has_handbook_sources": has_handbook_sources,
+        },
+    )
 
 
 def _pricing_plans(user: Any) -> list[dict[str, Any]]:

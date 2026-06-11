@@ -298,6 +298,12 @@ class CodeEdition(models.Model):
     effective_date = models.DateField()
     ineffective_date = models.DateField(null=True, blank=True)
     amendment_chain_complete = models.BooleanField(default=False)
+    #: CCM publish gate.  ``amendment_chain_complete`` only means every
+    #: amending regulation was processed; ``verified`` means the resulting
+    #: reconstruction's discrepancies against the consolidation record have
+    #: also been reviewed.  Public surfaces (the Sources page) list only
+    #: verified editions.
+    verified = models.BooleanField(default=False)
     version_number = models.IntegerField(null=True, blank=True)
     source = models.CharField(max_length=50, blank=True, default="")
     is_guide = models.BooleanField(default=False)

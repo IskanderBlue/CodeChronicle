@@ -47,6 +47,7 @@ class TestLoadEdition:
         assert edition.effective_date == date(1998, 4, 6)
         assert edition.ineffective_date == date(2006, 12, 31)
         assert edition.amendment_chain_complete is True
+        assert edition.verified is True
 
     def test_creates_regulations(self, edition_json: Path) -> None:
         call_command("load_edition", "--source", str(edition_json))
@@ -460,6 +461,23 @@ class TestLoadEdition:
             "load_edition", "--source", str(incomplete), "--allow-incomplete-chain",
         )
         assert CodeEdition.objects.get(edition_id="1997").amendment_chain_complete is False
+
+    def test_refuses_unverified(self, edition_json: Path, tmp_path: Path) -> None:
+        # An absent key counts as unverified, same as an explicit false.
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        del data["verified"]
+        unverified = tmp_path / "OBC_1997_unverified.json"
+        unverified.write_text(json.dumps(data), encoding="utf-8")
+        with pytest.raises(CommandError, match="verified"):
+            call_command("load_edition", "--source", str(unverified))
+
+    def test_allow_unverified_flag(self, edition_json: Path, tmp_path: Path) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        data["verified"] = False
+        unverified = tmp_path / "OBC_1997_unverified.json"
+        unverified.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(unverified), "--allow-unverified")
+        assert CodeEdition.objects.get(edition_id="1997").verified is False
 
     def test_refuses_triple_in_force_overlap(
         self, edition_json: Path, tmp_path: Path

@@ -119,6 +119,16 @@ class Command(BaseCommand):
                 "contract is explicit that incomplete chains are out-of-spec."
             ),
         )
+        parser.add_argument(
+            "--allow-unverified",
+            action="store_true",
+            help=(
+                "Permit ingest of an edition whose JSON lacks verified=true "
+                "(reconstruction discrepancies not yet reviewed).  Off by "
+                "default so an unverified edition can't reach prod by "
+                "accident; pass this for dev/work-in-progress loads."
+            ),
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         source_path = Path(options["source"]).expanduser().resolve()
@@ -162,6 +172,15 @@ class Command(BaseCommand):
             raise CommandError(
                 "Edition JSON has amendment_chain_complete=False.  "
                 "Pass --allow-incomplete-chain to ingest anyway."
+            )
+
+        # Publish gate: a complete chain only means every amendment was
+        # processed; verified means the reconstruction's discrepancies were
+        # also reviewed.  Only verified editions belong on prod.
+        if not data.get("verified", False) and not options["allow_unverified"]:
+            raise CommandError(
+                "Edition JSON is not verified=true.  "
+                "Pass --allow-unverified to ingest anyway."
             )
 
         with transaction.atomic():
@@ -236,6 +255,7 @@ class Command(BaseCommand):
                 "effective_date": _require_date(data.get("effective_date"), "effective_date"),
                 "ineffective_date": _parse_date(data.get("ineffective_date")),
                 "amendment_chain_complete": data.get("amendment_chain_complete", False),
+                "verified": data.get("verified", False),
             },
         )
 
