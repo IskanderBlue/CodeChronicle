@@ -938,6 +938,9 @@ class EditionTransition(models.Model):
     covered.
     """
 
+    # FK id-shadow, plugin-only — declared for Pyright (see CodeEdition).
+    new_edition_id: int
+
     old_edition = models.ForeignKey(
         CodeEdition, on_delete=models.CASCADE, related_name="transitions_forward",
     )

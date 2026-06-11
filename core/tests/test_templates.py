@@ -695,6 +695,63 @@ class TestLineageRows:
             state="no_data_yet", edition=e2012, outside_reference="SB-12",
         )})
         assert "Content moved to SB-12, not yet covered" in html
+
+
+def _band(result_extra: dict[str, Any], **context: Any) -> str:
+    base = {
+        "version": CodeEditionProvisionVersion(
+            version=0,
+            effective_date=date(2014, 1, 1),
+            ineffective_date=date(2025, 1, 1),
+        ),
+        "copy_text": "x",
+    }
+    return render_to_string(
+        "partials/_provenance_band.html",
+        {"result": {**base, **result_extra}, **context},
+    )
+
+
+class TestProvenanceBand:
+    """The IN FORCE band — label and commencement ⓘ edges."""
+
+    def test_amended_label_dropped_in_compare_panes(self):
+        # The side-by-side transition panes equalize band widths: the pane
+        # header already names the amending regulation, so the label drops
+        # the "· amended" suffix there (its width made the two bands wrap,
+        # and so size, differently at equal pane widths).
+        result = {"clause": {"commencement": None}}
+        assert "amended" in _band(result)
+        assert "amended" not in _band(result, compare_pane=True)
+
+    def test_from_info_renders_for_base_versions(self):
+        # A base version proves its From edge with the base regulation's own
+        # commencement record (formatter fallback) — same popup as a clause.
+        record = {
+            "regulation": "332/12", "clause": "4.4.1.1(1)", "is_default": True,
+            "effective_date": "2014-01-01", "source": "parsed",
+            "commencement_clause": "Comes into force on January 1, 2014.",
+        }
+        html = _band({"from_commencement": record})
+        assert "Why this date?" in html
+        assert "Comes into force on January 1, 2014." in html
+        assert "O. Reg. 332/12" in html
+
+    def test_until_info_renders_without_next_version(self):
+        # An edition-final version proves its Until edge with the replacing
+        # edition's base regulation — no next_version needed.
+        record = {
+            "regulation": "163/24", "clause": "1(1)", "is_default": True,
+            "effective_date": "2025-01-01", "source": "parsed",
+            "commencement_clause": "Comes into force on January 1, 2025.",
+        }
+        html = _band({
+            "until_commencement": record,
+            "until_commencement_date": date(2025, 1, 1),
+        })
+        assert "Why does it end here?" in html
+        assert "Comes into force on January 1, 2025." in html
+        assert "1 January 2025" in html
         assert "not yet mapped" not in html
 
     def test_division_crossing_link_names_target_division(self):

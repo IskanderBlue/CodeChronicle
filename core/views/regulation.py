@@ -10,7 +10,11 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
-from api.formatters import _build_copy_text
+from api.formatters import (
+    _build_copy_text,
+    replacement_commencement,
+    select_commencement_record,
+)
 from core.access import edition_allowed
 from core.events import record_event
 from core.models import (
@@ -352,6 +356,34 @@ def _provenance_result(
     next_clause = next_version.last_contributing_clause if next_version else None
     lineage = resolve_lineage([matched])[matched.pk]
     annotate_lineage_locks([lineage], user)
+    # Commencement proof for both band edges, mirroring
+    # api.formatters._format_single_result: a base version's From falls back
+    # to the base regulation's own schedule, and an edition-final version's
+    # Until falls back to the replacing edition's base regulation.
+    from_commencement = clause.commencement if clause else None
+    if from_commencement is None and clause is None and base_regulation is not None:
+        from_commencement = select_commencement_record(
+            base_regulation.commencement,
+            provision_id,
+            division,
+            target_version.effective_date,
+        )
+    until_commencement = next_clause.commencement if next_clause else None
+    until_commencement_date = next_version.effective_date if next_version else None
+    if (
+        until_commencement is None
+        and next_version is None
+        and target_version.ineffective_date is not None
+    ):
+        until_commencement = replacement_commencement(
+            matched.edition,
+            provision_id,
+            division,
+            target_version.ineffective_date,
+        )
+        until_commencement_date = (
+            target_version.ineffective_date if until_commencement else None
+        )
     return {
         "version": target_version,
         "clause": clause,
@@ -360,10 +392,9 @@ def _provenance_result(
         "next_version": next_version,
         "lineage_predecessors": lineage.predecessors,
         "lineage_successors": lineage.successors,
-        # Proof of the version's END: the next version's commencement (this
-        # version stops the day the next one comes into force).  Mirrors the
-        # band's From popup, which proves the START.
-        "next_commencement": next_clause.commencement if next_clause else None,
+        "from_commencement": from_commencement,
+        "until_commencement": until_commencement,
+        "until_commencement_date": until_commencement_date,
         "amendment_chain": chain,
         "copy_text": copy_text,
         "band": None,

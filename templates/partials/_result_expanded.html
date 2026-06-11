@@ -105,7 +105,10 @@
    This branch only renders at lg, so inline `display:grid` is breakpoint-safe. {% endcomment %}
 {% if metadata_in_rail %}
 <div class="mt-4">
-    <div :style="comparePrevious ? 'display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:start;' : ''">
+    {% comment %} align-items:stretch — the two pane boxes equalize heights so
+       a content-length difference between versions can't leave one band/box
+       visibly shorter than its neighbour. {% endcomment %}
+    <div :style="comparePrevious ? 'display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:stretch;' : ''">
         {% for version in result.versions %}
         {% if version.transition_context.is_primary %}
         <div class="border border-secondary">

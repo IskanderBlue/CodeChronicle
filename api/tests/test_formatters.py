@@ -336,7 +336,7 @@ def test_format_single_result_marks_structural_headings(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_format_single_result_exposes_next_commencement(monkeypatch):
+def test_format_single_result_exposes_until_commencement(monkeypatch):
     """The band's 'Until' proof: a version's result carries the NEXT version's
     CommencementProvenance (its contributing clause's resolved entry), since
     the version ends the day the next one comes into force."""
@@ -387,7 +387,152 @@ def test_format_single_result_exposes_next_commencement(monkeypatch):
         {"code_edition": "OBC_2012", "provision": article, "version": v0}
     )
     # v0 ends when v1 (produced by `clause`) commences — its provenance rides along.
-    assert res["next_commencement"] == entry
+    assert res["until_commencement"] == entry
+    assert res["until_commencement_date"] == date(2016, 1, 1)
+
+
+def _commencement_fixture():
+    """An edition pair for the base-regulation commencement fallbacks.
+
+    OBC 2012-shaped: the old edition's base reg has a staggered schedule
+    (default 2014-01-01 plus a deferred 2016-01-01 record naming one
+    provision), and an EditionTransition points at a replacing edition whose
+    base reg commences 2025-01-01.
+    """
+    from core.models import Code, CodeEdition, EditionTransition, Regulation
+
+    system = Code.objects.create(code="OBC", display_name="OBC")
+    edition = CodeEdition.objects.create(
+        code=system, edition_id="2012", year=2012,
+        effective_date=date(2014, 1, 1), ineffective_date=date(2025, 1, 1),
+        source="e-Laws",
+    )
+    base = Regulation.objects.create(
+        reg_id="332/12", edition=edition, role="base",
+        effective_date=date(2014, 1, 1),
+        commencement=[
+            {
+                "regulation": "332/12", "clause": "4.4.1.1(1)", "is_default": True,
+                "effective_date": "2014-01-01", "source": "parsed",
+                "commencement_clause": "Comes into force on January 1, 2014.",
+                "resolved_provisions": [],
+            },
+            {
+                "regulation": "332/12", "clause": "4.4.1.1(2)", "is_default": False,
+                "effective_date": "2016-01-01", "source": "parsed",
+                "commencement_clause": "Sentence 4.2.1.1.(5) comes into force on January 1, 2016.",
+                # Trailing-dot inconsistency is real data — see 332/12 vs 315/10.
+                "resolved_provisions": ["4.2.1.1.(5).|C"],
+            },
+        ],
+    )
+    next_edition = CodeEdition.objects.create(
+        code=system, edition_id="2024", year=2024,
+        effective_date=date(2025, 1, 1), source="e-Laws",
+    )
+    Regulation.objects.create(
+        reg_id="163/24", edition=next_edition, role="base",
+        effective_date=date(2025, 1, 1),
+        commencement=[
+            {
+                "regulation": "163/24", "clause": "1(1)", "is_default": True,
+                "effective_date": "2025-01-01", "source": "parsed",
+                "commencement_clause": "Comes into force on January 1, 2025.",
+                "resolved_provisions": [],
+            },
+        ],
+    )
+    EditionTransition.objects.create(old_edition=edition, new_edition=next_edition)
+    return edition, base
+
+
+@pytest.mark.django_db
+def test_from_commencement_falls_back_to_base_regulation(monkeypatch):
+    """A base version (no producing clause) proves its From edge with the base
+    regulation's own commencement record — the default record when its date
+    matches, the provision-naming record for a staggered provision, and
+    nothing when the schedule doesn't set the version's date."""
+    from core.models import CodeEditionProvision, CodeEditionProvisionVersion
+
+    monkeypatch.setattr(formatters, "_build_code_display_name", lambda c: c)
+    edition, base = _commencement_fixture()
+    article = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="1.1.1.1.", level="article", division="C",
+    )
+    v0 = CodeEditionProvisionVersion.objects.create(
+        provision=article, version=0, effective_date=date(2014, 1, 1),
+    )
+    res = formatters._format_single_result(
+        {"code_edition": "OBC_2012", "provision": article, "version": v0,
+         "id": "1.1.1.1.", "division": "C"}
+    )
+    assert res["from_commencement"] == base.commencement[0]
+
+    # Staggered: the deferred record names 4.2.1.1.(5) — a version of that
+    # article commencing 2016-01-01 gets the deferred record, not the default.
+    staggered = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="4.2.1.1.", level="article", division="C",
+    )
+    sv = CodeEditionProvisionVersion.objects.create(
+        provision=staggered, version=0, effective_date=date(2016, 1, 1),
+    )
+    res = formatters._format_single_result(
+        {"code_edition": "OBC_2012", "provision": staggered, "version": sv,
+         "id": "4.2.1.1.", "division": "C"}
+    )
+    assert res["from_commencement"] == base.commencement[1]
+
+    # Date guard: a version whose date no schedule record sets gets no record
+    # rather than a plausible-but-wrong one.
+    odd = CodeEditionProvisionVersion.objects.create(
+        provision=article, version=1, effective_date=date(2018, 1, 1),
+    )
+    res = formatters._format_single_result(
+        {"code_edition": "OBC_2012", "provision": article, "version": odd,
+         "id": "1.1.1.1.", "division": "C"}
+    )
+    assert res["from_commencement"] is None
+
+
+@pytest.mark.django_db
+def test_until_commencement_falls_back_to_replacing_edition(monkeypatch):
+    """An edition-final version (no next version) proves its Until edge with
+    the replacing edition's base-regulation record, found via
+    EditionTransition; a mismatched ineffective date yields nothing."""
+    from core.models import CodeEditionProvision, CodeEditionProvisionVersion
+
+    monkeypatch.setattr(formatters, "_build_code_display_name", lambda c: c)
+    edition, _base = _commencement_fixture()
+    article = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="1.1.1.1.", level="article", division="C",
+    )
+    last = CodeEditionProvisionVersion.objects.create(
+        provision=article, version=0,
+        effective_date=date(2014, 1, 1), ineffective_date=date(2025, 1, 1),
+    )
+    res = formatters._format_single_result(
+        {"code_edition": "OBC_2012", "provision": article, "version": last,
+         "id": "1.1.1.1.", "division": "C"}
+    )
+    assert res["until_commencement"] is not None
+    assert res["until_commencement"]["regulation"] == "163/24"
+    assert res["until_commencement_date"] == date(2025, 1, 1)
+
+    # Date guard: an ineffective date the replacing schedule doesn't set
+    # (e.g. a staggered 2016 ending inside a 2025 replacement) gets nothing.
+    stray = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="2.2.2.2.", level="article", division="C",
+    )
+    sv = CodeEditionProvisionVersion.objects.create(
+        provision=stray, version=0,
+        effective_date=date(2014, 1, 1), ineffective_date=date(2016, 1, 1),
+    )
+    res = formatters._format_single_result(
+        {"code_edition": "OBC_2012", "provision": stray, "version": sv,
+         "id": "2.2.2.2.", "division": "C"}
+    )
+    assert res["until_commencement"] is None
+    assert res["until_commencement_date"] is None
 
 
 def _version(version: int, title: str, eff: date, ineff: date | None) -> CodeEditionProvisionVersion:
