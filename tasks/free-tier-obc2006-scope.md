@@ -98,12 +98,27 @@ Blocked on Pro being purchasable (business bank account → route
    Verify the $29 price and feature copy are still right before go-live.
 3. **Stripe must actually work** when the flag flips: the Pro card's
    "Upgrade to Pro" posts to `create_checkout_session`, which needs live
-   keys + `STRIPE_PRO_PRICE_ID` (blocked on the business bank account).
-4. Sweep remaining copy if wording changed: `templates/base.html`,
-   `templates/settings.html`, the rate-limit upsell partial.
+   keys + `STRIPE_PRO_PRICE_ID` (a `price_...` ID, NOT the `prod_...`
+   product ID). **Config channel (2026-06-11)**: GCP production does NOT
+   use `.env.prod`/`docker-compose.prod.yml` (legacy path — its local copy
+   has placeholder ALLOWED_HOSTS). The web container env carries only
+   GCP_PROJECT_ID / DJANGO_SETTINGS_MODULE / ALLOWED_HOSTS; Stripe + the
+   gate flag resolve in `settings/production.py` via the
+   `app_runtime_secrets` JSON bundle in GCP Secret Manager (same as
+   email). Add `STRIPE_LIVE_SECRET_KEY` and `STRIPE_PRO_PRICE_ID` to the
+   bundle (`gcloud secrets versions add app_runtime_secrets ...`), then
+   `docker restart codechroniclenet-web` — the bundle is read once per
+   process. `STRIPE_LIVE_MODE` defaults true in production.
+4. ~~Sweep remaining copy~~ **DONE 2026-06-11**: `stripe_success.html`
+   now says "Pro access" (not "unlimited searches" — that's the free-
+   account perk post-flip); the unreachable "Upgrade to Pro for unlimited
+   searches" rate-limit branch was deleted (template + middleware context
+   key). `base.html`/`settings.html` were clean.
    `pricing_early_access.html` needs no retirement — it simply stops
    being served.
-5. Set `FREE_TIER_GATING_ENABLED=True` in the production env; confirm
+5. Flip the flag: add `FREE_TIER_GATING_ENABLED=true` to the
+   `app_runtime_secrets` bundle and restart the web container (see item 3
+   for the channel; rollback = remove the key + restart). Confirm
    `FREE_TIER_CODE_NAMES` (add the 2006 guide's code_name if loaded and
    it should be free).
 6. Smoke-test the teaser surfaces as an anonymous user: search with a

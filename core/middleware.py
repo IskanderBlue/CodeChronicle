@@ -49,7 +49,6 @@ class RateLimitMiddleware:
                     "rate_limited": True,
                     "signup_url": payload.get("signup_url", ""),
                     "login_url": payload.get("login_url", ""),
-                    "upgrade_url": payload.get("upgrade_url", ""),
                 },
                 status=status_code,
             )
