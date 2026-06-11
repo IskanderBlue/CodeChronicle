@@ -12,6 +12,7 @@ from api.band import compute_band_geometry, parse_iso_date
 from api.search.engine import _ref_parts
 from config.code_metadata import get_code_display_name
 from core.models import CodeEditionProvision, CodeEditionProvisionVersion
+from core.provision_lineage import annotate_lineage_locks, resolve_lineage
 
 logger = logging.getLogger(__name__)
 
@@ -909,22 +910,47 @@ def _nest_child_results(
     return [r for r in results if _nest_result_key(r) not in absorbed_child_keys]
 
 
+def _attach_lineage(formatted: List[Dict[str, Any]], user: Any = None) -> None:
+    """Stamp lineage rows onto every result, one batched resolver call.
+
+    Runs on the still-flat list, BEFORE grouping/pairing/nesting: transition
+    panes and nested children keep references to these same dicts, so every
+    rail render site (result rail, compare panes, banner) sees the keys
+    without walking the grouped structure.  Kept as separate keys next to
+    ``amendment_chain`` — never spliced into it (that list means "versions
+    of this provision in this edition"; lineage entries carry their own
+    edition/division/id and prebuilt URLs).
+    """
+    lineage = resolve_lineage(
+        [r["provision"] for r in formatted if r.get("provision")]
+    )
+    annotate_lineage_locks(lineage.values(), user)
+    for result in formatted:
+        provision = result.get("provision")
+        lin = lineage.get(provision.pk) if provision is not None else None
+        result["lineage_predecessors"] = lin.predecessors if lin else None
+        result["lineage_successors"] = lin.successors if lin else None
+
+
 def format_search_results(
     results: List[Dict[str, Any]],
     query_date: date | str | None = None,
     terms: Iterable[str] | None = None,
+    user: Any = None,
 ) -> List[Dict[str, Any]]:
     """Transform raw search results into a format suitable for the frontend.
 
     ``query_date`` (a ``date`` or ISO string) drives the IN FORCE band's
     query tick + coverage; omit it and the band still renders its date span.
     ``terms`` (parsed query keywords) are highlighted in the provision body;
-    omit or pass empty to skip highlighting.
+    omit or pass empty to skip highlighting.  ``user`` feeds the free-tier
+    gate on lineage links (None reads as anonymous — most restrictive).
     """
     parsed_query_date = parse_iso_date(query_date)
     formatted = [
         _format_single_result(result, parsed_query_date, terms) for result in results
     ]
+    _attach_lineage(formatted, user)
     formatted.sort(key=lambda item: item.get("score", 0), reverse=True)
     grouped = group_formatted_results(formatted, query_date=parsed_query_date)
     merged = merge_transition_compare_results(grouped)

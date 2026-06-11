@@ -1,22 +1,75 @@
-<div class="flex flex-col gap-3"
+{% comment %} ── Viewer lineage rows ──
+   Replaces the old prev/next-edition buttons: one row per lineage link
+   (predecessors first, then successors), plus the marker states, built by
+   core.views.search.viewer_edition_nav from the lineage resolver. A linked
+   row is a button carrying the data-edition-result payload the viewer JS
+   loads content from (query_date/query_code are re-stamped on click); a
+   locked row (free-tier gate) keeps the edition visible but links to
+   pricing instead. Marker rows carry no action.
+{% endcomment %}
+<div class="flex flex-col gap-2"
     data-edition-nav
     data-nav-query-date="{{ query_date }}"
     data-nav-query-code="{{ query_code }}">
-    {% if previous_version %}
+    {% if predecessors %}
+    {% if predecessors.state == 'linked' %}
+    {% for link in predecessors.links %}
+    {% if link.locked %}
+    <a href="{% url 'core:pricing' %}"
+        class="inline-flex w-full items-center justify-center gap-1.5 border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-3 hover:border-secondary hover:text-secondary">
+        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+        {{ link.edition_label }} &middot; {{ link.id }} &mdash; Pro
+    </a>
+    {% else %}
     <button type="button"
-        data-edition-result='{"id":"{{ previous_version.id|escapejs }}","title":"{{ previous_version.title|escapejs }}","code":"{{ previous_version.code|escapejs }}","code_display_name":"{{ previous_version.code_display_name|escapejs }}","division":"{{ previous_version.division|escapejs }}","map_code":"{{ previous_version.map_code|escapejs }}","page":{{ previous_version.page|default:"null" }},"page_end":{{ previous_version.page_end|default:"null" }},"initial_page_top":{{ previous_version.initial_page_top|default:"null" }},"final_page_bottom":{{ previous_version.final_page_bottom|default:"null" }},"pdf_filename":"{{ previous_version.pdf_filename|escapejs }}","pdf_download_url":"{{ previous_version.pdf_download_url|escapejs }}","source_url":"{{ previous_version.source_url|escapejs }}"}'
-        class="inline-flex w-full items-center justify-center border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
-        Previous edition
+        data-edition-result='{"id":"{{ link.id|escapejs }}","title":"{{ link.title|escapejs }}","code":"{{ link.code|escapejs }}","code_display_name":"{{ link.code_display_name|escapejs }}","division":"{{ link.division|escapejs }}"}'
+        class="inline-flex w-full items-center justify-center gap-1 border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
+        <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition_label }}{% endif %} &middot;</span> {{ link.verb }} {{ link.id }}
     </button>
     {% endif %}
-    {% if next_version %}
+    {% endfor %}
+    {% if predecessors.outside_corpus %}
+    <p class="text-sm italic text-ink-3">Some content came from {% if predecessors.outside_reference %}{{ predecessors.outside_reference }}, not yet covered{% else %}a document not yet covered{% endif %}</p>
+    {% endif %}
+    {% elif predecessors.state == 'discontinued' %}
+    <p class="text-sm italic text-ink-3">New in this edition &mdash; no {{ predecessors.edition_label }} predecessor</p>
+    {% elif predecessors.state == 'endpoint' %}
+    <p class="text-sm italic text-ink-3">First edition</p>
+    {% else %}
+    <p class="text-sm italic text-ink-3">{% if predecessors.edition_label %}Transition from {{ predecessors.edition_label }} not yet mapped{% else %}Earlier editions not yet mapped{% endif %}</p>
+    {% endif %}
+    {% endif %}
+
+    {% if successors %}
+    {% if successors.state == 'linked' %}
+    {% for link in successors.links %}
+    {% if link.locked %}
+    <a href="{% url 'core:pricing' %}"
+        class="inline-flex w-full items-center justify-center gap-1.5 border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-3 hover:border-secondary hover:text-secondary">
+        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+        {{ link.edition_label }} &middot; {{ link.id }} &mdash; Pro
+    </a>
+    {% else %}
     <button type="button"
-        data-edition-result='{"id":"{{ next_version.id|escapejs }}","title":"{{ next_version.title|escapejs }}","code":"{{ next_version.code|escapejs }}","code_display_name":"{{ next_version.code_display_name|escapejs }}","division":"{{ next_version.division|escapejs }}","map_code":"{{ next_version.map_code|escapejs }}","page":{{ next_version.page|default:"null" }},"page_end":{{ next_version.page_end|default:"null" }},"initial_page_top":{{ next_version.initial_page_top|default:"null" }},"final_page_bottom":{{ next_version.final_page_bottom|default:"null" }},"pdf_filename":"{{ next_version.pdf_filename|escapejs }}","pdf_download_url":"{{ next_version.pdf_download_url|escapejs }}","source_url":"{{ next_version.source_url|escapejs }}"}'
-        class="inline-flex w-full items-center justify-center border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
-        Next edition
+        data-edition-result='{"id":"{{ link.id|escapejs }}","title":"{{ link.title|escapejs }}","code":"{{ link.code|escapejs }}","code_display_name":"{{ link.code_display_name|escapejs }}","division":"{{ link.division|escapejs }}"}'
+        class="inline-flex w-full items-center justify-center gap-1 border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
+        <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition_label }}{% endif %} &middot;</span> {{ link.verb }} {{ link.id }}
     </button>
     {% endif %}
-    {% if not previous_version and not next_version %}
-    <p class="text-sm text-ink-3">No adjacent edition links are available for this provision yet.</p>
+    {% endfor %}
+    {% if successors.outside_corpus %}
+    <p class="text-sm italic text-ink-3">Some content moved to {% if successors.outside_reference %}{{ successors.outside_reference }}, not yet covered{% else %}a document not yet covered{% endif %}</p>
+    {% endif %}
+    {% elif successors.state == 'discontinued' %}
+    <p class="text-sm italic text-ink-3">Discontinued &mdash; no {{ successors.edition_label }} successor</p>
+    {% elif successors.state == 'endpoint' %}
+    <p class="text-sm italic text-ink-3">Current edition</p>
+    {% else %}
+    <p class="text-sm italic text-ink-3">{% if successors.outside_reference %}Content moved to {{ successors.outside_reference }}, not yet covered{% elif successors.edition_label %}Transition to {{ successors.edition_label }} not yet mapped{% else %}Later editions not yet mapped{% endif %}</p>
+    {% endif %}
+    {% endif %}
+
+    {% if not predecessors and not successors %}
+    <p class="text-sm text-ink-3">No lineage is available for this provision yet.</p>
     {% endif %}
 </div>

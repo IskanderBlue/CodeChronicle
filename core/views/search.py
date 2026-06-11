@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 
 from api.formatters import _code_order_key, highlight_terms
 from config.code_metadata import get_code_display_name
+from core.access import edition_allowed
 from core.events import record_event
 from core.ip_utils import extract_client_ip
 from core.models import (
@@ -19,6 +20,8 @@ from core.models import (
     CodeEditionProvisionVersion,
     EngagementEvent,
 )
+from core.provision_lineage import LineageDirection, annotate_lineage_locks, resolve_lineage
+from services.search_service import run_search
 
 logger = Logger(__name__)
 
@@ -29,137 +32,67 @@ def _query_value(request: HttpRequest, key: str) -> str:
 
 
 
-def _build_viewer_url_params(
-    *,
-    code_name: str,
-    node_id: str,
-    query_date: str,
-    query_code: str,
-    preferred_division: str = "",
-) -> dict[str, Any] | None:
-    """Build viewer-link parameters for ``node_id`` in ``code_name``.
+def _lineage_nav_direction(
+    direction: LineageDirection, titles: dict[int, str]
+) -> dict[str, Any]:
+    """Shape one lineage direction for the viewer nav partial.
 
-    Queries the provenance schema directly.  If the provision exists in
-    multiple divisions of the same edition (rare — only happens when
-    the same ID is reused across Division A/B/C/D), prefer the
-    caller's division, then body divisions over appendices.
+    Linked rows become in-viewer load buttons, so each entry carries the
+    ``data-edition-result`` payload fields (id/title/code/
+    code_display_name/division — query_date/query_code are re-stamped by
+    the click handler); marker states pass through as ``state`` +
+    ``edition_label``.
     """
-    if "_" not in code_name:
-        return None
-    system_code, edition_id = code_name.split("_", 1)
-    edition = (
-        CodeEdition.objects.select_related("code")
-        .filter(code__code=system_code, edition_id=edition_id)
-        .first()
-    )
-    if not edition:
-        return None
-
-    candidates = list(
-        CodeEditionProvision.objects
-        .filter(edition=edition, provision_id=node_id)[:5]
-    )
-    if not candidates:
-        return None
-
-    def _pick(divisions: list[str]) -> CodeEditionProvision | None:
-        for d in divisions:
-            for c in candidates:
-                if c.division == d:
-                    return c
-        return None
-
-    preferred = []
-    if preferred_division:
-        preferred.append(preferred_division)
-    preferred.extend(["B", "C", "D", "A", ""])
-    provision = _pick(preferred) or candidates[0]
-
-    # Latest version's title is the most informative for a navigation
-    # label (the user's effective query date doesn't matter here).
-    latest_version = (
-        provision.versions.order_by("-version").first()
-    )
-    title = latest_version.title if latest_version else node_id
-
+    links = []
+    for link in direction.links:
+        target = link.provision
+        links.append({
+            "verb": link.verb,
+            "same_id": link.same_id,
+            "same_edition": link.same_edition,
+            "locked": link.locked,
+            "edition_label": f"{link.edition.code.code} {link.edition.edition_id}",
+            "id": target.provision_id,
+            "title": titles.get(target.pk, target.provision_id),
+            "code": link.edition.code_name,
+            "code_display_name": (
+                f"{get_code_display_name(link.edition.code.code)} "
+                f"{link.edition.edition_id}"
+            ).strip(),
+            "division": target.division,
+        })
     return {
-        "id": provision.provision_id,
-        "provision_id": provision.provision_id,
-        "title": title,
-        "code": code_name,
-        "code_display_name": (
-            f"{get_code_display_name(edition.code.code)} {edition.edition_id}".strip()
+        "state": direction.state,
+        "edition_label": (
+            f"{direction.edition.code.code} {direction.edition.edition_id}"
+            if direction.edition else ""
         ),
-        "edition_id": edition.edition_id,
-        "division": provision.division,
-        "query_date": query_date,
-        "query_code": query_code,
+        "links": links,
+        "outside_corpus": direction.outside_corpus,
+        "outside_reference": direction.outside_reference,
     }
 
 
-def _build_viewer_navigation(
-    current_code: str,
-    node_id: str,
-    query_date: str,
-    query_code: str,
-    preferred_division: str = "",
-) -> dict[str, dict[str, Any] | None]:
-    if not current_code or "_" not in current_code:
-        return {"previous": None, "next": None}
-
-    system_code, edition_id = current_code.split("_", 1)
-    current_edition = (
-        CodeEdition.objects.select_related("code")
-        .filter(code__code=system_code, edition_id=edition_id)
-        .first()
-    )
-    if not current_edition:
-        return {"previous": None, "next": None}
-
-    editions = list(
-        CodeEdition.objects.select_related("code")
-        .filter(code=current_edition.code)
-        .order_by("effective_date", "year", "edition_id")
-    )
-    current_index = next(
-        (index for index, edition in enumerate(editions) if edition.pk == current_edition.pk), None
-    )
-    if current_index is None:
-        return {"previous": None, "next": None}
-
-    previous_params = None
-    next_params = None
-    if current_index > 0:
-        previous_params = _build_viewer_url_params(
-            code_name=editions[current_index - 1].code_name,
-            node_id=node_id,
-            query_date=query_date,
-            query_code=query_code,
-            preferred_division=preferred_division,
-        )
-    if current_index < len(editions) - 1:
-        next_params = _build_viewer_url_params(
-            code_name=editions[current_index + 1].code_name,
-            node_id=node_id,
-            query_date=query_date,
-            query_code=query_code,
-            preferred_division=preferred_division,
-        )
-    return {"previous": previous_params, "next": next_params}
-
-
-# One-click example queries shown in the empty search state. Curated (not
-# data-driven) because only one edition is loaded; each must return a real
-# result, and the set deliberately spans both search modes — natural-language
-# keywords and a bare article reference (exercises extract_section_references).
-# An optional ``date`` sets the AS-OF picker on click, so an example that names
-# a year actually searches that year (the picker always overrides the date the
-# LLM reads from the text). Dates sit inside the covered window.
+# One-click example queries shown in the empty search state. Curated, not
+# data-driven: each must return a real result with its FIRST hit in a
+# supported edition (OBC 2006 — 1997 isn't supported yet), and the set spans
+# the search modes — natural-language keywords, a bare article reference
+# (exercises extract_section_references), and a transition period (the
+# maintenance-inspection chip: at 2014-07-01 the first result is the
+# OBC 2006 C ↔ 2012 C 1.10.2.4. transition_compare card, so the diff view is
+# one click away).  Every chip carries a ``date`` — it sets the AS-OF picker
+# on click (the picker always overrides the date the LLM reads from the
+# text), and an undated chip would search today, which falls outside every
+# loaded edition's window and returns nothing.  All four verified rank-1
+# through the full run_search pipeline (LLM parse included) 2026-06-11.
 EXAMPLE_QUERIES = [
-    {"query": "fire separation between dwelling units, Ontario, 2016", "date": "2016-01-01"},
-    {"query": "guards and handrails for a stairway"},
-    {"query": "spatial separation and exposing building face"},
-    {"query": "3.1.8.1."},
+    {"query": "fire separation between dwelling units, Ontario, 2010", "date": "2010-06-01"},
+    {"query": "guards and handrails for a stairway", "date": "2010-06-01"},
+    {
+        "query": "when must a maintenance inspection be conducted, Ontario, 2014",
+        "date": "2014-07-01",
+    },
+    {"query": "3.1.8.1.", "date": "2010-06-01"},
 ]
 
 
@@ -174,7 +107,16 @@ def home(request):
 
 
 def viewer_edition_nav(request: HttpRequest):
-    """HTMX partial: edition navigation for the client-side viewer overlay."""
+    """HTMX partial: provision lineage rows for the client-side viewer overlay.
+
+    The old prev/next-edition buttons guessed a same-id equivalent in the
+    adjacent edition; these rows come from the lineage resolver instead
+    (mapping rows > dispositions > same-id fallback on covered transitions
+    — ``core.provision_lineage``).  Linked rows keep the in-viewer load
+    behaviour via the ``data-edition-result`` payload; rows whose target
+    edition is outside the user's free-tier scope render as a locked
+    upsell to pricing (teaser, not omission).
+    """
     code = _query_value(request, "code")
     # Accept new-style ``provision_id`` and legacy ``node_id`` for the
     # rollout window; the underlying value is the same.
@@ -185,15 +127,52 @@ def viewer_edition_nav(request: HttpRequest):
     query_date = _query_value(request, "query_date")
     query_code = _query_value(request, "query_code")
     division = _query_value(request, "division")
-    navigation = _build_viewer_navigation(
-        code, node_id, query_date, query_code, preferred_division=division,
-    )
+
+    matched = None
+    if code and "_" in code and node_id:
+        system_code, edition_id = code.split("_", 1)
+        matched = (
+            CodeEditionProvision.objects
+            .filter(
+                edition__code__code=system_code,
+                edition__edition_id=edition_id,
+                division=division or "",
+                provision_id=node_id,
+            )
+            .first()
+        )
+
+    predecessors = None
+    successors = None
+    if matched is not None:
+        lineage = resolve_lineage([matched])[matched.pk]
+        annotate_lineage_locks([lineage], request.user)
+        # Latest version's title is the most informative for a navigation
+        # label (the user's effective query date doesn't matter here);
+        # ascending order so the last write per provision wins.
+        target_pks = [
+            link.provision.pk
+            for d in (lineage.predecessors, lineage.successors)
+            for link in d.links
+        ]
+        titles: dict[int, str] = {}
+        for prov_pk, title in (
+            CodeEditionProvisionVersion.objects
+            .filter(provision_id__in=target_pks)
+            .order_by("version")
+            .values_list("provision_id", "title")
+        ):
+            if title:
+                titles[prov_pk] = title
+        predecessors = _lineage_nav_direction(lineage.predecessors, titles)
+        successors = _lineage_nav_direction(lineage.successors, titles)
+
     return render(
         request,
         "partials/_viewer_edition_nav.html",
         {
-            "previous_version": navigation["previous"],
-            "next_version": navigation["next"],
+            "predecessors": predecessors,
+            "successors": successors,
             "query_date": query_date,
             "query_code": query_code,
         },
@@ -327,6 +306,18 @@ def viewer_section_content(request: HttpRequest):
     }
     if not code or not edition_id or not provision_id:
         return render(request, "partials/_viewer_section_content.html", empty_ctx)
+
+    # Free-tier gate: provision content from an edition outside the user's
+    # scope renders as a locked teaser (no content, no engagement event).
+    if not edition_allowed(request.user, f"{code}_{edition_id}"):
+        return render(
+            request,
+            "partials/_viewer_section_content.html",
+            {
+                **empty_ctx,
+                "locked_edition_name": f"{get_code_display_name(code)} {edition_id}".strip(),
+            },
+        )
 
     matched = (
         CodeEditionProvision.objects
@@ -474,8 +465,6 @@ def search_results(request):
     # Extract IP for anonymous tracking
     ip = extract_client_ip(request.META)
 
-    from services.search_service import run_search
-
     result = run_search(
         query,
         user=request.user if request.user.is_authenticated else None,
@@ -514,5 +503,7 @@ def search_results(request):
             # explicitly-named date outside coverage (no results — see partial).
             "not_covered_province": result.get("not_covered_province"),
             "date_out_of_range": result.get("date_out_of_range"),
+            # Free-tier teaser: {edition code_name: dropped result count}.
+            "locked_editions": result.get("locked_editions"),
         },
     )

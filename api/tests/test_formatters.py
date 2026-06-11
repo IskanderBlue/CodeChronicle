@@ -5,7 +5,14 @@ from typing import Any
 import pytest
 
 from api import formatters
-from core.models import CodeEditionProvisionVersion
+from core.models import (
+    Code,
+    CodeEdition,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
+    EditionTransition,
+    ProvisionMapping,
+)
 
 
 def test_format_search_results_emits_span_fields_without_bbox(monkeypatch):
@@ -837,3 +844,58 @@ def test_format_single_result_shows_chips_for_keyword_match():
     )
     assert formatted["show_matched_terms"] is True
     assert formatted["matched_terms"] == ["fire", "sprinkler"]
+
+
+@pytest.mark.django_db
+def test_format_search_results_attaches_lineage(monkeypatch):
+    """Every result carries lineage keys from one batched resolver call;
+    results without a provision (raw-dict paths) get None, not a KeyError."""
+    monkeypatch.setattr(formatters, "_build_code_display_name", lambda c: c)
+    monkeypatch.setattr(
+        formatters, "_load_group_hierarchy", lambda formatted_results, query_date=None: {}
+    )
+    system = Code.objects.create(code="OBC", display_name="OBC")
+    e2006 = CodeEdition.objects.create(
+        code=system, edition_id="2006", year=2006,
+        effective_date=date(2006, 12, 31), ineffective_date=date(2014, 1, 1),
+    )
+    e2012 = CodeEdition.objects.create(
+        code=system, edition_id="2012", year=2012, effective_date=date(2014, 1, 1),
+    )
+    EditionTransition.objects.create(old_edition=e2006, new_edition=e2012)
+    old = CodeEditionProvision.objects.create(
+        edition=e2006, provision_id="9.10.18.6.", level="article", division="B",
+    )
+    new = CodeEditionProvision.objects.create(
+        edition=e2012, provision_id="9.10.18.7.", level="article", division="B",
+    )
+    for prov in (old, new):
+        CodeEditionProvisionVersion.objects.create(
+            provision=prov, version=0, effective_date=prov.edition.effective_date,
+        )
+    ProvisionMapping.objects.create(
+        old_provision=old, new_provision=new, mapping_type="renumbered",
+    )
+
+    formatted = formatters.format_search_results(
+        [
+            {
+                "id": "9.10.18.6.", "title": "Old", "code_edition": "OBC_2006",
+                "division": "B", "score": 2.0, "provision": old,
+            },
+            {"id": "1.1.1.1.", "title": "No provision", "code_edition": "OBC_2006",
+             "division": "B", "score": 1.0},
+        ]
+    )
+
+    with_prov = next(r for r in formatted if r.get("provision") is not None)
+    succ = with_prov["lineage_successors"]
+    assert succ.state == "linked"
+    assert succ.links[0].provision == new
+    assert succ.links[0].verb == "renumbered to"
+    assert succ.links[0].locked is False  # gating disabled → never locked
+    assert with_prov["lineage_predecessors"].state == "no_data_yet"
+
+    without_prov = next(r for r in formatted if r.get("provision") is None)
+    assert without_prov["lineage_successors"] is None
+    assert without_prov["lineage_predecessors"] is None

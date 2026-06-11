@@ -21,7 +21,9 @@ populate its provenance models for that edition.
 
   "regulations": [ ... ],
   "provisions": [ ... ],
-  "provision_mappings": [ ... ]
+  "provision_mappings": [ ... ],
+  "provision_discontinuations": [ ... ],
+  "mapping_coverage": [ ... ]
 }
 ```
 
@@ -583,6 +585,15 @@ is a wholesale re-enactment), so `introduced_by` is null. The UI falls
 back to the new version's `transition_provision_ref` (a Division C /
 Part 12 entry on the receiving edition) for the transition narrative.
 
+> **Typing issue (2026-06-11).** The 2026-06 payloads emit a *total*
+> cross-edition mapping and type identity carries `renumbered` — including
+> 2,915 2006→2012 rows whose id **and** division are unchanged. A row
+> whose endpoints share the number is a continuation, not a renumber;
+> CodeChronicle words such rows "continues as … (same number)" regardless
+> of `mapping_type`. Producer fix wanted: either emit only rows where
+> identity actually changed, or keep total emission and type carries
+> distinctly (e.g. `carried`).
+
 ### `mapping_type` values
 
 | Value | Meaning |
@@ -599,6 +610,121 @@ CodeChronicle resolves `old_edition` + `old_provision_id` +
 `CodeEditionProvision` FKs during ingestion. `introduced_by` is resolved
 via the `(provision_id, division, version)` triple to a
 `CodeEditionProvisionVersion` FK on the new-id side.
+
+### `new_provision_id: "not_processed"` sentinel rows (deprecated form)
+
+Some 2006→2012 payloads carry pseudo-mapping rows with
+`new_provision_id: "not_processed"` (`new_division: "SB-12"` or
+`"SB-10"`) meaning the old provision's content was delegated to a
+document outside the corpus (OBC 2006 Part 12 → Supplementary Standards
+SB-12/SB-10). CodeChronicle accepts these — they are **never** ingested
+as mapping rows; the loader converts them to disposition records with
+`status: "not_processed"`, capturing `new_division` as the disposition's
+`target_reference` (on these rows the field names the target *document*,
+never a real division) — but the preferred emission is a
+`provision_discontinuations[]` entry with that status. A pseudo-row in a
+mapping array is shape abuse; one record type per meaning.
+
+## `provision_discontinuations[]`
+
+Per-provision disposition overrides for a covered transition. Optional —
+only present when such records exist.
+
+On a covered transition, *absence* of a mapping row already reads "no
+successor" — CCM emits a total mapping, so every carried-forward
+provision has a row (see `mapping_coverage`). These records say what
+plain absence can't: a `discontinued` tombstone is an authoritative
+verdict with provenance, valuable where a reader might assume continuity
+(e.g. 2006 C `1.3.5.4.`, an edition-specific transition article whose
+number is reused by an unrelated provision in 2012), and `not_processed`
+marks content whose fate lies outside the corpus.
+
+```json
+{
+  "old_provision_id": "1.3.5.4.",
+  "old_division": "C",
+  "old_edition": "2006",
+  "new_edition": "2012",
+  "status": "discontinued",
+  "source": "cross-edition-verified",
+  "reasoning": "Edition-specific transition article; not carried forward."
+}
+```
+
+| `status` | Meaning | CC rendering |
+|----------|---------|--------------|
+| `discontinued` | Content ends at this transition | "Discontinued — no <edition> successor" |
+| `not_processed` | Content's fate is outside the corpus (e.g. delegated to SB-12) | Alone: "Content moved to SB-12, not yet covered" when `target_reference` is known, else the generic not-yet-covered marker (deliberately **no** dedicated state). Alongside mapping rows: an extra out-of-corpus leg row after the links (see below) |
+
+- `status` defaults to `"discontinued"` when omitted; unknown values are
+  warn-skipped.
+- `target_reference` (optional, for `not_processed`): where the content
+  went — a document or provision reference outside the corpus (e.g.
+  `"SB-10"`, or finer like `"SB-12 1.2.3.4."` if CCM can name it).
+  Stored verbatim and named in the user-facing markers; omit when
+  unknown. (Sentinel rows feed the same field from `new_division`.)
+- `source` / `reasoning` are optional free-text provenance, stored
+  verbatim.
+- Resolution: `old_edition` + `old_provision_id` + `old_division` →
+  `CodeEditionProvision` FK; `new_edition` → `CodeEdition` FK. Unique per
+  (provision, new edition); warn-skip on unresolved references.
+
+**Coexistence with mapping rows.** A `not_processed` disposition
+alongside mapping rows toward the same new edition is **not** a
+contradiction — it is one verdict with multiple legs, one of them
+outside the corpus. Live instance: 2006 B `12.3.4.6.` split into 2012 B
+`12.3.1.4.` (mapping row) *and* SB-10-delegated content (`not_processed`
+sentinel). CodeChronicle renders the linked row(s) plus an
+out-of-corpus leg marker ("Some content moved to SB-10, not yet
+covered", from `target_reference`) so both successors show. The mirror-image case exists for
+merges — a provision partly assembled from content outside the corpus —
+but no emission shape expresses the backward leg today (dispositions
+key on the *old* provision); define one with CCM if such a verdict ever
+arises.
+
+**Row + tombstone is a contradiction (producer requirement).** A
+provision must not carry both a mapping row and a `discontinued`
+tombstone toward the same new edition — a successor and "no successor"
+genuinely conflict. CodeChronicle resolves it deterministically
+(mapping rows outrank), but the double emission is a producer bug. One
+live instance in the 2026-06 payloads, reported 2026-06-10: 1997
+`9.23.9.6.` has BOTH a `renumbered` mapping row (→ 2006 `9.23.9.7.`)
+and a discontinuation tombstone.
+
+## `mapping_coverage[]`
+
+Explicit declaration that a transition's provision mapping is **fully
+represented** by this payload — including the legitimate case of zero
+rows (nothing changed identity). Optional today; required once CCM emits
+it (see below).
+
+```json
+"mapping_coverage": [
+  {"old_edition": "2006", "new_edition": "2012"}
+]
+```
+
+Why explicit rather than inferred from row existence: inference conflates
+"not mapped yet" with "mapped, zero changes", and a partial or failed
+load would silently read as covered. The declaration is what licenses
+CodeChronicle's lineage resolver to treat the *absence* of a mapping row,
+tombstone, and sentinel as a positive "no successor" assertion and call
+the provision **discontinued** (CCM emits a total mapping, so every
+carried-forward provision has a row). Without coverage, the same
+situation honestly renders "transition not yet mapped".
+
+- Ingested into `EditionTransition`; both editions must already be
+  loaded (a declaration naming an unloaded edition is warn-skipped, so
+  emit it from the *newer* edition's payload).
+- Reload semantics: reloading an edition wipes coverage rows touching it
+  (its mapping rows die with the provisions CASCADE, and a stale
+  coverage claim over deleted rows would mint false "discontinued"
+  verdicts). The payload re-declares whatever the load still covers.
+
+> **Status (2026-06-11):** CCM does not emit `mapping_coverage` yet —
+> the two dev-DB rows (1997→2006, 2006→2012) are inserted manually after
+> every reload as a stopgap. Coordinate emission with CCM; this is the
+> remaining contract gap for provision lineage.
 
 ## Image Pre-Rendering
 

@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Any
 
 import pytest
 from django.template import Context, Template
@@ -10,6 +11,7 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
 )
+from core.provision_lineage import LineageDirection, LineageLink
 
 ELAWS_SAMPLE = (
     '<p class="Psection-e">2.2.1.1. Objectives</p>'
@@ -604,6 +606,158 @@ def test_provenance_banner_shows_base_regulation():
     assert "403/97" in html
     assert "Original" in html
     assert "base regulation" in html
+
+
+def _lineage_link(**overrides: Any) -> LineageLink:
+    """An unsaved LineageLink wired to OBC 2012 B 9.10.18.7. — the template
+    only reads attributes, so nothing touches the DB."""
+    code = Code(code="OBC", display_name="Ontario Building Code")
+    edition = CodeEdition(
+        code=code, edition_id="2012", year=2012, effective_date=date(2014, 1, 1),
+    )
+    fields: dict[str, Any] = {
+        "provision": CodeEditionProvision(
+            provision_id="9.10.18.7.", level="article", division="B",
+        ),
+        "edition": edition,
+        "url": "/provision/OBC_2012/B/9.10.18.7./v0/",
+        "version": 0,
+        "mapping_type": "renumbered",
+        "same_id": False,
+        "same_edition": False,
+        "verb": "renumbered to",
+        "locked": False,
+    }
+    fields.update(overrides)
+    return LineageLink(**fields)
+
+
+def _rail(result_extra):
+    base = {"id": "9.10.18.6.", "division": "B", "code_edition": "OBC_2006"}
+    return render_to_string(
+        "partials/_provenance_rail.html", {"result": {**base, **result_extra}}
+    )
+
+
+class TestLineageRows:
+    """Lineage rows on the provenance rail — links above/below the chain."""
+
+    def test_linked_successor_row(self):
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[_lineage_link()],
+        )})
+        assert "OBC 2012" in html
+        assert "renumbered to" in html
+        assert "/provision/OBC_2012/B/9.10.18.7./v0/" in html
+        assert "9.10.18.7." in html
+        # No version chip: the other edition's version numbering would read
+        # as this edition's (the URL still pins the hand-off version).
+        assert "View this version" not in html
+        # Same division as the source result → no redundant division label.
+        assert "Div. B" not in html
+
+    def test_same_id_row_uses_continues_verb(self):
+        link = _lineage_link(mapping_type="", same_id=True, verb="continues as")
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[link],
+        )})
+        assert "continues as" in html
+        # The verb carries the meaning; no "(same number)" suffix.
+        assert "(same number)" not in html
+
+    def test_outside_corpus_leg_renders_extra_row(self):
+        # One verdict, two legs (the real 2006 B 12.3.4.6. split: one leg
+        # in-Code, one delegated to SB-10): the linked row AND the
+        # out-of-corpus leg marker render together, naming the target
+        # document when the disposition recorded it.
+        link = _lineage_link(mapping_type="split", verb="split into")
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[link], outside_corpus=True,
+            outside_reference="SB-10",
+        )})
+        assert "split into" in html
+        assert "Some content moved to SB-10, not yet covered" in html
+
+    def test_outside_corpus_leg_without_reference_stays_generic(self):
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[_lineage_link()], outside_corpus=True,
+        )})
+        assert "Some content moved to a document not yet covered" in html
+
+    def test_not_processed_marker_names_the_reference(self):
+        # Standalone not_processed (whole content left the corpus, e.g.
+        # Part 12 → SB-12): the no-data marker names the destination
+        # instead of the generic "not yet mapped" wording.
+        code = Code(code="OBC")
+        e2012 = CodeEdition(code=code, edition_id="2012", year=2012,
+                            effective_date=date(2014, 1, 1))
+        html = _rail({"lineage_successors": LineageDirection(
+            state="no_data_yet", edition=e2012, outside_reference="SB-12",
+        )})
+        assert "Content moved to SB-12, not yet covered" in html
+        assert "not yet mapped" not in html
+
+    def test_division_crossing_link_names_target_division(self):
+        link = _lineage_link(
+            provision=CodeEditionProvision(
+                provision_id="3.1.1.3.", level="article", division="C",
+            ),
+            url="/provision/OBC_2012/C/3.1.1.3./v0/",
+        )
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[link],
+        )})
+        assert "Div. C" in html
+
+    def test_locked_link_upsells_to_pricing(self):
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[_lineage_link(locked=True)],
+        )})
+        assert "Pro" in html
+        assert "/pricing/" in html
+        # Never the raw target URL — it would 403 after click-through.
+        assert "/provision/OBC_2012/B/9.10.18.7./v0/" not in html
+
+    def test_intra_edition_renumber_reads_this_edition(self):
+        link = _lineage_link(same_edition=True, verb="renumbered from")
+        html = _rail({"lineage_predecessors": LineageDirection(
+            state="linked", links=[link],
+        )})
+        assert "This edition" in html
+
+    def test_marker_rows(self):
+        code = Code(code="OBC")
+        e2006 = CodeEdition(code=code, edition_id="2006", year=2006,
+                            effective_date=date(2006, 12, 31))
+        e2012 = CodeEdition(code=code, edition_id="2012", year=2012,
+                            effective_date=date(2014, 1, 1))
+        pred_disc = _rail({"lineage_predecessors": LineageDirection(
+            state="discontinued", edition=e2006,
+        )})
+        assert "New in this edition" in pred_disc
+        assert "no OBC 2006 predecessor" in pred_disc
+        succ_disc = _rail({"lineage_successors": LineageDirection(
+            state="discontinued", edition=e2012,
+        )})
+        assert "Discontinued" in succ_disc
+        assert "no OBC 2012 successor" in succ_disc
+        not_mapped = _rail({"lineage_successors": LineageDirection(
+            state="no_data_yet", edition=e2012,
+        )})
+        assert "Transition to OBC 2012 not yet mapped" in not_mapped
+        beyond_corpus = _rail({"lineage_successors": LineageDirection(
+            state="no_data_yet", edition=None,
+        )})
+        assert "Later editions not yet mapped" in beyond_corpus
+        first_edition = _rail({"lineage_predecessors": LineageDirection(
+            state="endpoint",
+        )})
+        assert "First edition" in first_edition
+
+    def test_successor_endpoint_renders_nothing(self):
+        html = _rail({"lineage_successors": LineageDirection(state="endpoint")})
+        plain = _rail({})
+        assert html == plain
 
 
 def test_revoked_version_renders_tombstone_warning():

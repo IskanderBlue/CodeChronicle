@@ -11,6 +11,29 @@
         Provenance
     </p>
     <div class="space-y-1.5 px-4 py-3 font-mono text-[11px] text-ink-2">
+        {% comment %} Lineage: predecessor rows — where this provision came
+           from in the previous edition (or an intra-edition renumber). Sits
+           above the Base row, separated by a rule, because it precedes this
+           edition's timeline. Links/verbs/locks are prebuilt in Python
+           (core.provision_lineage); a locked link upsells to pricing
+           instead of 403ing after click-through. {% endcomment %}
+        {% if result.lineage_predecessors %}
+        {% with lineage=result.lineage_predecessors %}
+        <div class="space-y-1 border-b border-rule pb-1.5">
+            {% if lineage.state == 'linked' %}
+            {% for link in lineage.links %}{% include "partials/_lineage_link_row.html" %}{% endfor %}
+            {% if lineage.outside_corpus %}<p class="italic text-ink-3">Some content came from {% if lineage.outside_reference %}{{ lineage.outside_reference }}, not yet covered{% else %}a document not yet covered{% endif %}</p>{% endif %}
+            {% elif lineage.state == 'discontinued' %}
+            <p class="italic text-ink-3">New in this edition &mdash; no {{ lineage.edition.code.code }} {{ lineage.edition.edition_id }} predecessor</p>
+            {% elif lineage.state == 'endpoint' %}
+            <p class="italic text-ink-3">First edition</p>
+            {% else %}
+            <p class="italic text-ink-3">{% if lineage.edition %}Transition from {{ lineage.edition.code.code }} {{ lineage.edition.edition_id }} not yet mapped{% else %}Earlier editions not yet mapped{% endif %}</p>
+            {% endif %}
+        </div>
+        {% endwith %}
+        {% endif %}
+
         {% if result.base_regulation %}
         <p class="flex items-baseline justify-between gap-2 {% if result.version.pk == result.amendment_chain.0.pk %}bg-secondary-soft px-1.5 py-0.5 font-semibold text-ink ring-1 ring-secondary/40{% endif %}">
             <span><span class="text-ink-3">Base &middot;</span> {% if result.base_regulation.pk %}<a href="{% url 'core:regulation_detail' result.base_regulation.pk %}" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ result.base_regulation.reg_id }}</a>{% else %}O. Reg. {{ result.base_regulation.reg_id }}{% endif %}{% if result.version.pk == result.amendment_chain.0.pk %}<span class="ml-1 font-mono text-[9px] uppercase tracking-[0.08em] text-secondary">&larr; current</span>{% endif %}</span>
@@ -74,6 +97,26 @@
             <span>Next: {% if next_clause %}{% if next_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' next_clause.regulation.pk %}#clause-{{ next_clause.pk }}" @click.stop class="not-italic text-secondary hover:text-secondary-2 hover:underline">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</a> {% else %}O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }} {% endif %}{% endif %}(not in force until {{ result.next_version.effective_date|date:"Y-m-d" }})</span>
             <a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.next_version.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.next_version.version %}{% endif %}" @click.stop class="shrink-0 font-mono text-[10px] not-italic text-secondary hover:text-secondary-2 hover:underline" title="View this version">v{{ result.next_version.version }} &rarr;</a>
         </p>
+        {% endwith %}
+        {% endif %}
+
+        {% comment %} Lineage: successor rows — where this provision went in
+           the next edition. Sits below the next-version row, separated by a
+           rule, because it follows this edition's timeline. A successor
+           endpoint (still the current edition) renders nothing rather than
+           stamping "current edition" on every result. {% endcomment %}
+        {% if result.lineage_successors and result.lineage_successors.state != 'endpoint' %}
+        {% with lineage=result.lineage_successors %}
+        <div class="space-y-1 border-t border-rule pt-1.5">
+            {% if lineage.state == 'linked' %}
+            {% for link in lineage.links %}{% include "partials/_lineage_link_row.html" %}{% endfor %}
+            {% if lineage.outside_corpus %}<p class="italic text-ink-3">Some content moved to {% if lineage.outside_reference %}{{ lineage.outside_reference }}, not yet covered{% else %}a document not yet covered{% endif %}</p>{% endif %}
+            {% elif lineage.state == 'discontinued' %}
+            <p class="italic text-ink-3">Discontinued &mdash; no {{ lineage.edition.code.code }} {{ lineage.edition.edition_id }} successor</p>
+            {% else %}
+            <p class="italic text-ink-3">{% if lineage.outside_reference %}Content moved to {{ lineage.outside_reference }}, not yet covered{% elif lineage.edition %}Transition to {{ lineage.edition.code.code }} {{ lineage.edition.edition_id }} not yet mapped{% else %}Later editions not yet mapped{% endif %}</p>
+            {% endif %}
+        </div>
         {% endwith %}
         {% endif %}
     </div>

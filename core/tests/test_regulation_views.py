@@ -8,6 +8,8 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    EditionTransition,
+    ProvisionMapping,
     ProvisionVersionTable,
     Regulation,
     RegulationClause,
@@ -386,6 +388,50 @@ class TestProvisionPermalinkUrl:
         # Must not raise NoReverseMatch, and must omit the division segment.
         url = provision_permalink_url("OBC_1997", "", "3.1.1.1", 1)
         assert url == "/provision/OBC_1997/3.1.1.1/v1/"
+
+
+@pytest.mark.django_db
+class TestPermalinkLineageRows:
+    """The permalink page's provenance rail carries the lineage rows
+    (``_provenance_result`` calls the resolver for the matched provision)."""
+
+    @pytest.fixture
+    def mapped_editions(self, db):
+        code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+        e2006 = CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31), ineffective_date=date(2014, 1, 1),
+        )
+        e2012 = CodeEdition.objects.create(
+            code=code, edition_id="2012", year=2012, effective_date=date(2014, 1, 1),
+        )
+        EditionTransition.objects.create(old_edition=e2006, new_edition=e2012)
+        old = CodeEditionProvision.objects.create(
+            edition=e2006, provision_id="9.10.18.6.", level="article", division="B",
+        )
+        new = CodeEditionProvision.objects.create(
+            edition=e2012, provision_id="9.10.18.7.", level="article", division="B",
+        )
+        for prov in (old, new):
+            CodeEditionProvisionVersion.objects.create(
+                provision=prov, version=0, title="Smoke Alarms",
+                effective_date=prov.edition.effective_date,
+            )
+        ProvisionMapping.objects.create(
+            old_provision=old, new_provision=new, mapping_type="renumbered",
+        )
+        return {"old": old, "new": new}
+
+    def test_permalink_shows_successor_row(self, client: Client, mapped_editions):
+        content = client.get("/provision/OBC_2006/B/9.10.18.6./v0/").content.decode()
+        assert "renumbered to" in content
+        assert "/provision/OBC_2012/B/9.10.18.7./v0/" in content
+        assert "OBC 2012" in content
+
+    def test_permalink_shows_predecessor_row(self, client: Client, mapped_editions):
+        content = client.get("/provision/OBC_2012/B/9.10.18.7./v0/").content.decode()
+        assert "renumbered from" in content
+        assert "/provision/OBC_2006/B/9.10.18.6./v0/" in content
 
 
 class TestReduceProvisionRef:

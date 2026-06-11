@@ -857,16 +857,80 @@ class ProvisionMapping(models.Model):
         return f"{self.old_provision} → {self.new_provision} ({self.mapping_type})"
 
 
+class ProvisionDisposition(models.Model):
+    """Per-provision override of the covered-transition default.
+
+    On a covered transition the absence of a mapping row already reads
+    "no successor" (CCM emits a total mapping; see ``EditionTransition``).
+    A disposition says more than absence can:
+
+    - ``discontinued`` — an authoritative tombstone with provenance
+      (``source``/``reasoning``), valuable where a reader might assume
+      continuity (id reuse: 2006 C 1.3.5.4. is an edition-specific
+      transition rule; the 2012 article at the same number is unrelated
+      content).
+    - ``not_processed`` — the content's fate lies outside our corpus
+      (e.g. OBC 2006 Part 12 delegated to Supplementary Standard SB-12);
+      rendered as the existing "not yet covered" marker, not a new state.
+
+    Ingested by ``load_edition`` from the payload's
+    ``provision_discontinuations`` key and from ``provision_mappings``
+    rows carrying the ``"not_processed"`` sentinel.  The lineage resolver
+    (``core.provision_lineage``) uses these to refine the covered-no-row
+    marker; a ``not_processed`` record coexisting with mapping rows is a
+    multi-leg verdict (e.g. a split with one leg outside the corpus), not
+    a contradiction — the resolver surfaces it as an extra leg row.
+    """
+
+    # FK id-shadows, plugin-only — declared for Pyright.
+    provision_id: int
+    new_edition_id: int
+
+    class Status(models.TextChoices):
+        DISCONTINUED = "discontinued", "Discontinued"
+        NOT_PROCESSED = "not_processed", "Not processed"
+
+    provision = models.ForeignKey(
+        CodeEditionProvision, on_delete=models.CASCADE, related_name="dispositions",
+    )
+    new_edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="incoming_dispositions",
+    )
+    status = models.CharField(max_length=20, choices=Status.choices)
+    #: Where the content went, when known and outside the corpus — a
+    #: document reference like "SB-10" ("" when unknown).  Sentinel
+    #: mapping rows carry it in ``new_division`` (the field is document
+    #: abuse there, never a real division); explicit entries in an
+    #: optional ``target_reference`` key.  Named in the not-yet-covered
+    #: lineage markers ("Some content moved to SB-10, not yet covered").
+    target_reference = models.CharField(max_length=50, blank=True, default="")
+    source = models.CharField(max_length=50, blank=True, default="")
+    reasoning = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "provision_dispositions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provision", "new_edition"],
+                name="provision_disposition_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.provision} -> {self.new_edition}: {self.status}"
+
+
 class EditionTransition(models.Model):
     """Declares that an old→new edition transition's provision mapping is covered.
 
     Written by ``load_edition`` from the CCM payload's ``mapping_coverage``
-    key.  CCM emits ``ProvisionMapping`` rows only where identity *changed*,
-    so on a covered transition the absence of a row positively asserts "same
-    division/id continues" — but only if we know the transition was mapped at
-    all.  This row is that knowledge: it lets the lineage resolver
+    key.  CCM emits a **total** mapping for a covered transition — every
+    carried-forward provision gets a row, identity carries included — so
+    the absence of a row, tombstone, and sentinel positively asserts "no
+    successor".  But only if we know the transition was mapped at all;
+    this row is that knowledge: it lets the lineage resolver
     (``core.provision_lineage``) distinguish **discontinued** (covered, no
-    row, no same-id match) from **no data yet** (transition never mapped).
+    row) from **no data yet** (transition never mapped).
 
     Coverage is declared explicitly rather than inferred from mapping-row
     existence: inference conflates "not mapped yet" with "mapped, zero

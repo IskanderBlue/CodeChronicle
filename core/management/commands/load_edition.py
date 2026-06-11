@@ -19,6 +19,7 @@ from core.models import (
     CorpusCurrency,
     EditionTransition,
     ProvinceCode,
+    ProvisionDisposition,
     ProvisionMapping,
     ProvisionVersionTable,
     Regulation,
@@ -84,6 +85,12 @@ class Command(BaseCommand):
     FIRST_EDITION_DATES = {
         "OBC": date(1975, 12, 31),
     }
+
+    #: Sentinel ``new_provision_id`` on a provision_mappings row meaning the
+    #: old provision's content left our corpus (e.g. OBC 2006 Part 12
+    #: delegated to Supplementary Standard SB-12).  Such rows are ingested
+    #: as ``ProvisionDisposition`` records, never as mapping rows.
+    NOT_PROCESSED_SENTINEL = "not_processed"
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
@@ -175,6 +182,11 @@ class Command(BaseCommand):
             mapping_count = self._load_provision_mappings(
                 code, version_lookup, data.get("provision_mappings", []),
             )
+            disposition_count = self._load_provision_dispositions(
+                code,
+                data.get("provision_discontinuations", []),
+                data.get("provision_mappings", []),
+            )
             coverage_count = self._load_mapping_coverage(
                 code, data.get("mapping_coverage", []),
             )
@@ -188,7 +200,7 @@ class Command(BaseCommand):
         logger.info(
             "Loaded %s %s: %d regulations, %d clauses, %d assets, %d provisions, "
             "%d versions, %d version-clause links, %d tables, %d mappings, "
-            "%d covered transitions; corpus current to %s",
+            "%d dispositions, %d covered transitions; corpus current to %s",
             code_str,
             edition_str,
             len(reg_lookup),
@@ -199,6 +211,7 @@ class Command(BaseCommand):
             clause_link_count,
             table_count,
             mapping_count,
+            disposition_count,
             coverage_count,
             currency.data_current_to,
         )
@@ -248,6 +261,12 @@ class Command(BaseCommand):
         EditionTransition.objects.filter(
             Q(old_edition=edition) | Q(new_edition=edition)
         ).delete()
+
+        # Same symmetry for per-provision dispositions.  Old-side rows die
+        # with the provisions CASCADE above, but rows *targeting* this
+        # edition were declared by this edition's payload — wipe them so a
+        # stale override can't outlive the load that asserted it.
+        ProvisionDisposition.objects.filter(new_edition=edition).delete()
 
         return code, edition
 
@@ -750,6 +769,10 @@ class Command(BaseCommand):
         mappings_to_create: list[ProvisionMapping] = []
 
         for mapping_data in provision_mappings:
+            if mapping_data["new_provision_id"] == self.NOT_PROCESSED_SENTINEL:
+                # Not a mapping — a disposition record; ingested by
+                # _load_provision_dispositions.
+                continue
             old_edition_id = mapping_data["old_edition"]
             new_edition_id = mapping_data["new_edition"]
             old_provision_id = mapping_data["old_provision_id"]
@@ -809,6 +832,81 @@ class Command(BaseCommand):
             )
 
         return len(mappings_to_create)
+
+    def _load_provision_dispositions(
+        self,
+        code: Code,
+        discontinuations: list[dict[str, Any]],
+        provision_mappings: list[dict[str, Any]],
+    ) -> int:
+        """Persist per-provision disposition overrides for covered transitions.
+
+        Two payload sources feed one record type: explicit
+        ``provision_discontinuations`` entries, and ``provision_mappings``
+        rows carrying the ``"not_processed"`` sentinel (content delegated
+        outside the corpus, e.g. OBC 2006 Part 12 → SB-12).  These records
+        say what plain absence can't: a tombstone adds an authoritative
+        verdict with provenance, and ``not_processed`` marks content whose
+        fate lies outside the corpus — including alongside mapping rows,
+        where it is the out-of-corpus leg of a split.
+        """
+        # Discontinuations first: an explicit tombstone outranks a sentinel
+        # row if both name the same provision.  The last tuple element is
+        # the out-of-corpus target reference (e.g. "SB-10") — sentinel rows
+        # carry it in ``new_division`` (document abuse of the field, never
+        # a real division), explicit entries in ``target_reference``.
+        entries: list[tuple[dict[str, Any], str, str, str]] = [
+            (row, row.get("status", ProvisionDisposition.Status.DISCONTINUED.value),
+             row.get("reasoning", ""), row.get("target_reference", ""))
+            for row in discontinuations
+        ]
+        entries += [
+            (row, ProvisionDisposition.Status.NOT_PROCESSED.value,
+             row.get("notes", ""), row.get("new_division", ""))
+            for row in provision_mappings
+            if row["new_provision_id"] == self.NOT_PROCESSED_SENTINEL
+        ]
+
+        to_create: dict[tuple[int, int], ProvisionDisposition] = {}
+        for row, status, reasoning, target_reference in entries:
+            if status not in ProvisionDisposition.Status.values:
+                logger.warning(
+                    "Skipping disposition %s/%s: unknown status %r",
+                    row["old_edition"], row["old_provision_id"], status,
+                )
+                continue
+            provision = CodeEditionProvision.objects.filter(
+                edition__code=code,
+                edition__edition_id=row["old_edition"],
+                provision_id=row["old_provision_id"],
+                division=row.get("old_division", ""),
+            ).first()
+            new_edition = CodeEdition.objects.filter(
+                code=code, edition_id=row["new_edition"],
+            ).first()
+            if not provision or not new_edition:
+                logger.warning(
+                    "Skipping disposition %s/%s -> %s: provision or edition not found",
+                    row["old_edition"], row["old_provision_id"], row["new_edition"],
+                )
+                continue
+            key = (provision.pk, new_edition.pk)
+            if key in to_create:
+                continue
+            to_create[key] = ProvisionDisposition(
+                provision=provision,
+                new_edition=new_edition,
+                status=status,
+                target_reference=target_reference,
+                source=row.get("source", ""),
+                reasoning=reasoning,
+            )
+
+        if to_create:
+            ProvisionDisposition.objects.bulk_create(
+                to_create.values(), ignore_conflicts=True
+            )
+        return len(to_create)
 
     def _load_mapping_coverage(
         self, code: Code, mapping_coverage: list[dict[str, Any]]

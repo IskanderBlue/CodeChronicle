@@ -12,6 +12,7 @@ from coloured_logger import Logger
 from api.formatters import format_search_results
 from api.llm_parser import parse_user_query
 from api.search import execute_search
+from core.access import partition_results
 from core.models import CorpusCurrency, SearchHistory
 
 logger = Logger(__name__)
@@ -60,7 +61,8 @@ def run_search(
 
     Returns:
         A dict with keys: success, results, error, applicable_codes,
-        parsed_params, and top_results_metadata.
+        parsed_params, top_results_metadata, and locked_editions (the
+        free-tier gate's {edition: dropped count} teaser counts).
     """
     try:
         # Step 1: Parse natural language with LLM
@@ -144,13 +146,31 @@ def run_search(
                 "results": [],
             }
 
+        # Free-tier content gate (inert unless FREE_TIER_GATING_ENABLED):
+        # drop results from editions outside the user's scope BEFORE
+        # formatting, keeping per-edition counts so the UI renders a teaser
+        # ("N results in OBC 2012 — available on Pro") rather than silently
+        # returning less.  The formatter already renders a transition pair
+        # whose other member was dropped as a plain result, so cross-edition
+        # pairs degrade safely.
+        raw_results, locked_editions = partition_results(user, search_data["results"])
+        applicable_codes = [
+            c for c in search_data.get("applicable_codes", []) if c not in locked_editions
+        ]
+        top_results_metadata = [
+            m
+            for m in search_data.get("top_results_metadata", [])
+            if m.get("code") not in locked_editions
+        ]
+
         # Step 3: Format results for display. The parsed/overridden query
         # date drives the IN FORCE band's query tick + coverage; the parsed
         # keywords are highlighted in the provision body.
         formatted = format_search_results(
-            search_data["results"],
+            raw_results,
             query_date=params.get("date"),
             terms=params.get("keywords"),
+            user=user,
         )
         logger.info("search service payload: %d results", len(formatted))
 
@@ -165,7 +185,7 @@ def run_search(
                 query=query,
                 parsed_params=params,
                 result_count=len(formatted),
-                top_results=search_data.get("top_results_metadata", []),
+                top_results=top_results_metadata,
             )
             search_history_id = history.pk
         except Exception as e:
@@ -175,13 +195,16 @@ def run_search(
             "success": True,
             "results": formatted,
             "error": None,
-            "applicable_codes": search_data.get("applicable_codes", []),
+            "applicable_codes": applicable_codes,
             "parsed_params": params,
-            "top_results_metadata": search_data.get("top_results_metadata", []),
+            "top_results_metadata": top_results_metadata,
             "search_history_id": search_history_id,
             # Non-blocking: the search ran against Ontario, but the user asked
             # about a jurisdiction we don't cover yet — tell them.
             "not_covered_province": not_covered_province,
+            # {edition code_name: dropped result count} for the free-tier
+            # teaser notice; empty for unrestricted users / gating off.
+            "locked_editions": locked_editions,
         }
 
     except (ValueError, anthropic.APIError) as e:

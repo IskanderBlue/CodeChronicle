@@ -9,17 +9,29 @@ Data contract (confirmed):
 
 - ``ProvisionMapping`` rows are only ever emitted between *adjacent*
   editions — no chaining or multi-hop resolution anywhere.
-- CCM emits mapping rows only where identity *changed*.  On a **covered**
-  transition (an ``EditionTransition`` row exists), absence of a mapping row
-  positively asserts "same division/id continues" — the same-id fallback is
-  trusted there and *only* there.  On an uncovered transition the id may
-  have been renumbered away or reused, so we never guess.
+- CCM emits a **total** cross-edition mapping: every carried-forward
+  provision gets a row (identity carries arrive typed ``renumbered``; see
+  the contract doc's typing-issue note).  On a **covered** transition (an
+  ``EditionTransition`` row exists), every provision is accounted for by
+  a row, a tombstone, or a sentinel — so absence of all three reads as
+  discontinued.
+- **Number equality proves nothing** (Iskander, 2026-06-11): the same
+  bare provision number does not consistently map to the same provision
+  across editions, so links come from mapping rows ONLY — there is no
+  same-id fallback, on covered or uncovered transitions alike.
 
 Per provision, per direction, exactly one of four states:
 
-- ``linked`` — mapping row(s), or same (division, id) continues on a
-  covered transition.  Multiple links only for split/merged.
-- ``discontinued`` — covered transition, no row, no same-id match.
+- ``linked`` — mapping row(s).  Multiple links only for split/merged.
+  A ``not_processed`` disposition coexisting with forward rows is NOT a
+  contradiction: it is one verdict with an extra leg whose content left
+  the corpus (2006 B 12.3.4.6. split into 2012 B 12.3.1.4. *and*
+  SB-10-delegated content) — surfaced via ``outside_corpus``.
+- ``discontinued`` — covered transition, no row.  Forward,
+  ``ProvisionDisposition`` records refine the marker: an explicit
+  tombstone stays ``discontinued``; a ``not_processed`` disposition
+  (content delegated outside the corpus) reads as ``no_data_yet``, not
+  as a fifth state.
 - ``no_data_yet`` — a neighbouring edition exists in reality but the
   transition isn't mapped (includes editions beyond the corpus window:
   the corpus edge is just an uncovered transition, not "nothing exists").
@@ -31,15 +43,17 @@ Per provision, per direction, exactly one of four states:
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 from django.db.models import Max, Min, Q
 
+from core.access import edition_allowed
 from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     EditionTransition,
+    ProvisionDisposition,
     ProvisionMapping,
 )
 from core.permalinks import provision_permalink_url
@@ -50,10 +64,32 @@ DISCONTINUED = "discontinued"
 NO_DATA_YET = "no_data_yet"
 ENDPOINT = "endpoint"
 
-# Same-id fallback division preference when a bare id exists in several
-# divisions of the target edition (after the source provision's own
-# division): body divisions over appendices, then division-less.
-_DIVISION_PREFERENCE = ["B", "C", "D", "A", ""]
+# Disposition status → direction state.  ``not_processed`` means the
+# content's fate is outside our corpus, which is exactly what the
+# "not yet covered" marker says — no fifth state.
+_DISPOSITION_STATE: dict[str, str] = {
+    ProvisionDisposition.Status.DISCONTINUED: DISCONTINUED,
+    ProvisionDisposition.Status.NOT_PROCESSED: NO_DATA_YET,
+}
+
+# Row verbs per mapping type and direction, precomputed onto each link so
+# every render site (rail, permalink, viewer) words the rows identically and
+# the templates stay branch-free.  The same-id continuation ("" mapping
+# type) reads as "continues"; templates add "(same number)" off ``same_id``.
+_FORWARD_VERBS: dict[str, str] = {
+    ProvisionMapping.MappingType.RENUMBERED: "renumbered to",
+    ProvisionMapping.MappingType.SPLIT: "split into",
+    ProvisionMapping.MappingType.MERGED: "merged into",
+    ProvisionMapping.MappingType.REPLACED: "replaced by",
+    "": "continues as",
+}
+_BACKWARD_VERBS: dict[str, str] = {
+    ProvisionMapping.MappingType.RENUMBERED: "renumbered from",
+    ProvisionMapping.MappingType.SPLIT: "split from",
+    ProvisionMapping.MappingType.MERGED: "merged from",
+    ProvisionMapping.MappingType.REPLACED: "replaces",
+    "": "continues from",
+}
 
 
 @dataclass
@@ -70,9 +106,19 @@ class LineageLink:
     #: ``ProvisionMapping.MappingType`` value; ``""`` for a same-id
     #: continuation (no mapping row on a covered transition).
     mapping_type: str
+    #: The target shares the bare provision number — via the same-id
+    #: fallback *or* an identity-carry mapping row.  These get the
+    #: "continues as/from" verbs; ``mapping_type`` tells the mechanisms apart.
     same_id: bool
     #: Intra-edition renumber row (both endpoints in this edition).
     same_edition: bool
+    #: Direction-aware row phrase ("renumbered to" / "split from" / …).
+    verb: str = ""
+    #: Free-tier gate verdict — the target edition is outside the viewing
+    #: user's scope, so render a locked upsell link, never the raw URL.
+    #: Stamped by :func:`annotate_lineage_locks`, not the resolver (the
+    #: resolver is user-agnostic).
+    locked: bool = False
 
 
 @dataclass
@@ -84,6 +130,17 @@ class LineageDirection:
     #: The adjacent edition the marker rows talk about ("transition to
     #: OBC 2024 not yet mapped"); ``None`` at an endpoint.
     edition: CodeEdition | None = None
+    #: A ``not_processed`` disposition coexists with the mapping rows: the
+    #: verdict has an additional leg whose content left the corpus (e.g. a
+    #: split where one leg went to a supplementary standard).  Templates
+    #: render an extra non-link leg row after the links.
+    outside_corpus: bool = False
+    #: Where the out-of-corpus content went, when the disposition names it
+    #: ("SB-10"); "" when unknown.  Set alongside ``outside_corpus`` AND on
+    #: a ``not_processed``-only ``no_data_yet`` direction, so the markers
+    #: can read "…moved to SB-10, not yet covered" instead of the generic
+    #: wording.
+    outside_reference: str = ""
 
 
 @dataclass
@@ -93,12 +150,8 @@ class Lineage:
 
 
 #: Per-direction resolution plan from the first pass:
-#: (state, mapping rows, adjacent edition, same-id fallback key).  The
-#: fallback key is set only when the direction needs the same-id lookup to
-#: decide linked vs discontinued.
-_Plan: TypeAlias = tuple[
-    str, list[ProvisionMapping], CodeEdition | None, tuple[int, str] | None
-]
+#: (state, mapping rows, adjacent edition).
+_Plan: TypeAlias = tuple[str, list[ProvisionMapping], CodeEdition | None]
 
 
 def resolve_lineage(
@@ -108,7 +161,7 @@ def resolve_lineage(
 
     Returns ``{provision_pk: Lineage}``.  Batched like
     ``_merge_provision_mapping_transitions`` so a page of search results
-    doesn't go N+1: editions, coverage, mappings, same-id candidates, and
+    doesn't go N+1: editions, coverage, mappings, dispositions, and
     version bounds are each one query for the whole batch.
     """
     by_pk: dict[int, CodeEditionProvision] = {p.pk: p for p in provisions}
@@ -165,10 +218,8 @@ def resolve_lineage(
         if mapping.new_provision_id in by_pk:
             pred_rows[mapping.new_provision_id].append(mapping)
 
-    # First pass: settle each direction's state; collect the same-id lookups
-    # and link targets so they batch.
+    # First pass: settle each direction's state.
     plans: dict[int, tuple[_Plan, _Plan]] = {}
-    fallback_keys: set[tuple[int, str]] = set()
 
     def _plan_direction(
         prov: CodeEditionProvision, rows: list[ProvisionMapping], *, forward: bool
@@ -177,7 +228,7 @@ def resolve_lineage(
         prev_ed, next_ed = neighbours[edition.pk]
         adjacent = next_ed if forward else prev_ed
         if rows:
-            return (LINKED, rows, adjacent, None)
+            return (LINKED, rows, adjacent)
         if adjacent is None:
             if forward:
                 # Newest loaded edition: open-ended = still the current
@@ -190,13 +241,15 @@ def resolve_lineage(
                 # honest "no data yet".
                 first = edition.code.first_edition_date
                 state = ENDPOINT if first and edition.effective_date == first else NO_DATA_YET
-            return (state, [], None, None)
+            return (state, [], None)
         key = (edition.pk, adjacent.pk) if forward else (adjacent.pk, edition.pk)
         if key not in covered:
-            return (NO_DATA_YET, [], adjacent, None)
-        fallback_key = (adjacent.pk, prov.provision_id)
-        fallback_keys.add(fallback_key)
-        return (DISCONTINUED, [], adjacent, fallback_key)
+            return (NO_DATA_YET, [], adjacent)
+        # Covered + no row: discontinued (forward) / new in this edition
+        # (backward).  CCM accounts for every provision on a covered
+        # transition, and number equality proves nothing — never guess a
+        # same-id link.
+        return (DISCONTINUED, [], adjacent)
 
     for pk, prov in by_pk.items():
         plans[pk] = (
@@ -204,24 +257,17 @@ def resolve_lineage(
             _plan_direction(prov, succ_rows.get(pk, []), forward=True),
         )
 
-    # Same-id candidates, one query for every (edition, id) pair needed.
-    candidates: dict[tuple[int, str], list[CodeEditionProvision]] = defaultdict(list)
-    if fallback_keys:
-        fallback_filter = Q()
-        for adj_pk, provision_id in fallback_keys:
-            fallback_filter |= Q(edition_id=adj_pk, provision_id=provision_id)
-        for cand in CodeEditionProvision.objects.filter(fallback_filter):
-            candidates[(cand.edition_id, cand.provision_id)].append(cand)
-
-    def _pick_same_id(
-        prov: CodeEditionProvision, key: tuple[int, str]
-    ) -> CodeEditionProvision | None:
-        pool = candidates.get(key, [])
-        for division in [prov.division, *_DIVISION_PREFERENCE]:
-            for cand in pool:
-                if cand.division == division:
-                    return cand
-        return min(pool, key=lambda c: c.division) if pool else None
+    # Forward disposition markers, one query for the batch: a tombstone
+    # keeps the discontinued marker; ``not_processed`` reads as "not yet
+    # covered".  (Backward needs none — dispositions are keyed on the OLD
+    # provision, and a covered transition with no incoming row already
+    # reads "new in this edition".)
+    dispositions: dict[tuple[int, int], tuple[str, str]] = {
+        (prov_pk, edition_pk): (status, reference)
+        for prov_pk, edition_pk, status, reference in ProvisionDisposition.objects.filter(
+            provision_id__in=set(by_pk)
+        ).values_list("provision_id", "new_edition_id", "status", "target_reference")
+    }
 
     # Version bounds for every link target (v0 / last version), one query.
     target_pks: set[int] = set()
@@ -229,12 +275,6 @@ def resolve_lineage(
         for plan, forward in ((pred_plan, False), (succ_plan, True)):
             for row in plan[1]:
                 target_pks.add(row.old_provision_id if not forward else row.new_provision_id)
-    for pk, prov in by_pk.items():
-        for plan in plans[pk]:
-            if plan[3] is not None:
-                fallback_target = _pick_same_id(prov, plan[3])
-                if fallback_target is not None:
-                    target_pks.add(fallback_target.pk)
     bounds: dict[int, tuple[int, int]] = {
         row["provision_id"]: (row["vmin"], row["vmax"])
         for row in CodeEditionProvisionVersion.objects.filter(provision_id__in=target_pks)
@@ -259,6 +299,18 @@ def resolve_lineage(
             version = mapping.introduced_by_version.version
         else:
             version = vmin  # birth in the new edition
+        mapping_type = mapping.mapping_type if mapping else ""
+        same_id = mapping is None or (
+            mapping.old_provision.provision_id == mapping.new_provision.provision_id
+        )
+        verbs = _FORWARD_VERBS if forward else _BACKWARD_VERBS
+        verb = verbs.get(mapping_type, verbs[""])
+        # CCM emits a *total* cross-edition mapping and types identity
+        # carries "renumbered" (the contract's identity-carry example): a
+        # row whose endpoints share the number is a continuation, not a
+        # renumber — word it as one.
+        if same_id and mapping_type == ProvisionMapping.MappingType.RENUMBERED:
+            verb = verbs[""]
         return LineageLink(
             provision=target,
             edition=edition,
@@ -266,15 +318,16 @@ def resolve_lineage(
                 edition.code_name, target.division, target.provision_id, version
             ),
             version=version,
-            mapping_type=mapping.mapping_type if mapping else "",
-            same_id=mapping is None,
+            mapping_type=mapping_type,
+            same_id=same_id,
             same_edition=same_edition,
+            verb=verb,
         )
 
     def _build_direction(
         prov: CodeEditionProvision, plan: _Plan, *, forward: bool
     ) -> LineageDirection:
-        state, rows, adjacent, fallback_key = plan
+        state, rows, adjacent = plan
         if rows:
             links = [
                 _link(
@@ -285,16 +338,38 @@ def resolve_lineage(
                 for row in rows
             ]
             links.sort(key=lambda li: (li.provision.division, li.provision.provision_id))
-            return LineageDirection(state=LINKED, links=links, edition=adjacent)
-        if fallback_key is not None:
-            cand = _pick_same_id(prov, fallback_key)
-            if cand is not None:
-                return LineageDirection(
-                    state=LINKED,
-                    links=[_link(cand, forward=forward, mapping=None)],
-                    edition=adjacent,
-                )
-        return LineageDirection(state=state, edition=adjacent)
+            # A coexisting ``not_processed`` disposition is the verdict's
+            # out-of-corpus leg (one split, two successors — one of them in
+            # a document we don't carry), not a producer contradiction the
+            # way row+tombstone is.  Merges can have the mirror-image leg,
+            # but CCM has no backward emission shape for it yet.
+            disposition = (
+                dispositions.get((prov.pk, adjacent.pk))
+                if forward and adjacent is not None
+                else None
+            )
+            outside_corpus = bool(
+                disposition
+                and disposition[0] == ProvisionDisposition.Status.NOT_PROCESSED
+            )
+            return LineageDirection(
+                state=LINKED,
+                links=links,
+                edition=adjacent,
+                outside_corpus=outside_corpus,
+                outside_reference=disposition[1] if outside_corpus and disposition else "",
+            )
+        outside_reference = ""
+        if forward and state == DISCONTINUED and adjacent is not None:
+            disposition = dispositions.get((prov.pk, adjacent.pk))
+            if disposition is not None:
+                status, reference = disposition
+                state = _DISPOSITION_STATE.get(status, NO_DATA_YET)
+                if status == ProvisionDisposition.Status.NOT_PROCESSED:
+                    outside_reference = reference
+        return LineageDirection(
+            state=state, edition=adjacent, outside_reference=outside_reference
+        )
 
     return {
         pk: Lineage(
@@ -303,3 +378,18 @@ def resolve_lineage(
         )
         for pk, prov in by_pk.items()
     }
+
+
+def annotate_lineage_locks(lineages: Iterable[Lineage], user: Any) -> None:
+    """Stamp the free-tier gate verdict on every link, in place.
+
+    Lineage links are inherently cross-edition, so a link's target can sit
+    outside the viewing user's scope even when the source provision is in
+    scope.  Locked links render as an upsell to pricing, never a raw URL
+    that 403s after click-through (the permalink view's teaser is only the
+    backstop).  Inert (everything unlocked) while gating is disabled.
+    """
+    for lineage in lineages:
+        for direction in (lineage.predecessors, lineage.successors):
+            for link in direction.links:
+                link.locked = not edition_allowed(user, link.edition.code_name)
