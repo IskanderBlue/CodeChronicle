@@ -1,0 +1,7 @@
+{% extends "account/email/base_message.txt" %}
+
+{% block content %}{% autoescape off %}You're receiving this email because {{ user.email }} was used to register an account on {{ current_site.domain }}.
+
+{% if code %}Your email verification code is listed below. Please enter it in your open browser window.
+
+{{ code }}{% else %}To confirm this is correct, go to {{ activate_url }}{% endif %}{% endautoescape %}{% endblock content %}
