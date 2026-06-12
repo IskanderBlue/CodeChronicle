@@ -164,9 +164,20 @@ def _group_transitions(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     effective_date/ineffective_date ranges, so both versions appear in
     results. Group them so the formatter can build a transition compare view.
     """
-    by_provision: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    # Key on the edition too: this branch is for one provision's overlapping
+    # versions, and version numbers only order within an edition. A same-id
+    # provision in two editions (e.g. OBC 2006 C 1.10.2.4. ↔ 2012 C 1.10.2.4.,
+    # both v0 during the inspection transition) must instead fall through to
+    # the ProvisionMapping branch, where the mapping row says which side is
+    # old and which is new — version numbers tie across editions and would
+    # leave old/new to input order.
+    by_provision: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
     for result in results:
-        key = (result.get("id", ""), result.get("division", ""))
+        key = (
+            result.get("id", ""),
+            result.get("division", ""),
+            result.get("code_edition", ""),
+        )
         by_provision[key].append(result)
 
     output: list[dict[str, Any]] = []
@@ -189,7 +200,7 @@ def _group_transitions(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         # Both members share a pair_key (the provision identity that
         # ``by_provision`` grouped on) so the formatter can re-unite them;
         # is_primary marks the newer version as the "new" side.
-        pair_key = f"overlap:{key[0]}:{key[1]}"
+        pair_key = f"overlap:{key[0]}:{key[1]}:{key[2]}"
         newer["transition_context"] = {
             "pair_key": pair_key,
             "is_primary": True,

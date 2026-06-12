@@ -22,6 +22,7 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     ProvinceCode,
+    ProvisionMapping,
     SearchHistory,
 )
 from services.search_service import run_search
@@ -272,7 +273,11 @@ class TestTransitionContextInOverlapWindow:
             keyword_counts={"fire": 1, "separations": 1},
         )
 
-        # Provision + version for new edition (in force from effective_date)
+        # Provision + version for new edition (in force from effective_date).
+        # Deliberately also version=0: cross-edition versions both start at
+        # v0 in real data (OBC 2006 C 1.10.2.4. ↔ 2012 C 1.10.2.4. during the
+        # inspection transition), so version numbers CANNOT order the pair —
+        # the ProvisionMapping row below is what fixes old/new.
         new_provision = CodeEditionProvision.objects.create(
             edition=new_edition,
             provision_id="3.2.9.",
@@ -281,10 +286,16 @@ class TestTransitionContextInOverlapWindow:
         )
         CodeEditionProvisionVersion.objects.create(
             provision=new_provision,
-            version=1,
+            version=0,
             effective_date=date(2024, 3, 8),
             title="Fire Separations",
             keyword_counts={"fire": 1, "separations": 1},
+        )
+
+        ProvisionMapping.objects.create(
+            old_provision=old_provision,
+            new_provision=new_provision,
+            mapping_type="continued",
         )
 
         # Search during overlap window (2024-03-08 to 2025-03-09)

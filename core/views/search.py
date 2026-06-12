@@ -84,7 +84,8 @@ def _lineage_nav_direction(
 # on click (the picker always overrides the date the LLM reads from the
 # text), and an undated chip would search today, which falls outside every
 # loaded edition's window and returns nothing.  All four verified rank-1
-# through the full run_search pipeline (LLM parse included) 2026-06-11.
+# through the full run_search pipeline (LLM parse included) 2026-06-12,
+# against the post-cancelled-amendments-fix reingest.
 EXAMPLE_QUERIES = [
     {"query": "fire separation between dwelling units, Ontario, 2010", "date": "2010-06-01"},
     {"query": "guards and handrails for a stairway", "date": "2010-06-01"},
