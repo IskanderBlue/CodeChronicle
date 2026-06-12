@@ -307,6 +307,16 @@ gate as a rendering input from day one. See
    **Remaining (external)**: get CCM to emit `mapping_coverage`,
    prefer `provision_discontinuations` over sentinel rows, and fix
    the `9.23.9.6.` row+tombstone contradiction + item (c).
+   **NEW (2026-06-11)**: the OBC_2006.json rebuilt for the 1.10.2.4.
+   editor's note **dropped its mapping stage** — `provision_mappings`
+   went 2,976 → 0 and `provision_discontinuations` 195 → 0
+   (`mapping_coverage` is now present but `[]`).  Reloading it wiped
+   the 1997→2006 lineage rows on dev; they can only return with a
+   corrected payload (then reload 2006 → 2012, oldest-first, and
+   re-insert the 1997→2006 `EditionTransition` manually).  Until then
+   that transition row must stay OUT: covered-with-zero-rows would
+   mint false discontinued/new verdicts for every provision on the
+   boundary.
 
 ## Current state (2026-06-11, after step 3 + review fixes)
 

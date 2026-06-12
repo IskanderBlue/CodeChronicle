@@ -79,6 +79,12 @@ secrets/
 .agents/
 .tmp/
 
+# Licensing correspondence (contains personal contact details)
+emails/
+
+# Local working copy of the prod secrets bundle (see docs/edit-prod-settings.md)
+bundle.json
+
 # Compiled Tailwind (built in CI / local watch)
 static/css/tailwind.css
 

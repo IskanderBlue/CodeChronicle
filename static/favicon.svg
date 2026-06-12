@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Paper tile with a hairline rule border, oxblood serif "C" — the
+       masthead palette (--surface / --rule / --secondary) at icon size. -->
+  <rect x="1" y="1" width="62" height="62" rx="12" fill="#fbf8f1" stroke="#cdc4b6" stroke-width="2"/>
+  <text x="32" y="33" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia, 'Times New Roman', serif" font-weight="700"
+        font-size="44" fill="#7a1f2b">C</text>
+</svg>
