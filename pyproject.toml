@@ -44,6 +44,10 @@ dependencies = [
     # Auth & Payments
     "django-allauth>=0.60",
     "dj-stripe>=2.8",
+    # dj-stripe 2.10.x breaks on stripe 15 (retrieved objects lost the dict
+    # interface its sync relies on -> webhook processing AttributeError);
+    # 14.3.0 verified working in prod. Revisit when dj-stripe supports v15.
+    "stripe>=14.3,<15",
 
     # Building code search extras
     "pymupdf>=1.23.0",
