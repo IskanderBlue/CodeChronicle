@@ -454,11 +454,26 @@ def test_transition_compare_renders_per_version_band_and_provenance():
     assert "Provenance" not in middle
     assert "Why this result" not in middle
     # Desktop is a side-by-side focus-compare driven by the root `comparePrevious`:
-    # a toggle button, the previous pane gated on that state, and an inline grid
-    # container that splits the (widened) center into two panes.
-    assert "Compare with previous version" in middle
+    # the previous pane is gated on that state, split by an inline grid that widens
+    # the center into two panes.
     assert 'x-show="comparePrevious"' in middle
     assert "display:grid; grid-template-columns:1fr 1fr" in middle
+    # The compare control is no longer a standalone button at the foot of the card —
+    # it's the citation header's transition banner itself (compare_toggle=True),
+    # which toggles the same root `comparePrevious` state.
+    header = render_to_string(
+        "partials/_result_citation_header.html",
+        {"result": card, "compare_toggle": True},
+    )
+    assert "two versions in force" in header
+    assert 'comparePrevious = !comparePrevious' in header
+    assert "&middot; compare" in header
+    # Without the flag (mobile accordion header), the banner stays static text.
+    plain_header = render_to_string(
+        "partials/_result_citation_header.html", {"result": card}
+    )
+    assert "two versions in force" in plain_header
+    assert "comparePrevious" not in plain_header
     # The right rail carries one provenance box per version plus the justification;
     # the previous version's chain is gated on the same compare state.
     assert rail.count("Provenance") == 2

@@ -64,7 +64,7 @@
         </p>
         {% if commencement.depends_on.gazette_reference %}
         <p class="mt-1 font-mono text-[11px] text-ink-3">
-            {% if commencement.depends_on.gazette_url %}<a href="{{ commencement.depends_on.gazette_url }}" target="_blank" rel="noopener" @click.stop class="text-secondary hover:text-secondary-2 hover:underline">{{ commencement.depends_on.gazette_reference }}</a>{% else %}{{ commencement.depends_on.gazette_reference }}{% endif %}
+            {% if commencement.depends_on.gazette_url %}<a href="{{ commencement.depends_on.gazette_url }}" target="_blank" rel="noopener" @click.stop class="ui-cite">{{ commencement.depends_on.gazette_reference }}</a>{% else %}{{ commencement.depends_on.gazette_reference }}{% endif %}
         </p>
         {% endif %}
     </div>

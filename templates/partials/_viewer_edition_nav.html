@@ -16,14 +16,14 @@
     {% for link in predecessors.links %}
     {% if link.locked %}
     <a href="{% url 'core:pricing' %}"
-        class="inline-flex w-full items-center justify-center gap-1.5 border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-3 hover:border-secondary hover:text-secondary">
+        class="ui-btn-ghost w-full px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-3">
         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
         {{ link.edition_label }} &middot; {{ link.id }} &mdash; Pro
     </a>
     {% else %}
     <button type="button"
         data-edition-result='{"id":"{{ link.id|escapejs }}","title":"{{ link.title|escapejs }}","code":"{{ link.code|escapejs }}","code_display_name":"{{ link.code_display_name|escapejs }}","division":"{{ link.division|escapejs }}"}'
-        class="inline-flex w-full items-center justify-center gap-1 border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
+        class="ui-btn-ghost w-full gap-1 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em]">
         <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition_label }}{% endif %} &middot;</span> {{ link.verb }} {{ link.id }}
     </button>
     {% endif %}
@@ -45,14 +45,14 @@
     {% for link in successors.links %}
     {% if link.locked %}
     <a href="{% url 'core:pricing' %}"
-        class="inline-flex w-full items-center justify-center gap-1.5 border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-3 hover:border-secondary hover:text-secondary">
+        class="ui-btn-ghost w-full px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-3">
         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
         {{ link.edition_label }} &middot; {{ link.id }} &mdash; Pro
     </a>
     {% else %}
     <button type="button"
         data-edition-result='{"id":"{{ link.id|escapejs }}","title":"{{ link.title|escapejs }}","code":"{{ link.code|escapejs }}","code_display_name":"{{ link.code_display_name|escapejs }}","division":"{{ link.division|escapejs }}"}'
-        class="inline-flex w-full items-center justify-center gap-1 border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
+        class="ui-btn-ghost w-full gap-1 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em]">
         <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition_label }}{% endif %} &middot;</span> {{ link.verb }} {{ link.id }}
     </button>
     {% endif %}

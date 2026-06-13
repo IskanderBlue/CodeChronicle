@@ -31,7 +31,7 @@
             </p>
             {% if result.contributing_clauses|length > 1 %}
             <button @click="chainOpen = !chainOpen"
-                    class="text-secondary hover:underline mt-1">
+                    class="ui-cite mt-1">
                 <span x-show="!chainOpen">{{ result.contributing_clauses|length|add:"-1" }} earlier amendment{{ result.contributing_clauses|length|add:"-1"|pluralize }} &raquo;</span>
                 <span x-show="chainOpen">Hide earlier amendments</span>
             </button>

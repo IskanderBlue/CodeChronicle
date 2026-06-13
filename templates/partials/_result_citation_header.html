@@ -14,9 +14,21 @@
         {% else %}
         <p class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary">{{ result.code_display_name }}</p>
         {% if result.result_type == 'transition_compare' %}
+        {% if compare_toggle %}
+        {% comment %} Desktop master-detail: the banner IS the compare control — toggling the
+           root `comparePrevious` widens the centre into the side-by-side panes. The
+           caret + action hint flip with state so the affordance reads as a button. {% endcomment %}
+        <button type="button" @click.stop="comparePrevious = !comparePrevious"
+            :aria-expanded="comparePrevious ? 'true' : 'false'" class="ui-action mt-2">
+            <span class="ui-caret"></span>
+            <span>Transition &mdash; two versions in force</span>
+            <span class="ui-hint" x-text="comparePrevious ? '&middot; hide previous' : '&middot; compare'"></span>
+        </button>
+        {% else %}
         <p class="mt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-secondary">
             Transition &mdash; two versions in force
         </p>
+        {% endif %}
         {% endif %}
         <h3 class="mt-2 flex flex-wrap items-baseline gap-2 font-serif text-[26px] leading-[1.15] text-ink">
             {% if result.division %}<span class="font-mono text-sm text-ink-3">{{ result.division }}</span>{% endif %}

@@ -6,14 +6,14 @@
    lifetime. {% endcomment %}
 {% if item.versions|length == 1 %}
     {% with v=item.versions.0 %}
-    <a href="{{ v.url }}" class="font-mono font-semibold text-secondary hover:underline"
+    <a href="{{ v.url }}" class="font-mono font-semibold ui-cite"
        title="v{{ v.version }} — {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">{{ item.provision_id }}</a>
     {% endwith %}
 {% elif item.versions %}
     <span class="font-mono font-semibold text-ink">{{ item.provision_id }}</span>
     <span class="flex flex-wrap gap-1">
         {% for v in item.versions %}
-        <a href="{{ v.url }}" class="bg-secondary-soft px-1.5 font-mono text-[11px] text-secondary hover:underline"
+        <a href="{{ v.url }}" class="bg-secondary-soft px-1.5 font-mono text-[11px] ui-cite"
            title="{% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">v{{ v.version }}</a>
         {% endfor %}
     </span>

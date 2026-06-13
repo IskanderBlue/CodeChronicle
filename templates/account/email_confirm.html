@@ -28,12 +28,12 @@
             {% if confirmation and can_confirm %}
             <form method="post" action="{% url 'account_confirm_email' confirmation.key %}" class="space-y-4">
                 {% csrf_token %}
-                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+                <button type="submit" class="ui-btn w-full py-2 px-4 text-sm uppercase tracking-[0.06em]">
                     Confirm email address
                 </button>
             </form>
             {% elif confirmation %}
-            <a href="{% url 'core:home' %}" class="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+            <a href="{% url 'core:home' %}" class="ui-btn w-full py-2 px-4 text-sm uppercase tracking-[0.06em]">
                 Go to search
             </a>
             {% else %}
@@ -41,7 +41,7 @@
                 <p class="text-sm text-ink-2">
                     Request a new verification email by signing in to your account.
                 </p>
-                <a href="{% url 'account_login' %}" class="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+                <a href="{% url 'account_login' %}" class="ui-btn w-full py-2 px-4 text-sm uppercase tracking-[0.06em]">
                     Sign in
                 </a>
                 <a href="{% url 'account_signup' %}" class="w-full flex justify-center py-2 px-4 border border-ink-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 bg-surface hover:bg-surface-2 focus:outline-none focus:ring-1 focus:ring-secondary">

@@ -55,7 +55,7 @@
             <form method="POST" action="{% url 'core:stripe_portal' %}">
                 {% csrf_token %}
                 <button type="submit"
-                    class="min-w-40 py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+                    class="ui-btn min-w-40 py-2 px-4 text-sm uppercase tracking-[0.06em]">
                     Manage Billing
                 </button>
             </form>
@@ -64,7 +64,7 @@
                 You are on the <span class="font-semibold text-ink">Free</span> plan.
             </p>
             <a href="{% url 'core:pricing' %}"
-                class="inline-flex items-center min-w-40 justify-center py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+                class="ui-btn min-w-40 py-2 px-4 text-sm uppercase tracking-[0.06em]">
                 Upgrade to Pro
             </a>
             {% endif %}
@@ -86,7 +86,7 @@
 
                 <div class="flex justify-left space-y-4">
                     <button type="submit"
-                        class="min-w-40 py-2 px-4 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+                        class="ui-btn min-w-40 py-2 px-4 text-sm uppercase tracking-[0.06em]">
                         Sign Out
                     </button>
                 </div>
@@ -121,7 +121,7 @@
                 {% endfor %}
                 <div class="flex justify-left">
                     <button type="submit"
-                        class="min-w-40 px-4 py-2 border border-transparent text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast bg-secondary hover:bg-secondary-2 focus:outline-none focus:ring-1 focus:ring-secondary">
+                        class="ui-btn min-w-40 px-4 py-2 text-sm uppercase tracking-[0.06em]">
                         Change Password
                     </button>
                 </div>

@@ -32,19 +32,19 @@
             </p>
             <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2">
                 <li>Base and amending regulations as published on
-                    <a href="https://www.ontario.ca/laws" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">Ontario&rsquo;s e-Laws</a>,
+                    <a href="https://www.ontario.ca/laws" target="_blank" rel="noopener noreferrer" class="ui-link">Ontario&rsquo;s e-Laws</a>,
                     the Province of Ontario&rsquo;s official online source of law — the
                     substantive record</li>
                 {% if has_gazette_sources %}
                 <li>For editions predating e-Laws online publication (1997 and older), amending
                     regulations as filed in <strong class="text-ink">The Ontario Gazette</strong>,
                     from scans preserved by the
-                    <a href="https://archive.org" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">Internet Archive</a></li>
+                    <a href="https://archive.org" target="_blank" rel="noopener noreferrer" class="ui-link">Internet Archive</a></li>
                 {% endif %}
                 {% if has_handbook_sources %}
                 <li>For the 2024 edition, the code handbooks and published corrections
                     downloaded from
-                    <a href="https://www.ontario.ca" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">ontario.ca</a></li>
+                    <a href="https://www.ontario.ca" target="_blank" rel="noopener noreferrer" class="ui-link">ontario.ca</a></li>
                 {% endif %}
                 <li>e-Laws consolidation snapshots
                     {% if consolidation_count %}({{ consolidation_count }} and counting){% endif %}
@@ -131,7 +131,7 @@
                 <li>Reconstruction quality depends on the source record; known imperfections are
                     disclosed as provenance notes on the affected provisions</li>
                 <li>For any decision that matters, verify against the official consolidation on
-                    e-Laws — see our <a href="{% url 'core:terms_of_service' %}" class="text-secondary hover:underline">Terms of Service</a></li>
+                    e-Laws — see our <a href="{% url 'core:terms_of_service' %}" class="ui-link">Terms of Service</a></li>
             </ul>
         </section>
 
@@ -139,7 +139,7 @@
             <h2 class="font-serif text-xl font-bold text-ink mb-3">Questions and corrections</h2>
             <p class="text-ink-2">
                 If you spot an error in the data or have a question about sourcing, contact us at
-                <a href="mailto:rob@codechronicle.ca" class="text-secondary hover:underline">rob@codechronicle.ca</a>.
+                <a href="mailto:rob@codechronicle.ca" class="ui-link">rob@codechronicle.ca</a>.
             </p>
         </section>
     </div>

@@ -46,9 +46,10 @@
                 @click.stop="toggleChild('{{ child.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ child.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
                 @keydown.enter.stop="toggleChild('{{ child.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ child.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
                 @keydown.space.stop.prevent="toggleChild('{{ child.id|escapejs }}', {code:'{{ result.code|escapejs }}', provision_id:'{{ child.id|escapejs }}', division:'{{ result.division|escapejs }}'})"
+                :aria-expanded="activeChild === '{{ child.id|escapejs }}' ? 'true' : 'false'"
                 class="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-3 text-left text-sm">
-                <span class="flex min-w-0 items-baseline gap-1.5">
-                    <span class="shrink-0 text-[10px] text-ink-3" x-text="activeChild === '{{ child.id|escapejs }}' ? '&#9662;' : '&#9656;'"></span>
+                <span class="flex min-w-0 items-center gap-1.5">
+                    <span class="ui-caret shrink-0 text-ink-3"></span>
                     <span class="shrink-0 cursor-text select-all font-mono font-semibold text-ink" @click.stop>{{ child.id }}</span>
                     <span role="button" tabindex="0" @click.stop="navigator.clipboard.writeText('{{ child.id|escapejs }}')" @keydown.enter.stop="navigator.clipboard.writeText('{{ child.id|escapejs }}')" title="Copy provision ID" class="inline-flex shrink-0 cursor-pointer items-center p-0.5 text-ink-3 hover:text-secondary">
                         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
@@ -138,11 +139,8 @@
         {% endif %}
         {% endfor %}
     </div>
-    <button type="button" @click.stop="comparePrevious = !comparePrevious"
-        class="mt-2 inline-flex items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary hover:text-secondary-2">
-        <span class="text-[10px]" x-text="comparePrevious ? '&#9666;' : '&#9656;'"></span>
-        <span x-text="comparePrevious ? 'Hide previous version' : 'Compare with previous version'"></span>
-    </button>
+    {% comment %} The compare toggle lives in the citation header (the "Transition — two
+       versions in force" banner); see _result_citation_header.html compare_toggle. {% endcomment %}
 </div>
 {% else %}
 {# Mobile / stacked: downward "previous" toggle, provenance inline. #}
@@ -163,8 +161,9 @@
     {% else %}
     <div>
         <button type="button" @click.stop="showPrevious = !showPrevious"
-            class="w-full border border-rule bg-surface-2 px-4 py-3 text-left font-mono text-sm font-semibold text-ink-2 hover:border-secondary hover:text-secondary">
-            <span x-text="showPrevious ? '&#9662;' : '&#9656;'" class="text-[10px] mr-1"></span>
+            :aria-expanded="showPrevious ? 'true' : 'false'"
+            class="flex w-full items-center gap-2 border border-rule bg-surface-2 px-4 py-3 text-left font-mono text-sm font-semibold text-ink-2 hover:border-secondary hover:text-secondary">
+            <span class="ui-caret"></span>
             {{ version.clause.regulation.reg_id|default:version.code_display_name }} version (previous)
         </button>
         <div x-show="showPrevious" x-cloak class="mt-1 space-y-3 border border-rule bg-surface-2 p-4 accordion-content">

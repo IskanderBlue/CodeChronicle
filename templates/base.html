@@ -131,6 +131,102 @@
         .accordion-content { transition: max-height 200ms ease-out, opacity 200ms ease-out; }
         .fade-in-image { animation: fadeIn 300ms ease-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        /* ── Interactive-element taxonomy ─────────────────────────────────
+           Four affordance roles + one shared focus ring. Kept here (not as
+           Tailwind utilities) so they survive the prod CSS purge — same
+           rationale as .font-legal / .paper-container. Every colour is a role
+           token, so light + dark resolve automatically.
+             .ui-link       inline prose link — solid underline
+             .ui-action     interactive mono/uppercase metadata label — dotted
+                            underline + caret. The ONE affordance a static accent
+                            label must never wear, so the two can't be confused
+                            (the bug that hid the compare toggle).
+             .ui-btn        primary filled action
+             .ui-btn-ghost  bordered / chip action
+           These set only type, colour, border and hover/focus; layout utilities
+           (w-full, gap-*, mt-*, …) may sit alongside. */
+        .ui-link, .ui-action, .ui-btn, .ui-btn-ghost { cursor: pointer; }
+        .ui-link:focus-visible, .ui-action:focus-visible,
+        .ui-btn:focus-visible, .ui-btn-ghost:focus-visible {
+            outline: 2px solid rgb(var(--secondary)); outline-offset: 2px; border-radius: 1px;
+        }
+        .ui-link {
+            color: rgb(var(--secondary)); text-decoration: underline;
+            text-decoration-thickness: 1px; text-underline-offset: 2px;
+            transition: color .12s, text-decoration-thickness .12s;
+        }
+        .ui-link:hover { color: rgb(var(--secondary-2)); text-decoration-thickness: 2px; }
+        /* Quiet metadata-citation link (provenance rail, lineage, permalink nav).
+           A reg-id already reads as a reference, but colour-at-rest alone is the
+           same too-weak signal the compare toggle had — so it carries a FAINT
+           persistent underline (35% accent) that strengthens on hover. Quiet
+           enough to keep dense rails scannable; present enough that no
+           interactive text relies on colour alone. */
+        .ui-cite {
+            color: rgb(var(--secondary)); text-decoration: underline;
+            text-decoration-thickness: 1px; text-underline-offset: 2px;
+            text-decoration-color: rgb(var(--secondary) / .35);
+            transition: color .12s, text-decoration-color .12s;
+        }
+        .ui-cite:hover { color: rgb(var(--secondary-2)); text-decoration-color: rgb(var(--secondary-2)); }
+        .ui-action {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em;
+            color: rgb(var(--secondary)); background: none; border: 0; padding: 2px 0;
+            text-decoration: underline dotted; text-decoration-thickness: 1px;
+            text-underline-offset: 4px; text-decoration-color: rgb(var(--secondary) / .55);
+            transition: color .12s, text-decoration-color .12s;
+        }
+        .ui-action:hover {
+            color: rgb(var(--secondary-2));
+            text-decoration: underline solid; text-decoration-thickness: 1.5px;
+            text-decoration-color: rgb(var(--secondary-2));
+        }
+        /* Disclosure caret, CSS-drawn (not a font glyph): a 9-10px ▸/▾ glyph
+           blurs into a dot at the sizes these toggles use, so it's a crisp
+           border-triangle instead. Empty span: <span class="ui-caret"></span>.
+           Points right at rest, rotates to point down when its toggle carries
+           aria-expanded="true" — works for any role, not just .ui-action. */
+        .ui-caret {
+            display: inline-block; flex: none; width: 0; height: 0;
+            border-left: 5px solid currentColor;
+            border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+            transition: transform .15s;
+        }
+        [aria-expanded="true"] .ui-caret { transform: rotate(90deg); }
+        /* Muted secondary disclosure toggle (amendment chain, "previous version",
+           etc.): the crisp caret is the affordance, text stays quiet ink-3 → ink. */
+        .ui-disclosure {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+            color: rgb(var(--ink-3)); background: none; border: 0; padding: 0; cursor: pointer;
+            transition: color .12s;
+        }
+        .ui-disclosure:hover { color: rgb(var(--ink)); }
+        .ui-disclosure:focus-visible {
+            outline: 2px solid rgb(var(--secondary)); outline-offset: 2px; border-radius: 1px;
+        }
+        .ui-action .ui-hint { font-weight: 400; letter-spacing: .06em; color: rgb(var(--ink-3)); }
+        .ui-btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            font-family: 'Inter Tight', system-ui, sans-serif; font-size: 13px; font-weight: 600;
+            color: rgb(var(--secondary-contrast)); background: rgb(var(--secondary));
+            border: 1px solid rgb(var(--secondary)); padding: 9px 18px;
+            transition: background .12s, border-color .12s;
+        }
+        .ui-btn:hover { background: rgb(var(--secondary-2)); border-color: rgb(var(--secondary-2)); }
+        /* Type-agnostic on purpose: ghost buttons span mono-uppercase nav chips
+           AND sentence-case toolbar buttons, so it sets only frame + hover and
+           inherits font/size/case from whatever utilities the call site carries. */
+        .ui-btn-ghost {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            color: rgb(var(--ink-2)); background: none;
+            border: 1px solid rgb(var(--rule)); padding: 8px 14px;
+            transition: border-color .12s, color .12s;
+        }
+        .ui-btn-ghost:hover { border-color: rgb(var(--secondary)); color: rgb(var(--secondary)); }
     </style>
 
     {% comment %} Tailwind utilities — the CLI-built stylesheet, used in BOTH dev
@@ -222,7 +318,7 @@
                 <a href="{% url 'account_login' %}"
                     class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'account_login' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Login</a>
                 <a href="{% url 'account_signup' %}"
-                    class="bg-secondary text-secondary-contrast px-4 py-2 font-semibold tracking-[0.1em] hover:bg-secondary-2">Sign up</a>
+                    class="ui-btn px-4 py-2 tracking-[0.1em]">Sign up</a>
                 {% endif %}
                 <!-- Dark mode toggle -->
                 <button @click="darkMode = !darkMode" type="button"
@@ -328,11 +424,11 @@
             <span>CodeChronicle &middot; Established MMXXVI</span>
             <span class="sm:text-center">Not legal advice &middot; Citation-grade reference &middot; Verify against official consolidation</span>
             <span class="flex items-center gap-3">
-                <a href="{% url 'core:data_sources' %}" class="hover:text-ink hover:underline">Sources</a>
+                <a href="{% url 'core:data_sources' %}" class="underline decoration-1 underline-offset-2 hover:text-ink">Sources</a>
                 <span class="text-rule">&middot;</span>
-                <a href="{% url 'core:terms_of_service' %}" class="hover:text-ink hover:underline">Terms</a>
+                <a href="{% url 'core:terms_of_service' %}" class="underline decoration-1 underline-offset-2 hover:text-ink">Terms</a>
                 <span class="text-rule">&middot;</span>
-                <a href="{% url 'core:privacy_policy' %}" class="hover:text-ink hover:underline">Privacy</a>
+                <a href="{% url 'core:privacy_policy' %}" class="underline decoration-1 underline-offset-2 hover:text-ink">Privacy</a>
             </span>
         </div>
     </footer>

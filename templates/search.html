@@ -116,7 +116,7 @@
                 </label>
             </div>
             <button type="submit"
-                class="inline-flex items-center justify-center gap-2 bg-secondary px-7 py-[14px] font-sans text-[13px] font-semibold uppercase tracking-[0.1em] text-secondary-contrast hover:bg-secondary-2">
+                class="ui-btn px-7 py-[14px] uppercase tracking-[0.1em]">
                 Search <span aria-hidden="true">&crarr;</span>
             </button>
         </div>
@@ -164,7 +164,7 @@
                             from {{ coverage_start|date:'F Y' }} to {{ coverage_end|date:'F Y' }}{% endif %}.
                             Set the <span class="font-mono text-[12px] text-ink">AS-OF</span> date to the
                             construction or renovation date you care about.
-                            See <a href="{% url 'core:data_sources' %}" class="text-secondary hover:underline">where the data comes from</a>.
+                            See <a href="{% url 'core:data_sources' %}" class="ui-link">where the data comes from</a>.
                         </p>
                     </div>
                     <div>
@@ -190,7 +190,7 @@
             </div>
             <div class="mt-4 flex justify-end">
                 <button type="button" @click="dismiss()"
-                    class="inline-flex items-center border border-rule px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
+                    class="ui-btn-ghost px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.06em]">
                     Got it
                 </button>
             </div>
@@ -236,7 +236,7 @@
             <div class="mt-3 flex flex-wrap justify-center gap-2">
                 {% for example in example_queries %}
                 <button type="button" data-example-query="{{ example.query }}"{% if example.date %} data-example-date="{{ example.date }}"{% endif %}
-                    class="border border-rule px-3 py-1.5 font-serif text-[14px] text-ink-2 hover:border-secondary hover:text-secondary">
+                    class="ui-btn-ghost px-3 py-1.5 font-serif text-[14px]">
                     {{ example.query }}
                 </button>
                 {% endfor %}
@@ -426,7 +426,7 @@
                 <template x-if="viewerResult && viewerResult.source_url">
                     <a :href="viewerResult.source_url" target="_blank" rel="noopener noreferrer"
                         @click="recordLinkClick('source_link')"
-                        class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary hover:underline"
+                        class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] ui-cite"
                         x-text="viewerResult.code_display_name"></a>
                 </template>
                 <template x-if="!viewerResult || !viewerResult.source_url">
@@ -439,7 +439,7 @@
                 </h1>
             </div>
             <button type="button" @click="closeViewer()"
-                class="shrink-0 inline-flex items-center border border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-2 hover:border-secondary hover:text-secondary">
+                class="ui-btn-ghost shrink-0 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em]">
                 Close
             </button>
         </div>

@@ -139,10 +139,10 @@
                         {% for g in row.provision_groups %}
                         <div class="break-inside-avoid break-after-avoid font-semibold text-[9.5px] uppercase tracking-[0.08em] text-ink-3 mt-2.5 first:mt-0 mb-1">{{ g.label }}</div>
                         {% for p in g.provisions %}
-                        <div class="break-inside-avoid">{% if p.url %}<a href="{{ p.url }}" class="text-secondary hover:text-secondary-2 hover:underline">{{ p.provision_id }}</a>{% else %}<span>{{ p.provision_id }}</span>{% endif %}</div>
+                        <div class="break-inside-avoid">{% if p.url %}<a href="{{ p.url }}" class="ui-cite">{{ p.provision_id }}</a>{% else %}<span>{{ p.provision_id }}</span>{% endif %}</div>
                         {% endfor %}
                         {% for t in g.tables %}
-                        <div class="break-inside-avoid">{{ t.label }}{% if t.owners %} <span class="text-ink-3">&rarr;</span> {% for o in t.owners %}{% if o.url %}<a href="{{ o.url }}" class="text-secondary hover:text-secondary-2 hover:underline">{{ o.provision_id }}</a>{% else %}<span>{{ o.provision_id }}</span>{% endif %}{% if not forloop.last %}<span class="text-ink-3">,</span> {% endif %}{% endfor %}{% endif %}</div>
+                        <div class="break-inside-avoid">{{ t.label }}{% if t.owners %} <span class="text-ink-3">&rarr;</span> {% for o in t.owners %}{% if o.url %}<a href="{{ o.url }}" class="ui-cite">{{ o.provision_id }}</a>{% else %}<span>{{ o.provision_id }}</span>{% endif %}{% if not forloop.last %}<span class="text-ink-3">,</span> {% endif %}{% endfor %}{% endif %}</div>
                         {% endfor %}
                         {% endfor %}
                     </div>

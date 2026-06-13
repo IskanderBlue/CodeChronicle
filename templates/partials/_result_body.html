@@ -27,7 +27,7 @@
 {% if result.clause %}
 <div class="mt-3">
     <a href="{% url 'core:regulation_detail' result.clause.regulation.pk %}"
-       class="font-mono text-[11px] font-medium text-secondary hover:text-secondary-2 hover:underline">
+       class="font-mono text-[11px] font-medium ui-cite">
         View amending regulation (O. Reg. {{ result.clause.regulation.reg_id }})
     </a>
 </div>

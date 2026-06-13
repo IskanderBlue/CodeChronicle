@@ -33,8 +33,8 @@
             {% comment %} Sibling pager: previous / next provision under the same
                parent, as each reads on the pinned date. {% endcomment %}
             <div class="flex items-center justify-between gap-4 border-b border-rule pb-3 text-[13px]">
-                <span>{% if nav_prev %}<a href="{{ nav_prev.url }}" class="text-secondary hover:underline">&larr; <span class="font-mono font-semibold">{{ nav_prev.provision_id }}</span></a>{% endif %}</span>
-                <span class="text-right">{% if nav_next %}<a href="{{ nav_next.url }}" class="text-secondary hover:underline"><span class="font-mono font-semibold">{{ nav_next.provision_id }}</span> &rarr;</a>{% endif %}</span>
+                <span>{% if nav_prev %}<a href="{{ nav_prev.url }}" class="ui-cite">&larr; <span class="font-mono font-semibold">{{ nav_prev.provision_id }}</span></a>{% endif %}</span>
+                <span class="text-right">{% if nav_next %}<a href="{{ nav_next.url }}" class="ui-cite"><span class="font-mono font-semibold">{{ nav_next.provision_id }}</span> &rarr;</a>{% endif %}</span>
             </div>
             {% endif %}
 

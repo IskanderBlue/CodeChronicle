@@ -18,7 +18,7 @@ context processor (real dates).
             <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{{ not_covered_province }} isn&rsquo;t covered yet</h3>
             <p class="mt-2 text-sm text-ink-2">
                 We cover Ontario for now &mdash; other jurisdictions are on the
-                <a href="{% url 'core:pricing' %}" class="font-semibold text-secondary underline hover:text-secondary-2">roadmap</a>.
+                <a href="{% url 'core:pricing' %}" class="ui-link font-semibold">roadmap</a>.
                 {% if not date_out_of_range %}Showing Ontario results below.{% endif %}
             </p>
         </div>
@@ -74,7 +74,7 @@ the otherwise-empty result list.
             <p class="mt-2 text-sm text-ink-2">
                 {% for code, count in locked_editions.items %}{{ count }} result{{ count|pluralize }} in {{ code }}{% if not forloop.last %}, {% endif %}{% endfor %}
                 {% if results %}&mdash; hidden on the free plan, which covers OBC 2006 only.{% else %}matched this query, but the free plan covers OBC 2006 only and no OBC 2006 provision matched at this date.{% endif %}
-                <a href="{% url 'core:pricing' %}" class="font-semibold text-secondary underline hover:text-secondary-2">See plans</a> to unlock every edition.
+                <a href="{% url 'core:pricing' %}" class="ui-link font-semibold">See plans</a> to unlock every edition.
             </p>
         </div>
     </div>
@@ -153,7 +153,7 @@ the otherwise-empty result list.
     {% for result in results %}
         <div x-show="activeResult === '{{ result.code|escapejs }}_{{ result.id|escapejs }}_{{ result.division|escapejs }}'" x-cloak class="min-w-0">
             <div class="bg-panel border border-rule px-5 py-5">
-                {% include "partials/_result_citation_header.html" with result=result %}
+                {% include "partials/_result_citation_header.html" with result=result compare_toggle=True %}
             </div>
             {% include "partials/_result_expanded.html" with result=result query_date=query_date metadata_in_rail=True %}
         </div>
@@ -195,9 +195,9 @@ the otherwise-empty result list.
             <p class="mt-2 text-sm text-ink-2">{{ error }}</p>
             {% if signup_url %}
             <p class="mt-3 text-sm text-ink-2">
-                <a href="{{ signup_url }}" class="font-semibold text-secondary underline hover:text-secondary-2">Create a free account</a>
+                <a href="{{ signup_url }}" class="ui-link font-semibold">Create a free account</a>
                 to unlock more searches, or
-                <a href="{{ login_url }}" class="font-semibold text-secondary underline hover:text-secondary-2">log in</a>
+                <a href="{{ login_url }}" class="ui-link font-semibold">log in</a>
                 if you already have one.
             </p>
             {% endif %}

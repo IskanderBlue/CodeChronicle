@@ -21,9 +21,9 @@
                         of the Pro plan.
                     </p>
                     <p class="mt-4 text-sm text-ink-2">
-                        <a href="{% url 'core:pricing' %}" class="font-semibold text-secondary underline hover:text-secondary-2">See plans</a>
+                        <a href="{% url 'core:pricing' %}" class="ui-link font-semibold">See plans</a>
                         {% if not user.is_authenticated %}
-                        or <a href="{% url 'account_login' %}" class="font-semibold text-secondary underline hover:text-secondary-2">log in</a>
+                        or <a href="{% url 'account_login' %}" class="ui-link font-semibold">log in</a>
                         if you already have access.
                         {% else %}
                         to unlock every edition.
