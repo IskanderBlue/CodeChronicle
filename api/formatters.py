@@ -16,6 +16,7 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     EditionTransition,
+    ElawsConsolidation,
     Regulation,
 )
 from core.provision_lineage import annotate_lineage_locks, resolve_lineage
@@ -608,6 +609,16 @@ def _format_single_result(
         "transition_provision_version": transition_provision_version,
         "copy_text": copy_text,
         "band": band,
+        # e-Laws consolidation "as it read" link, resolved by the version's own
+        # effective date (stable + version-pinned — independent of query_date).
+        # None when no cached consolidation period covers that date.
+        "consolidation": (
+            ElawsConsolidation.objects.resolve(
+                provision.edition_id, version.effective_date
+            )
+            if provision is not None and version is not None
+            else None
+        ),
     }
 
 

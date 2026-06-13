@@ -249,6 +249,60 @@ class EngagementEvent(models.Model):
         return f"{who}: {self.event_type} {self.object_type}#{self.object_id}"
 
 
+class AuthEvent(models.Model):
+    """Append-only security audit log of authentication outcomes.
+
+    The security counterpart to ``SearchHistory``/``EngagementEvent`` (which
+    record *content* access): one row per login, logout, or failed login, so a
+    credential-stuffing run or a successful break-in leaves a queryable trail
+    (failed-attempt rate per IP/email, last successful login per user).  This is
+    the application-layer access log; it does **not** see direct database access
+    that bypasses Django — see ``docs/security/breach-response-plan.md``.
+
+    Writes are best-effort and must never block authentication — see
+    ``core.auth_audit``.  ``user`` is ``SET_NULL`` so the trail outlives the
+    account, and a failed attempt has no user at all, so the attempted
+    identifier is kept separately in ``email``.
+    """
+
+    # Auto pk, plugin-only — declared for Pyright.
+    id: int
+
+    class EventType(models.TextChoices):
+        LOGIN = "login", "Login"
+        LOGOUT = "logout", "Logout"
+        LOGIN_FAILED = "login_failed", "Login failed"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="auth_events",
+        null=True,
+        blank=True,
+    )
+    # The identifier presented at the attempt — always set for failures (where
+    # there is no user) and mirrored for successes so a row reads on its own.
+    email = models.CharField(max_length=254, blank=True, default="")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    event_type = models.CharField(max_length=20, choices=EventType.choices)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "auth_events"
+        verbose_name = "Auth Event"
+        verbose_name_plural = "Auth Events"
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["event_type", "timestamp"]),
+            models.Index(fields=["ip_address", "timestamp"]),
+            models.Index(fields=["email", "timestamp"]),
+        ]
+
+    def __str__(self):
+        who = self.email or (self.user.email if self.user else "?")
+        return f"{who}: {self.event_type}"
+
+
 class Code(models.Model):
     """
     A building code system (e.g., OBC, NBC).
@@ -289,6 +343,7 @@ class CodeEdition(models.Model):
     # django-stubs plugin infers these from the related_name on the FK side.
     regulations: "models.Manager[Regulation]"
     provisions: "models.Manager[CodeEditionProvision]"
+    elaws_consolidations: "models.Manager[ElawsConsolidation]"
     # FK id-shadow, plugin-only — declared for Pyright.
     code_id: int
 
@@ -329,6 +384,79 @@ class CodeEdition(models.Model):
         return f"{self.code.code}_{self.edition_id}"
 
 
+class ElawsConsolidationManager(models.Manager["ElawsConsolidation"]):
+    def resolve(
+        self, edition_id: int, on_date: date | None
+    ) -> "ElawsConsolidation | None":
+        """The consolidation snapshot covering ``on_date`` for an edition.
+
+        ``effective_to`` is the inclusive last day of the period (or NULL for the
+        live one), so coverage is ``effective_from <= on_date <= effective_to``.
+        Overlaps (the brief windows where two editions' consolidated regs
+        coexist) are broken by the latest-starting period. Returns None when no
+        period covers the date — pre-e-Laws spans get no link, never a guess.
+        """
+        if on_date is None:
+            return None
+        return (
+            self.filter(edition_id=edition_id, effective_from__lte=on_date)
+            .filter(
+                models.Q(effective_to__isnull=True)
+                | models.Q(effective_to__gte=on_date)
+            )
+            .order_by("-effective_from")
+            .first()
+        )
+
+
+class ElawsConsolidation(models.Model):
+    """A point-in-time e-Laws consolidation of an edition's consolidated reg.
+
+    NOT a source (the regulation is the source) — a formatted, assembled view of
+    the code we link to so a provision can be read "as it stood" on a date.
+    e-Laws republishes one per amendment commencement, each covering a date
+    range; rows are built from the cached consolidation pages' own period banners
+    by ``scripts/build_elaws_consolidations.py`` and loaded by
+    ``load_consolidations``. ``version`` is the e-Laws version number (the
+    ``/v38`` in the URL), distinct from CCM's internal version index.
+    """
+
+    # FK id-shadow, plugin-only — declared for Pyright.
+    edition_id: int
+
+    edition = models.ForeignKey(
+        CodeEdition, on_delete=models.CASCADE, related_name="elaws_consolidations"
+    )
+    version = models.PositiveSmallIntegerField()
+    url = models.URLField(max_length=500)
+    effective_from = models.DateField()
+    #: Inclusive last day e-Laws states for the period; NULL = the live ("current")
+    #: consolidation, still in force.
+    effective_to = models.DateField(null=True, blank=True)
+
+    # Explicit annotation so Pyright (no plugin) resolves the manager's
+    # ``resolve`` method rather than falling back to the base Manager.
+    objects: "ElawsConsolidationManager" = ElawsConsolidationManager()
+
+    class Meta:
+        db_table = "elaws_consolidations"
+        ordering = ["edition", "version"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["edition", "version"], name="elaws_consolidation_edition_version_unique"
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["edition", "effective_from", "effective_to"],
+                name="elaws_consolidation_window_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.edition} consolidation v{self.version}"
+
+
 class ProvinceCode(models.Model):
     """
     Map a province abbreviation to its primary code system.
@@ -357,6 +485,16 @@ class Regulation(models.Model):
         BASE = "base", "Base"
         AMENDMENT = "amendment", "Amendment"
 
+    class SourceKind(models.TextChoices):
+        # Where the regulation-as-enacted can be read online. NOT the e-Laws
+        # consolidation snapshot (that is a point-in-time view of the assembled
+        # code, modelled separately) — this is the authoritative published
+        # instrument: an e-Laws regulation page, a gazette scan, etc.
+        ELAWS = "elaws", "e-Laws"
+        ARCHIVE_GAZETTE = "archive_gazette", "Gazette (archive.org)"
+        ONTARIO_CA = "ontario_ca", "Ontario.ca"
+        OTHER = "other", "Other"
+
     reg_id = models.CharField(max_length=50, unique=True)
     edition = models.ForeignKey(
         CodeEdition, on_delete=models.CASCADE, related_name="regulations"
@@ -370,6 +508,23 @@ class Regulation(models.Model):
     effective_date = models.DateField()
     source_pdf = models.CharField(max_length=200, blank=True, default="")
     source_pages = models.JSONField(null=True, blank=True)
+    source_url = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=(
+            "Authoritative online location of the regulation as enacted "
+            "(e.g. its e-Laws regulation page or an archive.org gazette scan). "
+            "Supplied by CCM; absent → no source link is shown, never a guess."
+        ),
+    )
+    source_kind = models.CharField(
+        max_length=30,
+        choices=SourceKind.choices,
+        blank=True,
+        default="",
+        help_text="Which kind of source `source_url` points at, for labelling.",
+    )
     commencement = models.JSONField(
         null=True,
         blank=True,
@@ -391,6 +546,24 @@ class Regulation(models.Model):
 
     def __str__(self):
         return f"O. Reg. {self.reg_id} ({self.role})"
+
+    @property
+    def source_link_label(self) -> str:
+        """Call-to-action for the source link, phrased per ``source_kind``.
+
+        Not a generic "View on <display>": the gazette display carries a
+        parenthetical ("Gazette (archive.org)") that reads badly in that mould,
+        so each kind names its own verb phrase here. Mixed-case; the template
+        upper-cases to match the header's mono style. Empty kind (url but no
+        kind) falls back to the neutral "View source".
+        """
+        labels: dict[str, str] = {
+            self.SourceKind.ELAWS.value: "View on e-Laws",
+            self.SourceKind.ARCHIVE_GAZETTE.value: "View Gazette on archive.org",
+            self.SourceKind.ONTARIO_CA.value: "View on Ontario.ca",
+            self.SourceKind.OTHER.value: "View source",
+        }
+        return labels.get(self.source_kind, "View source")
 
 
 class RegulationClause(models.Model):

@@ -307,6 +307,8 @@ class Command(BaseCommand):
                 ),
                 source_pdf=reg_data.get("source_pdf", ""),
                 source_pages=reg_data.get("source_pages"),
+                source_url=reg_data.get("source_url", ""),
+                source_kind=reg_data.get("source_kind", ""),
                 commencement=reg_data.get("commencement"),
             )
             reg_lookup[reg_id] = reg

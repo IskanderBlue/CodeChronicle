@@ -21,6 +21,7 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    ElawsConsolidation,
     EngagementEvent,
     ProvisionVersionTable,
     Regulation,
@@ -399,6 +400,11 @@ def _provenance_result(
         "amendment_chain": chain,
         "copy_text": copy_text,
         "band": None,
+        # e-Laws consolidation "as it read" link — resolved by this version's
+        # effective date, same as the search formatter. None when uncovered.
+        "consolidation": ElawsConsolidation.objects.resolve(
+            matched.edition_id, target_version.effective_date
+        ),
         # Provision identity, so the banner can build per-version permalinks
         # (same keys the search formatter supplies: code_edition/division/id).
         "code_edition": code_name,

@@ -23,6 +23,16 @@
             <span class="text-rule">&middot;</span>{% endif %}
             <span>EFFECTIVE &middot; <span class="text-ink font-semibold">{{ regulation.effective_date|date:"Y-m-d" }}</span></span>
             <span class="text-rule">&middot;</span>
+            {% comment %} Authoritative source of the regulation-as-enacted, when
+               CCM supplied one. The external ↗ + new tab distinguish it from the
+               internal navigation links; .ui-cite gives the quiet-citation
+               affordance. Absent source_url → nothing renders (never a guessed
+               URL). {% endcomment %}
+            {% if regulation.source_url %}
+            <a href="{{ regulation.source_url }}" target="_blank" rel="noopener noreferrer"
+               class="ui-cite inline-flex items-center gap-1">{{ regulation.source_link_label|upper }}<span aria-hidden="true">&#8599;</span></a>
+            <span class="text-rule">&middot;</span>
+            {% endif %}
             <span>{{ clauses|length }} CLAUSE{{ clauses|length|pluralize|upper }}</span>
             <span class="text-rule">&middot;</span>
             <a href="{% url 'core:edition_chain' regulation.edition.pk %}"
