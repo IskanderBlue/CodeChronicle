@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    AuthEvent,
     Code,
     CodeEdition,
     CodeEditionProvision,
@@ -41,6 +42,19 @@ class EngagementEventAdmin(admin.ModelAdmin):
         'user', 'ip_address', 'event_type', 'object_type', 'object_id',
         'search', 'context', 'timestamp',
     ]
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(AuthEvent)
+class AuthEventAdmin(admin.ModelAdmin):
+    list_display = ['event_type', 'email', 'ip_address', 'user', 'timestamp']
+    list_filter = ['event_type', 'timestamp']
+    search_fields = ['email', 'ip_address', 'user__email']
+    # Append-only security audit log: inspect (e.g. failed-login bursts by IP),
+    # never hand-edit.
+    readonly_fields = ['user', 'email', 'ip_address', 'event_type', 'timestamp']
 
     def has_add_permission(self, request):
         return False

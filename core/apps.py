@@ -7,4 +7,5 @@ class CoreConfig(AppConfig):
     verbose_name = 'Core'
 
     def ready(self):
+        import core.auth_audit  # noqa: F401 — registers auth-event signal receivers
         import core.stripe_handlers  # noqa: F401

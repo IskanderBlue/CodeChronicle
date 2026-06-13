@@ -138,6 +138,14 @@ R2_ENDPOINT_URL = os.environ.get("R2_ENDPOINT_URL", "") or (
     f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else ""
 )
 
+# Off-host encrypted DB backups (manage.py backup_userdata — see
+# docs/security/disaster-recovery-plan.md §7).  A *separate* bucket from the
+# public assets one is strongly preferred; falls back to R2_BUCKET if unset.
+# BACKUP_AGE_RECIPIENT is an age *public* key ("age1…") — the backup box
+# encrypts to it but never holds the private key, which stays offline for restore.
+R2_BACKUP_BUCKET = os.environ.get("R2_BACKUP_BUCKET", "")
+BACKUP_AGE_RECIPIENT = os.environ.get("BACKUP_AGE_RECIPIENT", "")
+
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
