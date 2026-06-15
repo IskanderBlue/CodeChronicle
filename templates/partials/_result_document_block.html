@@ -110,7 +110,9 @@
 </p>
 {% endif %}
 
-{# Tables — HTML form when available (e-Laws source), else image form. #}
+{% comment %} Tables — image form preferred (the faithful PDF record); the
+   extracted HTML table is the fallback only when no image exists, since that
+   PDF->HTML extraction proved unreliable. {% endcomment %}
 {% for table in result.tables %}
 <div class="mt-4 border-t border-rule pt-3" x-data="{ open: {% if shared_expand %}true{% else %}false{% endif %} }">
     <p class="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 cursor-pointer select-none"
@@ -125,20 +127,20 @@
         {% endif %}
     </p>
     <div x-show="open" x-cloak>
-    {% if table.html %}
-    <div class="overflow-y-auto table-container prose dark:prose-invert max-w-none provision-table-html" style="max-height: 500px;">
-        {{ table.html|safe }}
-    </div>
-    {% elif table.images %}
+    {% if table.images %}
     <div class="overflow-y-auto table-container" style="max-height: 500px;">
         {% for img_entry in table.images %}
         {% include "partials/_document_image.html" with img_entry=img_entry alt_text=table.table_id %}
         {% endfor %}
     </div>
+    {% elif table.html %}
+    <div class="overflow-y-auto table-container prose dark:prose-invert max-w-none provision-table-html" style="max-height: 500px;">
+        {{ table.html|safe }}
+    </div>
     {% endif %}
     {% if table.notes %}
     <div class="mt-2 border-t border-rule pt-2 text-xs text-ink-3">
-        {{ table.notes }}
+        {{ table.notes|safe }}
     </div>
     {% endif %}
     </div>

@@ -1,8 +1,11 @@
 {% comment %} Single ProvisionVersionTable.
-   Renders HTML form when present (CCM's preferred form for elaws-sourced
-   versions); falls back to images otherwise.  Notes are suppressed when
-   the HTML form is populated — by contract CCM emits notes="" in that
-   case to avoid double-rendering.
+   Renders the image form when present (the faithful PDF record); falls back
+   to the extracted HTML table only when no image exists, since that PDF→HTML
+   extraction proved unreliable.  Notes ("Notes to Table …" HTML) render below
+   the table whenever present: in practice CCM ships them as standalone content
+   NOT embedded in the HTML form, so they must show alongside whichever form
+   renders — the old contract assumption that html implies notes="" does not
+   hold for the loaded data.
 
    Context: `table` (ProvisionVersionTable). {% endcomment %}
 <figure class="border border-rule bg-surface-2 overflow-hidden" x-data="{ open: false }">
@@ -20,25 +23,24 @@
         {% endif %}
     </figcaption>
     <div class="p-3" x-show="open" x-cloak>
-        {% if table.html %}
-        <div class="provision-table-html prose dark:prose-invert max-w-none">
-            {{ table.html|safe }}
-        </div>
-        {% elif table.images %}
+        {% if table.images %}
         <div class="overflow-y-auto table-container max-w-none provision-table-html"
              style="max-height: 500px;">
             {% for entry in table.images %}
             {% include "partials/_document_image.html" with img_entry=entry alt_text=table.table_id %}
             {% endfor %}
         </div>
+        {% elif table.html %}
+        <div class="provision-table-html prose dark:prose-invert max-w-none">
+            {{ table.html|safe }}
+        </div>
         {% else %}
         <p class="font-serif text-sm italic text-ink-3">Table content not available.</p>
         {% endif %}
 
-        {% if table.notes and not table.html %}
-        <div class="mt-2 pt-2 border-t border-rule
-                    text-xs text-ink-3 whitespace-pre-line">
-            {{ table.notes }}
+        {% if table.notes %}
+        <div class="mt-2 pt-2 border-t border-rule text-xs text-ink-3">
+            {{ table.notes|safe }}
         </div>
         {% endif %}
     </div>
