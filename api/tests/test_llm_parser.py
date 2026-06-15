@@ -4,7 +4,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.test import override_settings
 
-from api.llm_parser import parse_user_query
+from api.llm_parser import (
+    _as_table_ref,
+    extract_section_references,
+    extract_table_references,
+    parse_user_query,
+    strip_table_references,
+)
 from core.models import QueryCache
 
 
@@ -123,4 +129,101 @@ def test_explicit_date_parse_is_stable_across_days():
         mock_date.today.return_value = real_date(2027, 1, 1)
         r2 = parse_user_query(query)
         assert r2["date"] == "1995-01-01"
+        assert mock_client.messages.create.call_count == 1
+
+
+class TestTableReferenceExtraction:
+    """Regex pre-extraction of table references (no LLM, no DB)."""
+
+    def test_appendix_letter_table(self):
+        # The case that returned nothing before: appendix tables are
+        # letter-numbered with no dotted core, invisible to SECTION_REF_RE.
+        assert extract_table_references("Table A-1 in the year 2000") == ["Table A-1"]
+
+    def test_dotted_space_form_is_a_table_not_a_provision(self):
+        # "Table 9.10.14.1" (space, no hyphen) must read as one table reference,
+        # not degrade to a bare "9.10.14.1" provision id.
+        q = "fire safety Table 9.10.14.1 for a house"
+        assert extract_table_references(q) == ["Table 9.10.14.1"]
+        assert extract_section_references(strip_table_references(q)) == []
+
+    def test_hyphenated_appendix(self):
+        assert extract_table_references("Table-A-12") == ["Table-A-12"]
+
+    def test_plain_provision_is_not_a_table(self):
+        assert extract_table_references("section 9.10.14.1 only") == []
+
+
+def test_as_table_ref_prefixes_bare_ids_only():
+    # A bare id the LLM might return gets the marker the engine routes on;
+    # an already-prefixed reference passes through unchanged.
+    assert _as_table_ref("A-1") == "Table-A-1"
+    assert _as_table_ref("9.10.14.1") == "Table-9.10.14.1"
+    assert _as_table_ref("Table A-1") == "Table A-1"
+    assert _as_table_ref("table-a-12") == "table-a-12"
+
+
+@pytest.mark.django_db
+@override_settings(ANTHROPIC_API_KEY="test-key")
+def test_table_only_query_resolves_via_regex_without_llm():
+    """A query that is purely a table reference short-circuits the API."""
+    with patch("anthropic.Anthropic") as mock_anthropic:
+        result = parse_user_query("Table A-1")
+        assert result["section_references"] == ["Table A-1"]
+        mock_anthropic.return_value.messages.create.assert_not_called()
+
+
+@pytest.mark.django_db
+@override_settings(ANTHROPIC_API_KEY="test-key")
+def test_llm_table_reference_folded_into_section_references():
+    """A table the regex can't see but the LLM names joins the ref channel, and
+    a keyword-less table query is not rejected for lacking keywords."""
+    with patch("anthropic.Anthropic") as mock_anthropic:
+        mock_client = mock_anthropic.return_value
+        block = MagicMock()
+        block.type = "tool_use"
+        block.input = {
+            "date": "2000-01-01",
+            "keywords": [],
+            "province": "ON",
+            "table_references": ["Table A-1"],
+        }
+        response = MagicMock()
+        response.content = [block]
+        mock_client.messages.create.return_value = response
+
+        result = parse_user_query("the appendix climate table for 2000")
+
+        assert result["section_references"] == ["Table A-1"]
+        # The raw tool field is flattened away — downstream reads one channel.
+        assert "table_references" not in result
+
+
+@pytest.mark.django_db
+@override_settings(ANTHROPIC_API_KEY="test-key")
+def test_llm_table_reference_survives_cache_hit():
+    """On a cache hit the LLM-extracted table ref must be preserved, not
+    overwritten by the (empty) regex re-extraction of the same query."""
+    with patch("anthropic.Anthropic") as mock_anthropic:
+        mock_client = mock_anthropic.return_value
+        block = MagicMock()
+        block.type = "tool_use"
+        block.input = {
+            "date": "2000-01-01",
+            "keywords": [],
+            "province": "ON",
+            "table_references": ["Table A-1"],
+        }
+        response = MagicMock()
+        response.content = [block]
+        mock_client.messages.create.return_value = response
+
+        query = "the appendix climate table for 2000"
+        r1 = parse_user_query(query)
+        assert r1["section_references"] == ["Table A-1"]
+        assert mock_client.messages.create.call_count == 1
+
+        # Identical query -> cache hit, no new API call, ref still present.
+        r2 = parse_user_query(query)
+        assert r2["section_references"] == ["Table A-1"]
         assert mock_client.messages.create.call_count == 1

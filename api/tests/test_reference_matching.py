@@ -31,6 +31,12 @@ class TestRefParts:
     def test_table_space_prefix(self):
         assert _ref_parts("Table 3.1.4.7") == (True, ("3", "1", "4", "7"))
 
+    def test_appendix_letter_table(self):
+        # Letter-numbered appendix tables ("Table A-1") normalize to a single
+        # segment and stay flagged as tables.
+        assert _ref_parts("Table A-1") == (True, ("a-1",))
+        assert _ref_parts("Table-A-12") == (True, ("a-12",))
+
     def test_division_letter_prefix_is_dropped(self):
         assert _ref_parts("A-3.1.2") == (False, ("3", "1", "2"))
 
@@ -106,6 +112,35 @@ def test_table_reference_resolves_through_score_versions(edition_with_table):
     assert len(results) == 1
     assert results[0]["id"] == "3.1.4."
     assert results[0]["score"] == 3.0
+    assert results[0]["match_type"] == "table_ref"
+
+
+@pytest.mark.django_db
+def test_appendix_table_reference_resolves_through_score_versions():
+    """An appendix 'Table A-1' reference surfaces its owning provision — the
+    case that returned nothing before the parser learned letter-numbered ids."""
+    code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    ProvinceCode.objects.create(province="ON", code=code)
+    edition = CodeEdition.objects.create(
+        code=code, edition_id="1997", year=1997, effective_date=date(1997, 1, 1),
+    )
+    provision = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="9.23.4.2.", level="article",
+    )
+    version = CodeEditionProvisionVersion.objects.create(
+        provision=provision, version=0, effective_date=date(1997, 1, 1),
+        title="Anchorage", keyword_counts={},
+    )
+    ProvisionVersionTable.objects.create(version=version, table_id="Table-A-1", order=0)
+
+    qs = CodeEditionProvisionVersion.objects.filter(
+        provision__edition=edition,
+    ).select_related("provision__edition__code")
+
+    results = score_versions("", qs, CorpusStats(), provision_references=["Table A-1"])
+
+    assert len(results) == 1
+    assert results[0]["id"] == "9.23.4.2."
     assert results[0]["match_type"] == "table_ref"
 
 
