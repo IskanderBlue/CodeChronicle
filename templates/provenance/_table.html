@@ -24,12 +24,7 @@
     </figcaption>
     <div class="p-3" x-show="open" x-cloak>
         {% if table.images %}
-        <div class="overflow-y-auto table-container max-w-none provision-table-html"
-             style="max-height: 500px;">
-            {% for entry in table.images %}
-            {% include "partials/_document_image.html" with img_entry=entry alt_text=table.table_id %}
-            {% endfor %}
-        </div>
+        {% include "partials/_document_images.html" with entries=table.images alt_text=table.table_id container_class="table-container max-w-none provision-table-html" %}
         {% elif table.html %}
         <div class="provision-table-html prose dark:prose-invert max-w-none">
             {{ table.html|safe }}

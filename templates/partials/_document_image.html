@@ -1,35 +1,32 @@
-{# Reusable document image: bbox-cropped by default, "View full page" toggle #}
-{# Expects: img_entry (dict with .image and .bboxes list), alt_text (string) #}
+{% comment %} One document page image. Renders a single page only — no scroll
+   area, spacer, or toggle of its own; those belong to the wrapper that groups a
+   whole provision/table's pages into one unit (partials/_document_images.html,
+   or a surface block like the search-result provision preview). This partial
+   reads the Alpine `fullPage` flag from that wrapper's scope.
+
+   Expects: img_entry (dict with .image and .bboxes), alt_text (string).
+
+   .image is a root-relative asset key ("documents/…webp", "elaws/…jpg") served
+   at "/<key>" — dev by Django (code_chronicle/urls.py), prod by the edge alias.
+   Emit it with a leading slash so it resolves from the site root on any page.
+
+   .bboxes are {x, y, w, h} image-relative fractions (0–1), top-left origin, per
+   the contract's bbox_format = "xywh_fraction_topleft": a box's CSS position is
+   its value × 100% directly. bboxes[0] is the start anchor; the wrapper uses it
+   to open scrolled to the content's start. The page renders once at full opacity;
+   the inherited `showHighlights` flag just toggles the small-opacity bbox
+   overlays on top. {% endcomment %}
 {% if img_entry.bboxes %}
-<div class="relative document-image" x-data="{ fullPage: false }">
-    {# Cropped views (default) — one crop per bbox in reading order #}
-    <div x-show="!fullPage" class="space-y-0.5">
-        {% for bbox in img_entry.bboxes %}
-        <div class="overflow-hidden">
-            <img src="{{ img_entry.image }}" alt="{{ alt_text }}"
-                class="w-full fade-in-image" loading="lazy">
-        </div>
-        {% endfor %}
+<div class="relative document-image">
+    <img src="/{{ img_entry.image }}" alt="{{ alt_text }}"
+        class="w-full fade-in-image" loading="lazy">
+    {% for bbox in img_entry.bboxes %}
+    <div x-show="showHighlights" class="absolute border border-secondary/50 bg-secondary/10 pointer-events-none"
+        :style="`left:${ {{ bbox.x }} * 100 }%; top:${ {{ bbox.y }} * 100 }%; width:${ {{ bbox.w }} * 100 }%; height:${ {{ bbox.h }} * 100 }%;`">
     </div>
-    {# Full page view with all bboxes highlighted #}
-    <div x-show="fullPage" x-cloak class="relative">
-        <img src="{{ img_entry.image }}" alt="{{ alt_text }} (full page)"
-            class="w-full fade-in-image" loading="lazy" style="opacity: 0.5;">
-        {% for bbox in img_entry.bboxes %}
-        <div class="absolute border border-secondary/50 bg-secondary/10 pointer-events-none"
-            style="left: {{ bbox.l }}%; top: {{ bbox.t }}%; width: {{ bbox.r }}%; height: {{ bbox.b }}%;">
-        </div>
-        {% endfor %}
-    </div>
-    <div class="flex justify-end mt-0.5">
-        <button type="button" @click.stop="fullPage = !fullPage"
-            class="font-mono text-[10px] uppercase tracking-[0.06em] text-secondary hover:text-secondary-2 font-medium">
-            <span x-show="!fullPage">View full page</span>
-            <span x-show="fullPage" x-cloak>View focused</span>
-        </button>
-    </div>
+    {% endfor %}
 </div>
 {% elif img_entry.image %}
-{# No bboxes — show image as-is #}
-<img src="{{ img_entry.image }}" alt="{{ alt_text }}" class="w-full fade-in-image" loading="lazy">
+{# No bboxes — show image as-is (e.g. a pre-composited e-Laws table JPG). #}
+<img src="/{{ img_entry.image }}" alt="{{ alt_text }}" class="w-full fade-in-image" loading="lazy">
 {% endif %}

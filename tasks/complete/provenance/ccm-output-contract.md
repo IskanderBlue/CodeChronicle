@@ -18,6 +18,7 @@ populate its provenance models for that edition.
   "effective_date": "1998-04-06",
   "ineffective_date": "2006-12-31",
   "amendment_chain_complete": true,
+  "bbox_format": "xywh_fraction_topleft",
 
   "regulations": [ ... ],
   "provisions": [ ... ],
@@ -30,6 +31,20 @@ populate its provenance models for that edition.
 No `base_regulation` or `revoked_by` at the top level — these are
 identified from the regulations array by `role: "base"` and by the next
 edition's base regulation respectively.
+
+### `bbox_format`
+
+Coordinate system for **every** bbox in the file —
+`versions[].page_images[]`, `versions[].tables[].images[]`, and
+`regulations[].clauses[].bbox` alike. Current and only supported value:
+
+- `"xywh_fraction_topleft"` — each bbox is `{x, y, w, h}` where `x, y` is
+  the **top-left corner** and `w, h` the size, all as **fractions (0–1)
+  of the rendered image**, top-left origin (y grows downward). A box's
+  CSS position is its value × 100% directly — no page size, no y-flip.
+
+The frontend treats a missing `bbox_format` as this value (today only
+the editions that actually carry non-empty bboxes declare it).
 
 ## `regulations[]`
 
@@ -70,7 +85,7 @@ effective date then filing date.
       "strike_text": null,
       "sub_text": null,
       "page": 29,
-      "bbox": {"l": 194, "t": 625, "r": 366, "b": 30}
+      "bbox": {"x": 0.36, "y": 0.21, "w": 0.32, "h": 0.05}
     }
   ]
 }
@@ -181,6 +196,23 @@ clauses** that carry only `clause_id` + `amended_by` (no `action`,
 no `target_*` of their own). Merge with the full clause entry when
 both are present; otherwise render as a back-pointer-only row.
 
+### `clauses[].page`, `clauses[].bbox`
+
+Locate the clause on its gazette source page. The regulation detail view
+shows the full page (`documents/{source_pdf}/{page}.webp`) with an
+overlay marking where the clause sits.
+
+- `page`: 1-based page number in `source_pdf`.
+- `bbox`: `{x, y, w, h}` of the clause **body region** on that page, in
+  the same `bbox_format` fraction system as the image bboxes (top-left
+  origin, all 0–1; overlay position is value × 100% directly).
+
+CodeChronicle stores the clause `bbox` verbatim in a `RegulationClause`
+JSONField, so the encoding flows straight through — the regulation detail
+view renders the amber overlay from these fractions. (No `id_bbox`: an
+earlier draft proposed one but CCM does not emit it, matching the
+image-bbox decision to use `bboxes[0]` as the anchor.)
+
 ## `provisions[]`
 
 All provisions in the edition with their complete version chain.
@@ -206,7 +238,7 @@ Provision bboxes encompass the provision text plus any associated tables.
       "title": "Definitions",
       "html": "<p>In this Code,</p><p>...</p>",
       "page_images": [
-        {"image": "documents/obc_1997_v2.pdf/42.webp", "bboxes": [{"l": 50, "t": 200, "r": 380, "b": 80}]}
+        {"image": "documents/obc_1997_v2.pdf/42.webp", "bboxes": [{"x": 0.065, "y": 0.75, "w": 0.43, "h": 0.025}]}
       ],
       "keyword_counts": {"fire": 3, "safety": 1},
 
@@ -316,7 +348,7 @@ legacy pre-classification shape and is **rejected** at ingest.
       "title": "",
       "html": "<p>The OBC applies to both site-built and...</p>",
       "page_images": [
-        {"image": "documents/obc_1997_appendix.pdf/12.webp", "bboxes": [{"l": 50, "t": 300, "r": 380, "b": 200}]}
+        {"image": "documents/obc_1997_appendix.pdf/12.webp", "bboxes": [{"x": 0.065, "y": 0.62, "w": 0.43, "h": 0.025}]}
       ],
       "keyword_counts": {},
 
@@ -463,8 +495,8 @@ pages have multiple entries in reading order.
   {
     "image": "documents/obc_1997_v3.pdf/143.webp",
     "bboxes": [
-      {"l": 50, "t": 400, "r": 380, "b": 120},
-      {"l": 400, "t": 30, "r": 750, "b": 350}
+      {"x": 0.065, "y": 0.50, "w": 0.43, "h": 0.025},
+      {"x": 0.52, "y": 0.04, "w": 0.45, "h": 0.40}
     ]
   }
 ]
@@ -472,11 +504,24 @@ pages have multiple entries in reading order.
 
 - `image`: S3 path to the full page image (shared across provisions on
   the same page).
-- `bboxes`: list of `{l, t, r, b}` regions on that page, in reading
-  order. Multiple bboxes handle provisions that flow across columns
-  (e.g., starts bottom of left column, continues top of right column).
-  The frontend shows each bbox as a separate cropped region by default.
-  "View full page" shows the uncropped image with all bboxes highlighted.
+- `bboxes`: list of `{x, y, w, h}` regions on that page in **reading
+  order**, in the `bbox_format` fraction system (top-left origin, all
+  0–1; see the `bbox_format` section). `bboxes[0]` is the **start
+  anchor** — the provision's first/identifier line; the frontend opens
+  the focused view scrolled so `bboxes[0].y` sits at the top, putting
+  the start at the top. Later entries are subsequent column/region
+  blocks (a provision that flows across columns starts bottom-left,
+  continues top-right). "View full page" overlays every bbox as a
+  highlight (`left:x·100% top:y·100% width:w·100% height:h·100%`) on the
+  uncropped page. CodeChronicle stores `page_images` verbatim, so the
+  encoding flows straight through with no loader/model change.
+
+> There is no separate `id_bbox`. CCM previously planned one (the
+> printed identifier line, so the page could open on the number rather
+> than the body); it was dropped because `bboxes[0]` already marks the
+> start. For most provisions `bboxes[0]` is exactly the thin identifier
+> line; the focused scroll therefore lands on it directly with no
+> caption estimate.
 
 Multiple entries in `page_images` handle provisions spanning pages.
 Each entry is one page; bboxes within that entry are column regions.
@@ -492,8 +537,8 @@ Tables belonging to this provision at this version.
   "table_id": "Table-3.1.4.7.",
   "caption": "Fire Resistance Ratings",
   "images": [
-    {"image": "documents/obc_1997_v2.pdf/143.webp", "bboxes": [{"l": 50, "t": 100, "r": 750, "b": 30}]},
-    {"image": "documents/obc_1997_v2.pdf/144.webp", "bboxes": [{"l": 50, "t": 30, "r": 750, "b": 600}]}
+    {"image": "documents/obc_1997_v2.pdf/143.webp", "bboxes": [{"x": 0.065, "y": 0.13, "w": 0.92, "h": 0.83}]},
+    {"image": "documents/obc_1997_v2.pdf/144.webp", "bboxes": [{"x": 0.065, "y": 0.04, "w": 0.92, "h": 0.75}]}
   ],
   "html": "",
   "notes": "Note (1): For buildings of...",
@@ -502,12 +547,16 @@ Tables belonging to this provision at this version.
 ```
 
 - `images`: list of `{image, bboxes}` objects. Same format as
-  `page_images` — full page image path + bboxes for the table region.
-  For base tables, these are source document pages. For amended tables,
-  the `image` path points to the pre-composited image (bbox covers the
-  full composited image).
+  `page_images` — full page image path + `{x, y, w, h}` fraction bboxes
+  (`bbox_format`) for the table region, `bboxes[0]` the start anchor
+  (the caption / first row), the frontend scrolling so `bboxes[0].y`
+  sits at the top. For base tables these are source document pages; for
+  amended tables the `image` path points to the pre-composited image
+  (bbox covers the full composited image).
   May be an empty list when `html` is populated and no authoritative
-  image form is available for this version.
+  image form is available for this version. Like `page_images`, the
+  encoding is stored verbatim — no `id_bbox` (dropped; `bboxes[0]` is
+  the anchor).
 - `html`: Structured table markup (e.g. `<table>...</table>`) sourced
   from e-Laws when a point-in-time HTML form exists for this version.
   Empty string when unavailable — the renderer falls back to `images`.
@@ -750,9 +799,11 @@ Full page images are shared — the same image is referenced by every
 provision/table/clause on that page, each with its own bbox. No
 duplication of page images.
 
-Bboxes are provided per provision and per table in the JSON. The
-frontend uses bbox to crop/focus the view by default, with a "View
-full page" toggle for the uncropped image.
+Bboxes are provided per provision and per table in the JSON, as
+`{x, y, w, h}` image fractions (`bbox_format`). The frontend opens the
+focused view scrolled so `bboxes[0]` (the start anchor) sits at the top,
+with a "View full page" toggle that highlights every bbox on the
+uncropped image. No `id_bbox`: `bboxes[0]` is the start anchor.
 
 ### Gazette page images
 

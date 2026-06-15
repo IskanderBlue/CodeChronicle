@@ -49,12 +49,14 @@ urlpatterns: list[URLResolver | URLPattern] = [
 ]
 
 # Development-only asset serving.  CCM-mirrored trees (documents/,
-# amended/, laws/) live under settings.ASSET_ROOT with paths verbatim,
-# so inline ``<img src="/laws/images/...">`` references in version HTML
-# resolve through these patterns.  In production these prefixes are
-# served by nginx aliasing to ASSET_ROOT — Django stays out of the path.
+# elaws/, amended/, laws/) live under settings.ASSET_ROOT with paths
+# verbatim, so both page/table ``image`` keys (e.g. "documents/…webp",
+# "elaws/…jpg") and inline ``<img src="/laws/images/...">`` references in
+# version HTML resolve through these patterns.  In production these
+# prefixes are served by nginx aliasing to ASSET_ROOT — Django stays out
+# of the path.
 if settings.DEBUG:
-    for _prefix in ("documents", "amended", "laws"):
+    for _prefix in ("documents", "elaws", "amended", "laws"):
         urlpatterns.append(path(
             f"{_prefix}/<path:path>",
             serve,

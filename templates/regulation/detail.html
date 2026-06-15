@@ -334,8 +334,9 @@
                     <img src="{{ img_entry_image }}" alt="Gazette page {{ clause.page }}"
                         class="w-full fade-in-image" loading="lazy">
                     {% if clause.bbox %}
+                    {# bbox is {x,y,w,h} image fractions (bbox_format), top-left origin — position is value × 100%, same as the page/table image overlays. #}
                     <div class="absolute border border-amber-600/30 bg-amber-600/[0.06] pointer-events-none"
-                        style="left: {{ clause.bbox.l }}px; top: {{ clause.bbox.t }}px; right: {{ clause.bbox.r }}px; bottom: {{ clause.bbox.b }}px;">
+                        :style="`left:${ {{ clause.bbox.x }} * 100 }%; top:${ {{ clause.bbox.y }} * 100 }%; width:${ {{ clause.bbox.w }} * 100 }%; height:${ {{ clause.bbox.h }} * 100 }%;`">
                     </div>
                     {% endif %}
                 </div>

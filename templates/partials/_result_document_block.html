@@ -19,7 +19,78 @@
     </div>
 </div>
 {% endif %}
-{% if result.html_content %}
+{% comment %} Provision body — image form preferred (the faithful PDF record),
+   the extracted HTML the fallback only when no page image exists, mirroring the
+   table precedence; the PDF->HTML extraction proved unreliable.  Note: the diff
+   / "show original" toggle lives in the HTML branch, so an image-bearing
+   provision shows the page image rather than an amendment diff. {% endcomment %}
+{% if result.page_images %}
+<div class="mt-4" {% if not shared_expand %}x-data="{ expanded: false }"{% endif %}>
+    {% comment %} Two views of the page stack, toggled by `expanded`:
+       • Collapsed: cropped to the provision's bbox extent — content above its id
+         line and below its end (next provision / footer) is trimmed, each with a
+         10px margin. idTop lifts the stack via a negative margin-top (not
+         transform, so the container shrinks with it — no bottom blank); cropH caps
+         max-height. Both are measured from the rendered bbox overlays (min top /
+         max bottom across every page + column), so multipage / multi-column crop
+         correctly with no per-page template math.
+       • Expanded: NO crop — the WHOLE pages in a height-capped overflow-y-auto box
+         (so it doesn't blow up the screen but nothing is truncated; the user can
+         see the full surrounding context). Opens scrolled to the id (idTop) so the
+         provision is front-and-centre, with context a scroll up/down away.
+       Falls back to a plain 200px preview when there are no bboxes (cropH stays 0).
+       Kept separate from `expanded` so it survives shared_expand; highlights ON. {% endcomment %}
+    <div x-data="{ showHighlights: true, idTop: 0, cropH: 0 }">
+        <div x-ref="box" class="relative paper-container"
+            :class="expanded ? 'overflow-y-auto' : 'overflow-hidden'"
+            :style="`max-height: ${ expanded ? 600 : Math.min(200, cropH || 200) }px`"
+            x-init="$nextTick(() => {
+                const stack = $refs.stack;
+                const imgs = stack.querySelectorAll('img');
+                if (!imgs.length) return;
+                const measure = () => {
+                    const boxes = stack.querySelectorAll('.document-image > div');
+                    if (!boxes.length) return;
+                    const sr = stack.getBoundingClientRect();
+                    let top = Infinity, bottom = -Infinity;
+                    boxes.forEach(b => { const r = b.getBoundingClientRect(); top = Math.min(top, r.top - sr.top); bottom = Math.max(bottom, r.bottom - sr.top); });
+                    if (!isFinite(top)) return;
+                    idTop = Math.max(0, top - 10);
+                    cropH = (bottom - top) + 20;
+                };
+                let pending = imgs.length;
+                const done = () => { if (--pending === 0) measure(); };
+                imgs.forEach(im => im.complete ? done() : (im.addEventListener('load', done), im.addEventListener('error', done)));
+            })">
+            <div x-ref="stack" :style="`margin-top: -${ expanded ? 0 : idTop }px`">
+                {% for img_entry in result.page_images %}
+                {% include "partials/_document_image.html" with img_entry=img_entry alt_text=result.id %}
+                {% endfor %}
+            </div>
+            <div x-show="!expanded && (cropH === 0 || cropH > 200)"
+                class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-surface to-transparent pointer-events-none">
+            </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-1 font-mono text-[10px] uppercase tracking-[0.06em]">
+            {% if result.page_images.0.bboxes %}
+            <button @click.stop="showHighlights = !showHighlights"
+                class="text-ink-3 hover:text-ink font-medium">
+                <span x-show="!showHighlights">Show highlights</span>
+                <span x-show="showHighlights" x-cloak>Hide highlights</span>
+            </button>
+            {% endif %}
+            <button x-show="expanded" @click="expanded = false; $nextTick(() => $refs.box.scrollTop = 0)"
+                class="text-secondary hover:text-secondary-2 font-medium">
+                Collapse
+            </button>
+            <button x-show="!expanded" @click="expanded = true; $nextTick(() => $refs.box.scrollTop = idTop)"
+                class="text-secondary hover:text-secondary-2 font-medium">
+                Show full page
+            </button>
+        </div>
+    </div>
+</div>
+{% elif result.html_content %}
 <div class="mt-4" {% if not shared_expand %}x-data="{ expanded: false, showDiff: true }"{% endif %}>
     <div class="relative border border-rule overflow-hidden"
         :style="{ maxHeight: expanded ? 'none' : '200px' }">
@@ -46,29 +117,6 @@
             x-text="showDiff ? 'Show original' : 'Show diff'">
         </button>
         {% endif %}
-        <button x-show="expanded" @click="expanded = false"
-            class="text-secondary hover:text-secondary-2 font-medium">
-            Collapse
-        </button>
-        <button x-show="!expanded" @click="expanded = true"
-            class="text-secondary hover:text-secondary-2 font-medium">
-            Expand provision
-        </button>
-    </div>
-</div>
-{% elif result.page_images %}
-{# Page images for base provisions — bbox-cropped by default #}
-<div class="mt-4" {% if not shared_expand %}x-data="{ expanded: false }"{% endif %}>
-    <div class="relative overflow-hidden paper-container"
-        :style="{ maxHeight: expanded ? 'none' : '200px' }">
-        {% for img_entry in result.page_images %}
-        {% include "partials/_document_image.html" with img_entry=img_entry alt_text=result.id %}
-        {% endfor %}
-        <div x-show="!expanded"
-            class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-surface to-transparent pointer-events-none">
-        </div>
-    </div>
-    <div class="flex justify-end mt-1 font-mono text-[10px] uppercase tracking-[0.06em]">
         <button x-show="expanded" @click="expanded = false"
             class="text-secondary hover:text-secondary-2 font-medium">
             Collapse
@@ -128,11 +176,7 @@
     </p>
     <div x-show="open" x-cloak>
     {% if table.images %}
-    <div class="overflow-y-auto table-container" style="max-height: 500px;">
-        {% for img_entry in table.images %}
-        {% include "partials/_document_image.html" with img_entry=img_entry alt_text=table.table_id %}
-        {% endfor %}
-    </div>
+    {% include "partials/_document_images.html" with entries=table.images alt_text=table.table_id container_class="table-container" %}
     {% elif table.html %}
     <div class="overflow-y-auto table-container prose dark:prose-invert max-w-none provision-table-html" style="max-height: 500px;">
         {{ table.html|safe }}

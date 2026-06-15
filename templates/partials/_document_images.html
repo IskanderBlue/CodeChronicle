@@ -1,0 +1,41 @@
+{% comment %} A whole provision's or table's page images as ONE unit: a single
+   scroll window holding every page stacked in reading order (NOT one scroller
+   per page — that left blank gaps between pages), opened scrolled to the first
+   page's start anchor (bboxes[0]), with a single full-page toggle for the set.
+
+   Expects:
+     entries            — list of img_entry dicts (page_images or tables[].images)
+     alt_text           — alt/label string
+     container_class    — optional extra classes for the scroll box (e.g.
+                          "table-container" for the table bg/border); default none.
+     highlights_default — True to start with the bbox highlights shown (provisions
+                          default on, tables default off); falsy = start hidden.
+
+   No over-scroll spacer: the last page's bottom binds to the container bottom so
+   you can't scroll into blank. scroll-to-start still lands bboxes[0] near the top
+   for multipage content (plenty below it); for a single short page the browser
+   just clamps to the top, which is correct — the whole page is visible anyway.
+   The scroll keeps a 10px headroom so the first line isn't flush to the edge.
+   {% endcomment %}
+<div class="document-images" x-data="{ showHighlights: {% if highlights_default %}true{% else %}false{% endif %} }">
+    <div x-ref="scroll" class="overflow-y-auto {{ container_class }}" style="max-height: 500px;"
+        x-init="$nextTick(() => {
+            const img = $refs.scroll.querySelector('img');
+            if (!img) return;
+            const go = () => { $refs.scroll.scrollTop = Math.max(0, {{ entries.0.bboxes.0.y|default:0 }} * img.clientHeight - 10); };
+            img.complete ? go() : img.addEventListener('load', go);
+        })">
+        {% for entry in entries %}
+        {% include "partials/_document_image.html" with img_entry=entry alt_text=alt_text %}
+        {% endfor %}
+    </div>
+    {% if entries.0.bboxes %}
+    <div class="flex justify-end mt-0.5">
+        <button type="button" @click.stop="showHighlights = !showHighlights"
+            class="font-mono text-[10px] uppercase tracking-[0.06em] text-secondary hover:text-secondary-2 font-medium">
+            <span x-show="!showHighlights">Show highlights</span>
+            <span x-show="showHighlights" x-cloak>Hide highlights</span>
+        </button>
+    </div>
+    {% endif %}
+</div>
