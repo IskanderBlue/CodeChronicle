@@ -47,6 +47,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     Uses email as the primary identifier and eliminates the username field.
     """
 
+    # Reverse relation — declared for Pyright (no plugin); the append-only log
+    # of this user's Terms / Privacy Policy acceptances (see ``TermsAcceptance``).
+    terms_acceptances: "models.Manager[TermsAcceptance]"
+
     email = models.EmailField(unique=True)
 
     # Flags
@@ -102,6 +106,60 @@ class User(AbstractBaseUser, PermissionsMixin):
             customer=customer,
             stripe_data__status__in=["active", "trialing"],
         ).exists()
+
+    @property
+    def latest_terms_acceptance(self) -> "TermsAcceptance | None":
+        """The user's most recent Terms / Privacy Policy acceptance, or None."""
+        return self.terms_acceptances.order_by("-accepted_at").first()
+
+    def has_accepted_terms(self, version: str) -> bool:
+        """Whether this user has a recorded acceptance of ``version``."""
+        return self.terms_acceptances.filter(terms_version=version).exists()
+
+
+class TermsAcceptance(models.Model):
+    """Append-only record of a user's acceptance of the Terms of Service /
+    Privacy Policy.
+
+    One immutable row per acceptance event — written at signup (clickwrap) and
+    on any future re-acceptance prompt — so the full history (which version,
+    when, and from where) is preserved as evidence rather than overwritten. The
+    account-audit counterpart to ``AuthEvent``: ``user`` is ``SET_NULL`` so the
+    record outlives the account, with ``email`` mirrored so a row stands on its
+    own. Written in the signup flow; see ``core.forms.CustomSignupForm``.
+    """
+
+    # Auto pk, plugin-only — declared for Pyright.
+    id: int
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="terms_acceptances",
+        null=True,
+        blank=True,
+    )
+    # The email at acceptance time, mirrored so the row reads on its own even
+    # after the user is deleted (``user`` goes NULL).
+    email = models.CharField(max_length=254, blank=True, default="")
+    terms_version = models.CharField(max_length=20)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True, default="")
+    accepted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "terms_acceptances"
+        verbose_name = "Terms Acceptance"
+        verbose_name_plural = "Terms Acceptances"
+        ordering = ["-accepted_at"]
+        indexes = [
+            models.Index(fields=["user", "accepted_at"]),
+            models.Index(fields=["terms_version"]),
+        ]
+
+    def __str__(self) -> str:
+        who = self.email or (self.user.email if self.user else "?")
+        return f"{who} accepted Terms {self.terms_version}"
 
 
 class QueryPrompt(models.Model):
