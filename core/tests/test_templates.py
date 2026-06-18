@@ -432,11 +432,12 @@ def test_transition_compare_renders_per_version_band_and_provenance():
     # Provenance rail renders per version (two boxes), base reg surfaced.
     assert html.count("Provenance") == 2
     assert "350/06" in html
-    # The in-force band is a container (@container) and drops the rail + duration
-    # below @xl, so the two narrow compare panes get a compact, equal-width band
-    # instead of wrapping asymmetrically (the "fatter band" bug).
+    # The in-force band is a container (@container); the attestation rail's graphic
+    # is @xl-gated (the verbal status is the narrow-pane fallback), so the two
+    # narrow compare panes stay compact and equal-width instead of wrapping
+    # asymmetrically (the "fatter band" bug). The old From·rail·Until·Dur cells +
+    # the "Covers" cell are gone — the rail carries all of that now.
     assert "@container" in html
-    assert "hidden shrink-0 @xl:block" in html  # Dur. cell gated on container width
     # Body owns its diff/expand x-data (shared_expand=False). Guards the bug where
     # shared_expand=True left showDiff undefined and Alpine hid both content divs
     # at runtime, so neither version showed its text.

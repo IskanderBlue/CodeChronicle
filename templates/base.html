@@ -227,6 +227,88 @@
             transition: border-color .12s, color .12s;
         }
         .ui-btn-ghost:hover { border-color: rgb(var(--secondary)); color: rgb(var(--secondary)); }
+
+        /* ── Verification "attestation rail" ───────────────────────────────
+           Replaces the consolidation line in the provenance band. ALL % come
+           precomputed from core.verification.rail_geometry (result.rail); this
+           CSS only places elements. The in-force window is drawn 18→82% so the
+           off-line prior/following gutters (6% / 94%) have room. Line texture is
+           the verification: solid accent = attested, dashed accent (same hue &
+           thickness) = in force but not. Scoped under .vrail to stay local. */
+        .vrail { position: relative; height: 64px; }
+        .vrail .dlabel {
+            position: absolute; top: 1px; transform: translateX(-50%); white-space: nowrap;
+            text-align: center; z-index: 5; font-family: 'JetBrains Mono', ui-monospace, monospace;
+        }
+        .vrail .dlabel .role {
+            display: block; font-size: 8px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: .07em; color: rgb(var(--ink-3));
+        }
+        .vrail .dlabel .role a {
+            color: rgb(var(--secondary)); text-decoration: underline;
+            text-decoration-color: rgb(var(--secondary) / .4); text-underline-offset: 1.5px;
+        }
+        .vrail .dlabel .role a:hover { color: rgb(var(--secondary-2)); }
+        .vrail .dlabel .dt { display: block; font-size: 10px; font-weight: 500; color: rgb(var(--ink)); margin-top: 1px; }
+        .vrail .dlabel.q .dt { background: var(--highlight-soft); padding: 1px 5px; border-radius: 2px; font-weight: 600; }
+        :root[data-theme="dark"] .vrail .dlabel.q .dt { border: 1px solid rgb(var(--highlight) / .45); }
+        .vrail .dlabel.recon .dt { color: rgb(var(--secondary-2)); }
+        .vrail .dlabel.recon .role { color: rgb(var(--secondary)); }
+        .vrail .dlabel.end .dt { color: rgb(var(--ink-3)); font-style: italic; }
+        .vrail .leaders { position: absolute; top: 30px; left: 0; width: 100%; height: 22px; z-index: 1; overflow: visible; }
+        .vrail .leaders line { stroke: rgb(var(--ink-3) / .5); stroke-width: 1; vector-effect: non-scaling-stroke; }
+        .vrail .leaders line.q { stroke: rgb(var(--highlight) / .85); stroke-width: 1.4; }
+        .vrail .ifend { position: absolute; top: 44px; width: 1px; height: 14px; background: rgb(var(--rule)); z-index: 1; }
+        .vrail .line-solid { position: absolute; top: 50px; height: 4px; border-radius: 2px; background: rgb(var(--secondary)); z-index: 2; }
+        .vrail .line-dash {
+            position: absolute; top: 50px; height: 4px; z-index: 2;
+            background: repeating-linear-gradient(90deg, rgb(var(--secondary)) 0 4px, transparent 4px 8px);
+        }
+        .vrail .cstart {
+            position: absolute; top: 46px; width: 0; height: 0; z-index: 4; transform: translateX(-100%);
+            border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-right: 8px solid rgb(var(--secondary));
+        }
+        .vrail .cend {
+            position: absolute; top: 46px; width: 0; height: 0; z-index: 4;
+            border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 8px solid rgb(var(--secondary));
+        }
+        /* Base regulation — a filled SQUARE (distinct from the consolidations'
+           open arrowheads/diamonds and the reconstruction ring): the edition's
+           enacting source, the origin of the in-force text. */
+        .vrail .cbase {
+            position: absolute; top: 47.5px; width: 9px; height: 9px; z-index: 6;
+            transform: translateX(-50%); background: rgb(var(--secondary));
+        }
+        .vrail .mk-ring {
+            position: absolute; top: 52px; transform: translate(-50%, -50%); z-index: 6; width: 12px; height: 12px;
+            border: 2px solid rgb(var(--secondary)); background: rgb(var(--surface)); border-radius: 50%;
+        }
+        .vrail .qmark {
+            position: absolute; top: 45px; height: 14px; width: 2px; background: rgb(var(--highlight));
+            transform: translateX(-50%); z-index: 7; border-radius: 1px;
+        }
+        .vrail .divider {
+            position: absolute; top: 42px; height: 18px; width: 1px; z-index: 1;
+            background: repeating-linear-gradient(to bottom, rgb(var(--ink-3) / .4) 0 3px, transparent 3px 6px);
+        }
+        .vr-status { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+        .vr-status .say { font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; color: rgb(var(--ink-2)); }
+        .vr-chip {
+            display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+            font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: .07em; border: 1px solid; border-radius: 2px; padding: 2px 8px;
+        }
+        .vr-chip .dot { width: 8px; height: 8px; flex: 0 0 auto; }
+        .vr-chip.r-cov { color: rgb(var(--secondary)); border-color: rgb(var(--secondary)); background: rgb(var(--secondary-soft)); }
+        .vr-chip.r-cov .dot { background: rgb(var(--secondary)); transform: rotate(45deg); }
+        .vr-chip.r-brk { color: rgb(var(--secondary)); border-color: rgb(var(--secondary) / .6); }
+        .vr-chip.r-brk .dot { background: rgb(var(--secondary)); transform: rotate(45deg); }
+        .vr-chip.r-rec { color: rgb(var(--secondary-2)); border-color: rgb(var(--secondary) / .45); }
+        .vr-chip.r-rec .dot { border: 2px solid rgb(var(--secondary)); border-radius: 50%; width: 9px; height: 9px; }
+        .vr-chip.r-tail { color: rgb(var(--secondary-2)); border-color: rgb(var(--secondary) / .4); }
+        .vr-chip.r-tail .dot { width: 9px; height: 4px; background: repeating-linear-gradient(90deg, rgb(var(--secondary)) 0 2px, transparent 2px 4px); }
+        .vr-chip.r-new { color: rgb(var(--ink-3)); border-color: rgb(var(--ink-3) / .45); }
+        .vr-chip.r-new .dot { border: 1.5px dashed rgb(var(--ink-3)); border-radius: 50%; }
     </style>
 
     {% comment %} Tailwind utilities — the CLI-built stylesheet, used in BOTH dev

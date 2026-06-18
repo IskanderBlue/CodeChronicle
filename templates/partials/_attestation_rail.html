@@ -1,0 +1,48 @@
+{% comment %} Attestation rail — per-(provision, query-date) verification status.
+   Replaces the old "e-Laws consolidation · as it read …" line at the bottom of
+   the provenance band. Every % is precomputed in core.verification.rail_geometry
+   (result.rail); this template only places elements at those positions — no
+   geometry logic here. Suppressed upstream (rail is None) for never-in-force
+   versions / when there's no query date. Lives inside the band's @container and
+   its x-data (cmOpen), so the graphic hides in narrow/compare panes (@xl) while
+   the verbal status always shows, and Derivation reuses the From-commencement
+   modal the band already renders. {% endcomment %}
+<div class="w-full px-4 py-2.5">
+    {# Graphic rail — needs width, so it's container-query gated like the band's own mini-rail. #}
+    <div class="vrail hidden @xl:block">
+        {% for L in result.rail.labels %}
+        <div class="dlabel {{ L.cls }}" style="left: {{ L.lane }}%">
+            <span class="role">{{ L.role }}{% if L.url %} <a href="{{ L.url }}" target="_blank" rel="noopener noreferrer">{{ L.link_text }}</a>{% endif %}</span>
+            <span class="dt">{{ L.date }}</span>
+        </div>
+        {% endfor %}
+        <svg class="leaders" viewBox="0 0 100 22" preserveAspectRatio="none">
+            {% for L in result.rail.labels %}<line class="{{ L.leader }}" x1="{{ L.lane }}" y1="0" x2="{{ L.anchor }}" y2="22"></line>{% endfor %}
+        </svg>
+        {% for e in result.rail.ifends %}<div class="ifend" style="left: {{ e }}%"></div>{% endfor %}
+        {% for d in result.rail.dividers %}<div class="divider" style="left: {{ d }}%"></div>{% endfor %}
+        {% for s in result.rail.segments %}<div class="{{ s.cls }}" style="left: {{ s.left }}%; width: {{ s.width }}%"></div>{% endfor %}
+        {% for h in result.rail.heads %}<div class="{{ h.cls }}" style="left: {{ h.left }}%"></div>{% endfor %}
+        {% if result.rail.ring %}<div class="mk-ring" style="left: {{ result.rail.ring }}%"></div>{% endif %}
+        <div class="qmark" style="left: {{ result.rail.qmark }}%"></div>
+    </div>
+
+    {% comment %} Verbal status — always shown (the narrow-pane fallback). The
+       commencement provenance the old From/Until ⓘ icons carried now lives here:
+       Derivation opens the From-commencement modal (cmOpen), End date the next
+       version's (cmOpenUntil). {% endcomment %}
+    <div class="vr-status">
+        <span class="vr-chip {{ result.rail.rank_class }}"><span class="dot"></span>{{ result.rail.rank_label }}</span>
+        <span class="say">{{ result.rail.status_text }}</span>
+        {% if result.from_commencement or result.until_commencement %}
+        <span class="ml-auto flex items-center gap-3">
+            {% if result.from_commencement %}
+            <button type="button" class="ui-disclosure" @click.stop="cmOpen = true" :aria-expanded="cmOpen" title="How was the in-force date derived? — commencement provenance">Derivation <span class="ui-caret"></span></button>
+            {% endif %}
+            {% if result.until_commencement %}
+            <button type="button" class="ui-disclosure" @click.stop="cmOpenUntil = true" :aria-expanded="cmOpenUntil" title="Why does it end here? — next version's commencement">End date <span class="ui-caret"></span></button>
+            {% endif %}
+        </span>
+        {% endif %}
+    </div>
+</div>
