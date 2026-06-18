@@ -81,12 +81,15 @@ def _iso(human_date: str) -> str:
     return datetime.strptime(human_date, "%B %d, %Y").date().isoformat()
 
 
-def extract_period(path: Path) -> tuple[str, str | None] | None:
+def extract_period(path: Path) -> tuple[str, str] | None:
     """Return ``(effective_from, effective_to)`` from the page's own banner.
 
-    ``effective_to`` is the inclusive last day e-Laws states for the period, or
-    ``None`` for the live "current" consolidation. Returns ``None`` when the page
-    has no period banner (a stub / non-consolidation slot).
+    A closed historical period is genuinely ``[from, to]``. The live "current"
+    consolidation has no closing republication, so we encode it as a **zero-range
+    point** ``(from, from)`` — attested at its instant with no forward promise; we
+    deliberately do *not* read the banner's "current to <currency>" date as a
+    closing bound (verification-coverage decision 4). Returns ``None`` when the
+    page has no period banner (a stub / non-consolidation slot).
     """
     html = path.read_text(encoding="utf-8", errors="replace")
     text = _WS_RE.sub(" ", _TAG_RE.sub(" ", html))
@@ -95,7 +98,8 @@ def extract_period(path: Path) -> tuple[str, str | None] | None:
         return _iso(m.group(1)), _iso(m.group(2))
     m = CURRENT_RE.search(text)
     if m:
-        return _iso(m.group(1)), None
+        frm = _iso(m.group(1))
+        return frm, frm
     return None
 
 

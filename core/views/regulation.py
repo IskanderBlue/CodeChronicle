@@ -21,7 +21,6 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
-    ElawsConsolidation,
     EngagementEvent,
     ProvisionVersionTable,
     Regulation,
@@ -29,6 +28,7 @@ from core.models import (
 )
 from core.permalinks import provision_permalink_url
 from core.provision_lineage import annotate_lineage_locks, resolve_lineage
+from core.verification import base_input, build_rail
 
 from .search import _active_versions
 
@@ -101,7 +101,7 @@ def _fallback_targets(clause: RegulationClause) -> list[dict[str, Any]]:
             "indent": 0,
         }]
     chosen = next(
-        (v for v in versions if _version_contains(v, clause.regulation.effective_date)),
+        (v for v in versions if v.in_force_on(clause.regulation.effective_date)),
         versions[0],
     )
     return [{
@@ -231,13 +231,6 @@ def _natural_key(provision_id: str) -> tuple[tuple[int, int, str], ...]:
 # overlapping version, not per provision.
 
 
-def _version_contains(v: CodeEditionProvisionVersion, day: "date") -> bool:
-    """Is ``day`` within v's half-open window [effective, ineffective)?"""
-    return v.effective_date <= day and (
-        v.ineffective_date is None or day < v.ineffective_date
-    )
-
-
 def _overlaps(
     a: CodeEditionProvisionVersion, b: CodeEditionProvisionVersion
 ) -> bool:
@@ -256,9 +249,9 @@ def _overlaps(
     if a_point and b_point:
         return a.effective_date == b.effective_date
     if a_point:
-        return _version_contains(b, a.effective_date)
+        return b.in_force_on(a.effective_date)
     if b_point:
-        return _version_contains(a, b.effective_date)
+        return a.in_force_on(b.effective_date)
     a_before_b = a.ineffective_date is not None and a.ineffective_date <= b.effective_date
     b_before_a = b.ineffective_date is not None and b.ineffective_date <= a.effective_date
     return not a_before_b and not b_before_a
@@ -310,7 +303,7 @@ def _sibling_link(
     versions = sorted(provision.versions.all(), key=lambda v: v.version)
     if not versions:
         return None
-    chosen = next((v for v in versions if _version_contains(v, day)), versions[0])
+    chosen = next((v for v in versions if v.in_force_on(day)), versions[0])
     return {
         "provision_id": provision.provision_id,
         "version": chosen.version,
@@ -399,11 +392,15 @@ def _provenance_result(
         "until_commencement_date": until_commencement_date,
         "amendment_chain": chain,
         "copy_text": copy_text,
-        "band": None,
-        # e-Laws consolidation "as it read" link — resolved by this version's
-        # effective date, same as the search formatter. None when uncovered.
-        "consolidation": ElawsConsolidation.objects.resolve(
-            matched.edition_id, target_version.effective_date
+        # Attestation rail. The permalink has no user query date, so it reads the
+        # rail at this version's own commencement (the direct replacement for the
+        # old "as it read [date]" line) — verification status at its From. The base
+        # regulation is folded in as the enactment origin.
+        "rail": build_rail(
+            target_version,
+            target_version.effective_date,
+            date.today(),
+            base=base_input(base_regulation),
         ),
         # Provision identity, so the banner can build per-version permalinks
         # (same keys the search formatter supplies: code_edition/division/id).
@@ -612,7 +609,7 @@ def _dated_provision_url(
     if not versions:
         return None
     chosen = next(
-        (v for v in versions if day and _version_contains(v, day)), versions[0]
+        (v for v in versions if day and v.in_force_on(day)), versions[0]
     )
     return provision_permalink_url(
         code_name, provision.division, provision.provision_id, chosen.version

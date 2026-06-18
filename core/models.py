@@ -47,6 +47,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     Uses email as the primary identifier and eliminates the username field.
     """
 
+    # Reverse relation — declared for Pyright (no plugin); the append-only log
+    # of this user's Terms / Privacy Policy acceptances (see ``TermsAcceptance``).
+    terms_acceptances: "models.Manager[TermsAcceptance]"
+
     email = models.EmailField(unique=True)
 
     # Flags
@@ -102,6 +106,60 @@ class User(AbstractBaseUser, PermissionsMixin):
             customer=customer,
             stripe_data__status__in=["active", "trialing"],
         ).exists()
+
+    @property
+    def latest_terms_acceptance(self) -> "TermsAcceptance | None":
+        """The user's most recent Terms / Privacy Policy acceptance, or None."""
+        return self.terms_acceptances.order_by("-accepted_at").first()
+
+    def has_accepted_terms(self, version: str) -> bool:
+        """Whether this user has a recorded acceptance of ``version``."""
+        return self.terms_acceptances.filter(terms_version=version).exists()
+
+
+class TermsAcceptance(models.Model):
+    """Append-only record of a user's acceptance of the Terms of Service /
+    Privacy Policy.
+
+    One immutable row per acceptance event — written at signup (clickwrap) and
+    on any future re-acceptance prompt — so the full history (which version,
+    when, and from where) is preserved as evidence rather than overwritten. The
+    account-audit counterpart to ``AuthEvent``: ``user`` is ``SET_NULL`` so the
+    record outlives the account, with ``email`` mirrored so a row stands on its
+    own. Written in the signup flow; see ``core.forms.CustomSignupForm``.
+    """
+
+    # Auto pk, plugin-only — declared for Pyright.
+    id: int
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="terms_acceptances",
+        null=True,
+        blank=True,
+    )
+    # The email at acceptance time, mirrored so the row reads on its own even
+    # after the user is deleted (``user`` goes NULL).
+    email = models.CharField(max_length=254, blank=True, default="")
+    terms_version = models.CharField(max_length=20)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True, default="")
+    accepted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "terms_acceptances"
+        verbose_name = "Terms Acceptance"
+        verbose_name_plural = "Terms Acceptances"
+        ordering = ["-accepted_at"]
+        indexes = [
+            models.Index(fields=["user", "accepted_at"]),
+            models.Index(fields=["terms_version"]),
+        ]
+
+    def __str__(self) -> str:
+        who = self.email or (self.user.email if self.user else "?")
+        return f"{who} accepted Terms {self.terms_version}"
 
 
 class QueryPrompt(models.Model):
@@ -343,7 +401,7 @@ class CodeEdition(models.Model):
     # django-stubs plugin infers these from the related_name on the FK side.
     regulations: "models.Manager[Regulation]"
     provisions: "models.Manager[CodeEditionProvision]"
-    elaws_consolidations: "models.Manager[ElawsConsolidation]"
+    consolidations: "models.Manager[Consolidation]"
     # FK id-shadow, plugin-only — declared for Pyright.
     code_id: int
 
@@ -384,32 +442,37 @@ class CodeEdition(models.Model):
         return f"{self.code.code}_{self.edition_id}"
 
 
-class ElawsConsolidationManager(models.Manager["ElawsConsolidation"]):
+class ConsolidationManager(models.Manager["Consolidation"]):
     def resolve(
         self, edition_id: int, on_date: date | None
-    ) -> "ElawsConsolidation | None":
+    ) -> "Consolidation | None":
         """The consolidation snapshot covering ``on_date`` for an edition.
 
-        ``effective_to`` is the inclusive last day of the period (or NULL for the
-        live one), so coverage is ``effective_from <= on_date <= effective_to``.
-        Overlaps (the brief windows where two editions' consolidated regs
-        coexist) are broken by the latest-starting period. Returns None when no
-        period covers the date — pre-e-Laws spans get no link, never a guess.
+        ``effective_to`` is the inclusive last day of the period (a zero-range
+        point ``[d, d]`` for the current consolidation), so coverage is the closed
+        interval ``effective_from <= on_date <= effective_to``. A date past the
+        current point is therefore *not* covered — it rests on reconstruction
+        (verification-coverage decision 4), and source-link callers query with the
+        version's own ``effective_date`` (== the current row's ``effective_from``),
+        which the point still covers. Overlaps (the brief windows where two
+        editions' consolidated regs coexist) are broken by the latest-starting
+        period. Returns None when no period covers the date — pre-e-Laws spans get
+        no link, never a guess.
         """
         if on_date is None:
             return None
         return (
-            self.filter(edition_id=edition_id, effective_from__lte=on_date)
-            .filter(
-                models.Q(effective_to__isnull=True)
-                | models.Q(effective_to__gte=on_date)
+            self.filter(
+                edition_id=edition_id,
+                effective_from__lte=on_date,
+                effective_to__gte=on_date,
             )
             .order_by("-effective_from")
             .first()
         )
 
 
-class ElawsConsolidation(models.Model):
+class Consolidation(models.Model):
     """A point-in-time e-Laws consolidation of an edition's consolidated reg.
 
     NOT a source (the regulation is the source) — a formatted, assembled view of
@@ -425,21 +488,26 @@ class ElawsConsolidation(models.Model):
     edition_id: int
 
     edition = models.ForeignKey(
-        CodeEdition, on_delete=models.CASCADE, related_name="elaws_consolidations"
+        CodeEdition, on_delete=models.CASCADE, related_name="consolidations"
     )
     version = models.PositiveSmallIntegerField()
     url = models.URLField(max_length=500)
     effective_from = models.DateField()
-    #: Inclusive last day e-Laws states for the period; NULL = the live ("current")
-    #: consolidation, still in force.
-    effective_to = models.DateField(null=True, blank=True)
+    #: Inclusive last day e-Laws states for the period. A closed historical period
+    #: is genuinely ``[from, to]`` (e-Laws republished at its end, proving the text
+    #: held). The *current* consolidation has no closing republication, so it is a
+    #: zero-range point ``[d, d]`` (``effective_to == effective_from``): attested at
+    #: the instant, no forward promise. NULL is not used — a date past the current
+    #: point falls into the open, reconstruction-only tail (verification-coverage
+    #: decision 4), it is not "covered" by the current row.
+    effective_to = models.DateField()
 
     # Explicit annotation so Pyright (no plugin) resolves the manager's
     # ``resolve`` method rather than falling back to the base Manager.
-    objects: "ElawsConsolidationManager" = ElawsConsolidationManager()
+    objects: "ConsolidationManager" = ConsolidationManager()
 
     class Meta:
-        db_table = "elaws_consolidations"
+        db_table = "consolidations"
         ordering = ["edition", "version"]
         constraints = [
             models.UniqueConstraint(
@@ -872,6 +940,16 @@ class CodeEditionProvisionVersion(models.Model):
 
     def __str__(self):
         return f"{self.provision} v{self.version}"
+
+    def in_force_on(self, day: "date") -> bool:
+        """Is ``day`` within this version's half-open window ``[effective, ineffective)``?
+
+        A zero-duration version (``ineffective_date == effective_date`` — see
+        ``never_in_force``) contains no day, so this returns ``False`` for it.
+        """
+        return self.effective_date <= day and (
+            self.ineffective_date is None or day < self.ineffective_date
+        )
 
     @property
     def never_in_force(self) -> bool:

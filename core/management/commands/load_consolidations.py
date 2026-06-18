@@ -1,4 +1,4 @@
-"""Load the e-Laws consolidation date-range map into ``ElawsConsolidation``.
+"""Load the e-Laws consolidation date-range map into ``Consolidation``.
 
 Consumes the JSON emitted by ``scripts/build_elaws_consolidations.py`` (one row
 per real consolidation period: code, edition, version, url, effective_from,
@@ -21,11 +21,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from core.models import CodeEdition, ElawsConsolidation
-
-
-def _parse_date(value: str | None) -> date | None:
-    return date.fromisoformat(value) if value else None
+from core.models import CodeEdition, Consolidation
 
 
 class Command(BaseCommand):
@@ -63,17 +59,18 @@ class Command(BaseCommand):
         created = 0
         with transaction.atomic():
             for edition_pk, edition_rows in by_edition.items():
-                ElawsConsolidation.objects.filter(edition_id=edition_pk).delete()
-                ElawsConsolidation.objects.bulk_create(
+                Consolidation.objects.filter(edition_id=edition_pk).delete()
+                Consolidation.objects.bulk_create(
                     [
-                        ElawsConsolidation(
+                        Consolidation(
                             edition_id=edition_pk,
                             version=r["version"],
                             url=r["url"],
-                            # effective_from is always present (period start);
-                            # effective_to is None only for the live consolidation.
+                            # Both bounds are always present: a closed period is
+                            # [from, to]; the live consolidation is a zero-range
+                            # point [from, from] (no NULL tail — decision 4).
                             effective_from=date.fromisoformat(r["effective_from"]),
-                            effective_to=_parse_date(r["effective_to"]),
+                            effective_to=date.fromisoformat(r["effective_to"]),
                         )
                         for r in edition_rows
                     ]

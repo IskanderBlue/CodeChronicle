@@ -1,11 +1,12 @@
 {% comment %} ── IN FORCE band (horizontal) ──
    The hero/brand element. Extracted from _provenance_banner.html so it can sit
    wide in a middle column (master-detail) while the base/amended/chain metadata
-   lives in the right rail (_provenance_rail.html). Data (effective/ineffective
-   dates, next version, copy_text) comes from api.formatters. The query-date tick
-   + "✓ COVERED" cell use `result.band` (rail geometry precomputed in api.band)
-   and the `query_date` context var; both gracefully absent when no query date
-   was parsed (e.g. the permalink page).
+   lives in the right rail (_provenance_rail.html). The band body is the
+   attestation rail (result.rail, from core.verification.rail_geometry), which
+   carries From / Until / query-date / coverage + the verification status — it
+   superseded the old From·rail·Until·Dur cells and the "✓ Covers" cell. When
+   there's no rail (never-in-force, or no query date), a compact From/Until shows
+   instead. copy_text comes from api.formatters.
    NB: multi-line {# #} comments leak as literal text (tokenizer isn't
    re.DOTALL) — use {% comment %} for anything spanning lines.
 {% endcomment %}
@@ -24,18 +25,22 @@
             {% if result.version.never_in_force %}Never in force{% elif result.clause and not compare_pane %}In force &middot; amended{% else %}In force{% endif %}
         </div>
 
-        {# FROM ─ rail ─ UNTIL ─ DURATION #}
+        {% comment %} The attestation rail (result.rail) now carries From / Until /
+           query-date / coverage — superseding the old From·rail·Until·Dur cells
+           and the "✓ Covers" cell. It sits as the band's flex-1 body. When there's
+           no rail (never-in-force, or no query date), fall back to a compact
+           From/Until so those edge cases still show their dates + commencement
+           provenance. {% endcomment %}
+        {% if result.rail %}
+        <div class="min-w-0 flex-1 self-center">
+            {% include "partials/_attestation_rail.html" %}
+        </div>
+        {% else %}
         <div class="flex flex-1 flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2">
             {% if result.version %}
             <div class="shrink-0">
                 <div class="flex items-center gap-1">
                     <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">{% if result.version.never_in_force %}Scheduled{% else %}From{% endif %}</span>
-                    {% comment %} Commencement provenance — the *why* behind this
-                       version's in-force date.  For an amended version it's the
-                       producing clause's resolved CommencementProvenance entry;
-                       a base version carries the base regulation's own record
-                       (both resolved into from_commencement by the formatter);
-                       the button opens the same popup the regulation page uses. {% endcomment %}
                     {% if result.from_commencement %}
                     <button type="button" @click.stop="cmOpen = true"
                         title="Why this date? — commencement provenance"
@@ -46,29 +51,9 @@
                 </div>
                 <div class="font-serif text-[18px] font-semibold leading-tight text-ink">{{ result.version.effective_date|date:"j F Y" }}</div>
             </div>
-
-            {% comment %} Timeline rail: in-force span (accent) + query-date tick
-               (highlight). Positions are precomputed server-side in api.band.
-               Container-query (not viewport): shown only when the band's own box
-               is wide (@xl ≈ 36rem); below that it's hidden so the narrow
-               side-by-side compare panes get a compact date band instead of a
-               flex-1 rail that wraps asymmetrically between the two versions. {% endcomment %}
-            {% if result.band and not result.version.never_in_force %}
-            <div class="relative hidden h-1.5 self-center bg-rule-2 @xl:block @xl:min-w-[100px] @xl:flex-1">
-                <div class="absolute inset-y-0 bg-secondary" style="left: {{ result.band.span_left_pct }}%; width: {{ result.band.span_width_pct }}%;"></div>
-                {% if result.band.tick_pct is not None %}
-                <div class="absolute -top-1 h-3.5 w-0.5 bg-highlight" style="left: {{ result.band.tick_pct }}%;" title="Query date {{ query_date }}"></div>
-                {% endif %}
-            </div>
-            {% endif %}
-
             <div class="shrink-0">
                 <div class="flex items-center gap-1">
                     <span class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">{% if result.version.never_in_force %}Superseded{% else %}Until{% endif %}</span>
-                    {% comment %} Proof of the END: this version stops the day the
-                       NEXT version comes into force — or, for an edition-final
-                       version, the day the next base edition replaces it.  Both
-                       resolve into result.until_commencement (formatter). {% endcomment %}
                     {% if result.until_commencement %}
                     <button type="button" @click.stop="cmOpenUntil = true"
                         title="Why does it end here? — next version's commencement"
@@ -81,22 +66,7 @@
                     {% if result.version.ineffective_date %}{{ result.version.ineffective_date|date:"j F Y" }}{% elif result.next_version %}{{ result.next_version.effective_date|date:"j F Y" }}{% else %}Current{% endif %}
                 </div>
             </div>
-            {% comment %} Duration: hidden in the compact (narrow-container) band —
-               it's derivable from From/Until, and its varying width ("4 years" vs
-               "1 year") was the other driver of asymmetric wrap between panes. {% endcomment %}
-            {% if result.version.ineffective_date and not result.version.never_in_force %}
-            <div class="hidden shrink-0 @xl:block">
-                <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">Dur.</div>
-                <div class="font-mono text-[14px] font-semibold leading-tight text-ink">{{ result.version.effective_date|timesince:result.version.ineffective_date }}</div>
-            </div>
             {% endif %}
-            {% endif %}
-        </div>
-
-        {# Verification cell — only when a query date was parsed #}
-        {% if result.band and result.band.covered is not None %}
-        <div class="flex shrink-0 items-center border-l border-secondary/40 px-3 py-2 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.06em] {% if result.band.covered %}text-secondary{% else %}text-strike{% endif %}">
-            {% if result.band.covered %}&#10003; Covers {{ query_date }}{% else %}&#10007; Not in force {{ query_date }}{% endif %}
         </div>
         {% endif %}
 
@@ -115,19 +85,6 @@
             <svg x-show="copied" x-cloak class="h-4 w-4 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
         </button>
     </div>
-    {% comment %} e-Laws consolidation link — the assembled code "as it read"
-       when this version took force. Deliberately labelled a *consolidation*, not
-       a source (the regulation, in the rail, is the source); external ↗ + new
-       tab. Suppressed for never-in-force versions (no real in-force period to
-       point at) and absent whenever no cached consolidation covers the date. {% endcomment %}
-    {% if result.consolidation and not result.version.never_in_force %}
-    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-secondary/30 px-4 py-1.5 font-mono text-[10px] text-ink-3">
-        <span class="uppercase tracking-[0.08em]">e-Laws consolidation</span>
-        <span class="text-rule">&middot;</span>
-        <a href="{{ result.consolidation.url }}" target="_blank" rel="noopener noreferrer"
-           class="ui-cite inline-flex items-center gap-1">as it read {{ result.version.effective_date|date:"j M Y" }}<span aria-hidden="true">&#8599;</span></a>
-    </div>
-    {% endif %}
     {% if result.from_commencement %}
     {% include "partials/_commencement_modal.html" with commencement=result.from_commencement effective_date=result.version.effective_date %}
     {% endif %}

@@ -8,7 +8,7 @@ import re
 from datetime import date
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
-from api.band import compute_band_geometry, parse_iso_date
+from api.band import parse_iso_date
 from api.search.engine import _ref_parts
 from config.code_metadata import get_code_display_name
 from core.models import (
@@ -16,10 +16,10 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     EditionTransition,
-    ElawsConsolidation,
     Regulation,
 )
 from core.provision_lineage import annotate_lineage_locks, resolve_lineage
+from core.verification import base_input, build_rail, consolidations_for
 
 logger = logging.getLogger(__name__)
 
@@ -426,6 +426,7 @@ def _format_single_result(
     query_date: date | None = None,
     terms: Iterable[str] | None = None,
     replacement_memo: Dict[int, Any] | None = None,
+    consolidation_memo: Dict[int, Any] | None = None,
 ) -> Dict[str, Any]:
     code_edition = result.get("code_edition", "Unknown")
     provision = result.get("provision")
@@ -487,20 +488,22 @@ def _format_single_result(
         version.last_contributing_clause if version else None
     ) or result.get("clause")
 
-    # IN FORCE band rail geometry. The "until" edge is the version's own
-    # ineffective date, falling back to the next version's effective date;
-    # None means open-ended (still current). Geometry is None when there's
-    # no effective date to anchor on.
-    until_date = None
+    # Attestation rail: derive_status + geometry. The base regulation is folded in
+    # as the enactment origin (and, for the base version, its first attestation).
+    # The edition's consolidation calendar is identical for every result of an
+    # edition, so fetch it once and memoize across the result set.
+    rail = None
     if version is not None:
-        until_date = getattr(version, "ineffective_date", None)
-        if until_date is None and next_version is not None:
-            until_date = next_version.effective_date
-    band = compute_band_geometry(
-        version.effective_date if version else None,
-        until_date,
-        query_date,
-    )
+        cons = None
+        if consolidation_memo is not None and provision is not None:
+            cons = consolidation_memo.get(provision.edition_id)
+            if cons is None:
+                cons = consolidations_for(provision.edition_id)
+                consolidation_memo[provision.edition_id] = cons
+        rail = build_rail(
+            version, query_date, date.today(),
+            base=base_input(base_regulation), consolidations=cons,
+        )
 
     html_content = result.get("html_content")
     if html_content and appendix_notes:
@@ -608,17 +611,11 @@ def _format_single_result(
         "appendix_notes": appendix_notes,
         "transition_provision_version": transition_provision_version,
         "copy_text": copy_text,
-        "band": band,
-        # e-Laws consolidation "as it read" link, resolved by the version's own
-        # effective date (stable + version-pinned — independent of query_date).
-        # None when no cached consolidation period covers that date.
-        "consolidation": (
-            ElawsConsolidation.objects.resolve(
-                provision.edition_id, version.effective_date
-            )
-            if provision is not None and version is not None
-            else None
-        ),
+        # Attestation rail — the per-(provision, query-date) verification status
+        # (rank + geometry), rendered by _attestation_rail.html in place of the
+        # consolidation line. None when there's no rail to draw (never-in-force /
+        # no query date), in which case the band omits the include.
+        "rail": rail,
     }
 
 
@@ -1088,18 +1085,23 @@ def format_search_results(
 ) -> List[Dict[str, Any]]:
     """Transform raw search results into a format suitable for the frontend.
 
-    ``query_date`` (a ``date`` or ISO string) drives the IN FORCE band's
-    query tick + coverage; omit it and the band still renders its date span.
-    ``terms`` (parsed query keywords) are highlighted in the provision body;
-    omit or pass empty to skip highlighting.  ``user`` feeds the free-tier
-    gate on lineage links (None reads as anonymous — most restrictive).
+    ``query_date`` (a ``date`` or ISO string) drives the attestation rail's
+    verification status (the query tick + coverage); omit it and the rail is
+    suppressed.  ``terms`` (parsed query keywords) are highlighted in the
+    provision body; omit or pass empty to skip highlighting.  ``user`` feeds the
+    free-tier gate on lineage links (None reads as anonymous — most restrictive).
     """
     parsed_query_date = parse_iso_date(query_date)
-    # Shared per-call memo: edition-final results resolve their replacing
-    # edition's base-reg commencement once per edition, not once per result.
+    # Shared per-call memos, both keyed by edition (not recomputed per result):
+    # edition-final results resolve their replacing edition's base-reg
+    # commencement once (replacement_memo), and the attestation rail reads each
+    # edition's consolidation calendar once (consolidation_memo).
     replacement_memo: Dict[int, Any] = {}
+    consolidation_memo: Dict[int, Any] = {}
     formatted = [
-        _format_single_result(result, parsed_query_date, terms, replacement_memo)
+        _format_single_result(
+            result, parsed_query_date, terms, replacement_memo, consolidation_memo
+        )
         for result in results
     ]
     _attach_lineage(formatted, user)

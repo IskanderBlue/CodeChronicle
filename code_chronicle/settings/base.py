@@ -170,6 +170,11 @@ ACCOUNT_USER_MODEL_EMAIL_FIELD = "email"
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 ACCOUNT_ADAPTER = "core.adapters.AccountAdapter"
+# Mix a required Terms of Service / Privacy Policy acceptance checkbox into the
+# signup form (clickwrap) and stamp the accepted version onto the user.  Bump
+# TERMS_VERSION to match the Terms' "Last updated" date whenever they change.
+ACCOUNT_SIGNUP_FORM_CLASS = "core.forms.CustomSignupForm"
+TERMS_VERSION = "2026-06-17"
 
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"

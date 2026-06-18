@@ -72,6 +72,18 @@
                     </div>
                 </div>
 
+                <div class="flex items-start gap-2">
+                    <input id="id_terms_accepted" name="terms_accepted" type="checkbox" required
+                        {% if form.terms_accepted.value %}checked{% endif %}
+                        class="mt-0.5 h-4 w-4 shrink-0 border border-ink-2 bg-panel text-secondary focus:outline-none focus:ring-1 focus:ring-secondary">
+                    <label for="id_terms_accepted" class="text-sm text-ink-2">
+                        I agree to the
+                        <a href="{% url 'core:terms_of_service' %}" target="_blank" rel="noopener" class="ui-link">Terms of Service</a>
+                        and
+                        <a href="{% url 'core:privacy_policy' %}" target="_blank" rel="noopener" class="ui-link">Privacy Policy</a>.
+                    </label>
+                </div>
+
                 <div>
                     <button type="submit"
                         class="ui-btn w-full py-2 px-4 text-sm uppercase tracking-[0.06em]">
