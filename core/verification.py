@@ -306,7 +306,13 @@ def derive_status(
 _W_FROM, _W_UNTIL = 18.0, 82.0
 _GUTTER_LEFT, _GUTTER_RIGHT = 6.0, 94.0
 _DIVIDER_LEFT, _DIVIDER_RIGHT = 12.0, 88.0
-_LANE_INNER_PRIOR, _LANE_QUERY, _LANE_INNER_FOLLOWING = 36.0, 50.0, 64.0
+_LANE_QUERY = 50.0
+# The inner consolidation lanes sit exactly halfway between the query lane and the
+# nearest in-force edge — equidistant by construction (derived, not hand-tuned), so
+# they track _W_FROM/_W_UNTIL/_LANE_QUERY rather than drifting query-ward as the
+# eyeballed v8-mock constants (36/64) did.
+_LANE_INNER_PRIOR = (_W_FROM + _LANE_QUERY) / 2  # 34.0
+_LANE_INNER_FOLLOWING = (_LANE_QUERY + _W_UNTIL) / 2  # 66.0
 
 # rank → (chip label, card class) — mirrors the mock's six cards.
 _RANK_META: dict[Any, tuple[str, str]] = {
@@ -344,7 +350,9 @@ def rail_geometry(status: RailStatus, today: date) -> dict[str, Any]:
     consumed verbatim by ``templates/partials/_attestation_rail.html``:
 
     * ``labels`` — fixed-lane date captions (``lane`` x, ``anchor`` x for the
-      leader's foot, role/url/date/cls);
+      leader's foot, role/url/date/cls, and ``row`` = ``top`` for the in-force
+      edges + query tick / ``bot`` for consolidations — the two-row stagger that
+      keeps wide range captions from overlapping at narrow widths);
     * ``segments`` — the in-force line as solid (attested) / dashed (not) runs;
     * ``heads`` — the ◄/► arrowheads (a pair at one x ⇒ a ◆ diamond);
     * ``ring`` — the reconstructed-``From`` hollow ring (or ``None``);
@@ -377,6 +385,10 @@ def rail_geometry(status: RailStatus, today: date) -> dict[str, Any]:
     ring = _W_FROM if reconstructed else None
 
     # From / until / query — always present, in their fixed lanes.
+    # The in-force edges and the query tick ride the TOP label row; consolidations
+    # ride the BOTTOM row (see ``cons_label``). Splitting the rows is what keeps the
+    # widest caption — a covering date *range* — from colliding with its neighbours
+    # at narrow container widths: the two rows never share horizontal space.
     from_label = {
         "lane": _W_FROM,
         "anchor": _W_FROM,
@@ -386,6 +398,7 @@ def rail_geometry(status: RailStatus, today: date) -> dict[str, Any]:
         "date": in_from.isoformat(),
         "cls": "recon" if reconstructed else "",
         "leader": "",
+        "row": "top",
     }
     labels.append(from_label)
     labels.append(
@@ -398,6 +411,7 @@ def rail_geometry(status: RailStatus, today: date) -> dict[str, Any]:
             "date": in_until.isoformat() if in_until is not None else "current",
             "cls": "" if in_until is not None else "end",
             "leader": "",
+            "row": "top",
         }
     )
     qx = x(query)
@@ -411,6 +425,7 @@ def rail_geometry(status: RailStatus, today: date) -> dict[str, Any]:
             "date": query.isoformat(),
             "cls": "q",
             "leader": "q",
+            "row": "top",
         }
     )
 
@@ -423,6 +438,7 @@ def rail_geometry(status: RailStatus, today: date) -> dict[str, Any]:
                 "role": "base" if ref["kind"] == "base" else ref["role"],
                 "url": ref["url"], "link_text": ref["label"],
                 "date": dt, "cls": "", "leader": "",
+                "row": "bot",
             }
         )
 

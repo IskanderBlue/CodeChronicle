@@ -7,17 +7,26 @@
    its x-data (cmOpen), so the graphic hides in narrow/compare panes (@xl) while
    the verbal status always shows, and Derivation reuses the From-commencement
    modal the band already renders. {% endcomment %}
-<div class="w-full px-4 py-2.5">
-    {# Graphic rail — needs width, so it's container-query gated like the band's own mini-rail. #}
+<div class="w-full px-4 py-2.5 @container">
+    {% comment %} The rail establishes its OWN @container here (on the wrapper, whose
+       content-box equals the .vrail width). Both the gate (@xl) and the one-row
+       collapse (@container rule in base.html) measure against it — NOT the band's
+       @container, which also spans the "In force" badge cell and so over-reports the
+       width actually available to the rail. Measuring the rail's own width is what
+       keeps the collapse from firing while the labels would still overlap. {% endcomment %}
     <div class="vrail hidden @xl:block">
         {% for L in result.rail.labels %}
-        <div class="dlabel {{ L.cls }}" style="left: {{ L.lane }}%">
+        <div class="dlabel row-{{ L.row }} {{ L.cls }}" style="left: {{ L.lane }}%">
             <span class="role">{{ L.role }}{% if L.url %} <a href="{{ L.url }}" target="_blank" rel="noopener noreferrer">{{ L.link_text }}</a>{% endif %}</span>
             <span class="dt">{{ L.date }}</span>
         </div>
         {% endfor %}
-        <svg class="leaders" viewBox="0 0 100 22" preserveAspectRatio="none">
-            {% for L in result.rail.labels %}<line class="{{ L.leader }}" x1="{{ L.lane }}" y1="0" x2="{{ L.anchor }}" y2="22"></line>{% endfor %}
+        {# Two leader layers: top-row labels drop DOWN to the mid-line timeline; bottom-row labels rise UP to it (endpoints reversed). row tag is set in rail_geometry. #}
+        <svg class="leaders leaders-top" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {% for L in result.rail.labels %}{% if L.row == "top" %}<line class="{{ L.leader }}" x1="{{ L.lane }}" y1="0" x2="{{ L.anchor }}" y2="100"></line>{% endif %}{% endfor %}
+        </svg>
+        <svg class="leaders leaders-bot" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {% for L in result.rail.labels %}{% if L.row == "bot" %}<line class="{{ L.leader }}" x1="{{ L.anchor }}" y1="0" x2="{{ L.lane }}" y2="100"></line>{% endif %}{% endfor %}
         </svg>
         {% for e in result.rail.ifends %}<div class="ifend" style="left: {{ e }}%"></div>{% endfor %}
         {% for d in result.rail.dividers %}<div class="divider" style="left: {{ d }}%"></div>{% endfor %}
