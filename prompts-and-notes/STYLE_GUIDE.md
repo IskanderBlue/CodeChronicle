@@ -138,7 +138,7 @@ import anthropic
 from django.conf import settings
 
 # Model is configurable via environment variable
-CLAUDE_MODEL = settings.CLAUDE_MODEL  # Default: "claude-sonnet-4-20250514"
+CLAUDE_MODEL = settings.CLAUDE_MODEL  # Default: "claude-sonnet-4-6"
 
 client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
