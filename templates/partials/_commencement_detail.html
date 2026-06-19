@@ -9,10 +9,43 @@
 
    `effective_date` (optional) is the real date object the host surface already
    holds (clause/version effective_date) — preferred for display since the
-   entry's own date is a raw ISO string from JSON. {% endcomment %}
+   entry's own date is a raw ISO string from JSON.
+
+   `relation` (optional) reframes the whole popup. Default/"start": this entry is
+   *why this version came into force* (labels read "Commencement" / "In force").
+   "end": the entry is the SUCCESSOR's commencement — the event that ended the
+   version being viewed — so it gains a header strip naming the subject change and
+   relabels the date "Next version in force" (the same instant this version
+   ceased). The body is identical either way; only the framing differs.
+
+   `next_version_url` (optional, end framing only) is that successor version's
+   permalink, and doubles as the end-context discriminator. PRESENT → context A:
+   the version was superseded by the next version of this same provision; the
+   "Next version" references link to it. ABSENT → context B: this was the
+   edition-final version, replaced by the next EDITION's base regulation (no
+   same-provision successor to link), so the wording switches to "next edition".
+   The two contexts are the only ones the End modal opens in (a live version with
+   no successor yields no end date, so the trigger never shows). {% endcomment %}
 <div class="space-y-3 text-left">
+    {% if relation == "end" %}
+    {% comment %} Subject-change banner. Bleeds to the modal's inner edges (negative
+       margins cancel its p-5) so it reads as a header, not a body note: this whole
+       popup describes what SUCCEEDED this version, not the one on screen. The left
+       "This version" anchor stays put across both contexts; only the successor side
+       changes (Next version → Next edition). {% endcomment %}
+    <div class="-mx-5 -mt-5 mb-1 border-b border-rule bg-surface-2 px-5 py-2.5">
+        <div class="flex items-center gap-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.09em]">
+            <span class="text-ink-3">This version</span>
+            <svg class="h-3 w-3 text-ink-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h13m-5-5 5 5-5 5"/></svg>
+            {% if next_version_url %}<a href="{{ next_version_url }}" @click.stop class="ui-cite" title="View the next version">Next version</a>{% else %}<span class="text-secondary">Next edition</span>{% endif %}
+        </div>
+        <p class="mt-1.5 text-[12px] leading-[1.45] text-ink-2">
+            {% if next_version_url %}This version stayed in force until the next one commenced. What follows is that <a href="{{ next_version_url }}" @click.stop class="ui-cite">next version&rsquo;s</a> commencement &mdash; the event that ended this one.{% else %}This version stayed in force until the next edition replaced it. What follows is that <b class="font-semibold text-ink">edition&rsquo;s base regulation&rsquo;s</b> commencement &mdash; the takeover that ended this one.{% endif %}
+        </p>
+    </div>
+    {% endif %}
     <div class="flex items-baseline justify-between gap-3">
-        <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary">Commencement</span>
+        <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary">{% if relation == "end" %}{% if next_version_url %}Next version&rsquo;s commencement{% else %}Next edition&rsquo;s commencement{% endif %}{% else %}Commencement{% endif %}</span>
         {% if commencement.is_default %}
         <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.06em] text-ink-3 border border-rule px-1.5 py-0.5">Default</span>
         {% else %}
@@ -21,7 +54,7 @@
     </div>
 
     <div>
-        <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">In force</div>
+        <div class="font-mono text-[9.5px] uppercase tracking-[0.08em] text-ink-3">{% if relation == "end" %}{% if next_version_url %}Next version in force{% else %}Next edition in force{% endif %}{% else %}In force{% endif %}</div>
         <div class="font-serif text-[20px] font-semibold leading-tight text-ink">
             {% if effective_date %}{{ effective_date|date:"j F Y" }}{% else %}{{ commencement.effective_date }}{% endif %}
         </div>

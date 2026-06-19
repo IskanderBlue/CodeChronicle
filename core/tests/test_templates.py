@@ -834,6 +834,43 @@ class TestProvenanceBand:
         assert "Why does it end here?" in html
         assert "Comes into force on January 1, 2025." in html
         assert "1 January 2025" in html
+        # No same-provision successor → the End modal is context B: the next
+        # EDITION replaced it. The modal's wording switches to "edition" and
+        # carries no permalink. (The band's compact From/Until ⓘ tooltip is a
+        # separate element and still says "next version" — not under test here.)
+        assert "/provision/" not in html
+        assert "Next edition in force" in html
+        assert "next edition replaced it" in html
+        assert "edition&rsquo;s base regulation&rsquo;s" in html
+        # The compact From/Until ⓘ tooltip is context-aware too.
+        assert "the next edition's commencement" in html
+
+    def test_until_modal_links_next_version_permalink(self):
+        # The End modal frames its body as the SUCCESSOR's commencement and
+        # links the "Next version" references to that version's permalink —
+        # the same v→ permalink the provenance rail uses.
+        record = {
+            "regulation": "163/24", "clause": "1(1)", "is_default": True,
+            "effective_date": "2025-01-01", "source": "parsed",
+        }
+        html = _band({
+            "until_commencement": record,
+            "until_commencement_date": date(2025, 1, 1),
+            "next_version": CodeEditionProvisionVersion(version=6),
+            "code_edition": "OBC_2012", "division": "B", "id": "3.1.1.1",
+        })
+        assert "/provision/OBC_2012/B/3.1.1.1/v6/" in html  # successor permalink
+        assert "Next version in force" in html              # relabelled date
+        assert "ui-cite" in html                            # rendered as a link
+        assert "the next version's commencement" in html    # context-aware tooltip
+        # Division-less editions route through the no-division permalink.
+        nd = _band({
+            "until_commencement": record,
+            "until_commencement_date": date(2025, 1, 1),
+            "next_version": CodeEditionProvisionVersion(version=6),
+            "code_edition": "OBC_1997", "division": "", "id": "3.1.1.1",
+        })
+        assert "/provision/OBC_1997/3.1.1.1/v6/" in nd
 
     def test_never_in_force_version_does_not_claim_a_period(self):
         # An empty window — zero-duration or revoked before commencement —
