@@ -9,7 +9,14 @@ from .billing import (
     stripe_success,
 )
 from .history import history
-from .pages import data_sources, pricing, privacy_policy, terms_of_service, user_settings
+from .pages import (
+    data_sources,
+    pricing,
+    privacy_policy,
+    terms_of_service,
+    user_settings,
+    verification_guide,
+)
 from .regulation import edition_chain, provision_permalink, regulation_detail
 from .search import (
     home,
@@ -35,6 +42,7 @@ __all__ = [
     "stripe_success",
     "terms_of_service",
     "user_settings",
+    "verification_guide",
     "viewer_edition_dates",
     "viewer_edition_nav",
     "viewer_section_content",

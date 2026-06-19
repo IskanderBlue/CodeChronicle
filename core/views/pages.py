@@ -25,6 +25,19 @@ def privacy_policy(request):
     return render(request, "privacy_policy.html")
 
 
+def verification_guide(request):
+    """How to read the attestation rail — symbol key + a worked example of each
+    status configuration.
+
+    The examples render through the same ``_attestation_rail.html`` partial the
+    search results use (data from ``core.rail_examples`` via the ``rail_legend``
+    template tag), so the guide can't drift from the rail that ships. Static
+    reference, ungated like the data-sources page — metadata only, no provision
+    content. Opened in a new tab from each rail's "How to read this" link.
+    """
+    return render(request, "verification_guide.html")
+
+
 def data_sources(request):
     """Data sourcing & coverage page.
 

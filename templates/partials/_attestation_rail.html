@@ -17,7 +17,7 @@
     <div class="vrail hidden @xl:block">
         {% for L in result.rail.labels %}
         <div class="dlabel row-{{ L.row }} {{ L.cls }}" style="left: {{ L.lane }}%">
-            <span class="role">{{ L.role }}{% if L.url %} <a href="{{ L.url }}" target="_blank" rel="noopener noreferrer">{{ L.link_text }}</a>{% endif %}</span>
+            <span class="role">{{ L.role }}{% if L.link_text %} {% if L.url %}<a href="{{ L.url }}" target="_blank" rel="noopener noreferrer">{{ L.link_text }}</a>{% else %}{{ L.link_text }}{% endif %}{% endif %}</span>
             <span class="dt">{{ L.date }}</span>
         </div>
         {% endfor %}
@@ -38,18 +38,26 @@
 
     {% comment %} Verbal status — always shown (the narrow-pane fallback). The
        commencement provenance the old From/Until ⓘ icons carried now lives here:
-       Derivation opens the From-commencement modal (cmOpen), End date the next
-       version's (cmOpenUntil). {% endcomment %}
+       Start opens the From-commencement modal (cmOpen), End the next version's
+       (cmOpenUntil) — i.e. the provenance of this version's in-force start / end. {% endcomment %}
     <div class="vr-status">
         <span class="vr-chip {{ result.rail.rank_class }}"><span class="dot"></span>{{ result.rail.rank_label }}</span>
         <span class="say">{{ result.rail.status_text }}</span>
-        {% if result.from_commencement or result.until_commencement %}
+        {% comment %} Trailing affordances. The legend link always shows on a live rail
+           (in_legend is unset there → truthy guard); it's suppressed inside the legend
+           page's own example rails so they don't each link to the legend. It opens the
+           verification-rail guide in a new tab (the guide reuses this very partial for
+           its examples). {% endcomment %}
+        {% if not in_legend or result.from_commencement or result.until_commencement %}
         <span class="ml-auto flex items-center gap-3">
             {% if result.from_commencement %}
-            <button type="button" class="ui-disclosure" @click.stop="cmOpen = true" :aria-expanded="cmOpen" title="How was the in-force date derived? — commencement provenance">Derivation <span class="ui-caret"></span></button>
+            <button type="button" class="ui-disclosure" @click.stop="cmOpen = true" :aria-expanded="cmOpen" title="How the in-force start date was set — commencement provenance">Start <span class="ui-caret"></span></button>
             {% endif %}
             {% if result.until_commencement %}
-            <button type="button" class="ui-disclosure" @click.stop="cmOpenUntil = true" :aria-expanded="cmOpenUntil" title="Why does it end here? — next version's commencement">End date <span class="ui-caret"></span></button>
+            <button type="button" class="ui-disclosure" @click.stop="cmOpenUntil = true" :aria-expanded="cmOpenUntil" title="How the end date was set — the next version's commencement">End <span class="ui-caret"></span></button>
+            {% endif %}
+            {% if not in_legend %}
+            <a href="{% url 'core:verification_guide' %}" target="_blank" rel="noopener" class="ui-disclosure" title="How to read this verification rail (opens in a new tab)">How to read this <span aria-hidden="true">&nearr;</span></a>
             {% endif %}
         </span>
         {% endif %}

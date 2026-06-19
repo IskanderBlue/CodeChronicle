@@ -14,6 +14,7 @@ urlpatterns = [
     path("terms/", views.terms_of_service, name="terms_of_service"),
     path("privacy/", views.privacy_policy, name="privacy_policy"),
     path("sources/", views.data_sources, name="data_sources"),
+    path("verification-rail/", views.verification_guide, name="verification_guide"),
     path("history/", views.history, name="history"),
     path("settings/", views.user_settings, name="user_settings"),
     path("search-results/", views.search_results, name="search_results"),

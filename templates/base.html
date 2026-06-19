@@ -340,6 +340,55 @@
         .vr-chip.r-tail .dot { width: 9px; height: 4px; background: repeating-linear-gradient(90deg, rgb(var(--secondary)) 0 2px, transparent 2px 4px); }
         .vr-chip.r-new { color: rgb(var(--ink-3)); border-color: rgb(var(--ink-3) / .45); }
         .vr-chip.r-new .dot { border: 1.5px dashed rgb(var(--ink-3)); border-radius: 50%; }
+
+        /* ── Verification-rail legend (the "How to read this" guide page) ──
+           The live rail hides its graphic below @xl (narrow/compare panes fall back
+           to the verbal status); on the guide the graphic IS the lesson, so force it
+           shown and floor each example's width so the fixed % lanes never collide
+           (the example scrolls horizontally if the viewport is narrower). */
+        .rail-legend .vrail { display: block; }
+        .rail-legend .legend-rail { overflow-x: auto; }
+        .rail-legend .legend-rail > div { min-width: 30rem; }
+        .rail-legend .legend-note {
+            margin: 0 0 2px; padding: 0 16px; font-family: 'Source Serif 4', Georgia, serif;
+            font-size: 12.5px; color: rgb(var(--ink-3));
+        }
+        /* Symbol key — each swatch mirrors a live mark (solid/dashed line, ◆ diamond,
+           ▪ square, ◯ ring, query tick, gutter rule). Drawn here so the key can sit
+           outside .vrail (whose marks are absolutely positioned to the timeline). */
+        .rail-legend .key { display: grid; grid-template-columns: 40px 1fr; gap: 7px 12px; align-items: start; }
+        .rail-legend .key dt { position: relative; height: 18px; }
+        .rail-legend .key dd { margin: 0; font-size: 12.5px; line-height: 1.45; color: rgb(var(--ink-2)); }
+        .rail-legend .key dd b { color: rgb(var(--ink)); font-weight: 600; }
+        .rail-legend .sw { position: absolute; inset: 0; }
+        .rail-legend .sw-solid::before, .rail-legend .sw-dash::before {
+            content: ""; position: absolute; left: 3px; right: 3px; top: 50%; height: 4px;
+            transform: translateY(-50%); border-radius: 2px;
+        }
+        .rail-legend .sw-solid::before { background: rgb(var(--secondary)); }
+        .rail-legend .sw-dash::before { background: repeating-linear-gradient(90deg, rgb(var(--secondary)) 0 4px, transparent 4px 8px); }
+        .rail-legend .sw-diamond::before {
+            content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px;
+            transform: translate(-50%, -50%) rotate(45deg); background: rgb(var(--secondary));
+        }
+        .rail-legend .sw-square::before {
+            content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px;
+            transform: translate(-50%, -50%); background: rgb(var(--secondary));
+        }
+        .rail-legend .sw-ring::before {
+            content: ""; position: absolute; left: 50%; top: 50%; width: 11px; height: 11px;
+            transform: translate(-50%, -50%); border: 2px solid rgb(var(--secondary));
+            border-radius: 50%; background: rgb(var(--surface));
+        }
+        .rail-legend .sw-query::before {
+            content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 15px;
+            transform: translate(-50%, -50%); background: rgb(var(--highlight)); border-radius: 1px;
+        }
+        .rail-legend .sw-divider::before {
+            content: ""; position: absolute; left: 50%; top: 1px; bottom: 1px; width: 1px;
+            transform: translateX(-50%);
+            background: repeating-linear-gradient(to bottom, rgb(var(--ink-3) / .5) 0 3px, transparent 3px 6px);
+        }
     </style>
 
     {% comment %} Tailwind utilities — the CLI-built stylesheet, used in BOTH dev

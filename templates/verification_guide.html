@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% load rail_tags %}
+
+{% block title %}Reading the verification rail - CodeChronicle{% endblock %}
+
+{% comment %} How-to-read reference for the attestation rail. The examples render
+   through the SAME _attestation_rail.html partial the search results use, fed by
+   core.rail_examples (precomputed geometry) via the rail_legend tag — so the guide
+   can't drift from the rail that ships. Opened in a new tab from each rail's "How
+   to read this" link. The .rail-legend wrapper force-shows the graphic (the live
+   rail hides it below @xl) and styles the symbol-key swatches; see base.html. {% endcomment %}
+{% block content %}
+<div class="rail-legend mx-auto max-w-4xl px-4 py-8">
+    <div class="mb-10 text-center">
+        <h1 class="font-serif text-4xl font-bold text-ink sm:text-5xl">Reading the verification rail</h1>
+        <p class="mt-4 text-sm text-ink-3">What the marks on the in-force band mean, and the status it reports</p>
+    </div>
+
+    {% rail_legend as legend %}
+
+    <div class="space-y-8 border border-rule bg-surface-2 p-6 sm:p-8">
+        <p class="text-ink-2">
+            Every search result carries an <strong class="text-ink">in-force band</strong> whose body is the
+            verification rail: it times the provision you are reading against the e-Laws consolidations that can
+            independently vouch for it. The bar runs from the version&rsquo;s in-force start (left) to its end &mdash;
+            or <em>current</em> (right); your query date sits on it as a tick. How much of the bar is solid, and what
+            marks sit on it, say how directly the text is confirmed on that date.
+        </p>
+
+        <section>
+            <h2 class="mb-4 font-serif text-xl font-bold text-ink">Symbols</h2>
+            <dl class="key">
+                {% for s in legend.symbols %}
+                <dt><span class="sw {{ s.cls }}"></span></dt>
+                <dd><b>{{ s.name }}</b> &mdash; {{ s.meaning }}</dd>
+                {% endfor %}
+            </dl>
+        </section>
+
+        <section>
+            <h2 class="mb-1 font-serif text-xl font-bold text-ink">Each status</h2>
+            <p class="mb-4 text-sm text-ink-3">Strongest confirmation first. Each badge and sentence is exactly what a real result shows.</p>
+            <div class="divide-y divide-rule-2 border-y border-rule-2">
+                {% for ex in legend.rails %}
+                <div class="py-4">
+                    {% if ex.note %}<p class="legend-note">{{ ex.note }}</p>{% endif %}
+                    <div class="legend-rail">
+                        {% include "partials/_attestation_rail.html" with result=ex.result in_legend=True %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <p class="text-xs text-ink-3">
+            The examples above use illustrative dates; in a real result the consolidation and regulation labels
+            link to the official source on e-Laws.
+        </p>
+    </div>
+</div>
+{% endblock %}

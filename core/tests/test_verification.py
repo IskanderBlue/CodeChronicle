@@ -364,7 +364,7 @@ class TestRailTemplate:
         assert "mk-ring" not in html  # covered is not reconstructed → no ring
         assert "120332/v1" in html  # the covering consolidation is a link
 
-    def test_reconstructed_renders_ring_and_derivation(
+    def test_reconstructed_renders_ring_and_start(
         self, edition: CodeEdition, provision: CodeEditionProvision
     ) -> None:
         _version(provision, 1, date(2014, 1, 1), date(2015, 3, 1))
@@ -375,4 +375,4 @@ class TestRailTemplate:
         html = self._render(rail, {"stub": True})  # truthy from_commencement
         assert "vr-chip r-rec" in html
         assert "mk-ring" in html
-        assert "Derivation" in html  # the drill-down affordance shows
+        assert "Start" in html  # the in-force-start commencement drill-down shows
