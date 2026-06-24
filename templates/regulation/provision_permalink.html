@@ -75,7 +75,7 @@
         {# Col 3 — provenance metadata rail (lg+ only; folded into the banner on mobile) #}
         {% if provenance %}
         <div class="hidden lg:block lg:sticky lg:top-4">
-            {% include "partials/_provenance_rail.html" with result=provenance %}
+            {% include "partials/_provenance_rail.html" with result=provenance compare_enabled=True compare_active_version=compare_version_number %}
         </div>
         {% endif %}
     </div>

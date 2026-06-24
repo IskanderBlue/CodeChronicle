@@ -1,0 +1,18 @@
+{% comment %} Inline "compare" affordance for the provenance rail.
+
+   Links the currently-viewed provision permalink to itself with
+   ``?compare=<target_version>`` so the matched provision renders as a
+   two-version accordion (provenance/_transition_view.html) — letting a reader
+   lay any two versions of the same provision side by side without a query date
+   that happens to fall in an overlap window.
+
+   Context (inherited from the rail):
+     `compare_self_url`        — permalink to the pinned version (no compare arg)
+     `compare_active_version`  — the version currently being compared, if any
+     `target_version`          — the version int this link compares against
+{% endcomment %}
+{% if target_version == compare_active_version %}
+<a href="{{ compare_self_url }}" @click.stop class="shrink-0 font-mono text-[10px] uppercase tracking-[0.06em] text-secondary ui-cite" title="Stop comparing">comparing &times;</a>
+{% else %}
+<a href="{{ compare_self_url }}?compare={{ target_version }}" @click.stop class="shrink-0 font-mono text-[10px] ui-cite" title="Compare this version with the one you're viewing">compare</a>
+{% endif %}

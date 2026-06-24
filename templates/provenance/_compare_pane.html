@@ -1,0 +1,25 @@
+{% comment %} One column of the side-by-side version comparison.
+
+   Context: `version` (CodeEditionProvisionVersion), `diff` (annotated HTML or
+   None), `pinned_pk` (the version the reader is viewing), `role`
+   (Earlier / Later). When `diff` is present it's rendered verbatim — the diff
+   spans carry the highlight; otherwise we fall back to the full provision
+   content (image-only versions can't be word-diffed). {% endcomment %}
+<div class="border border-rule bg-panel">
+    <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-rule px-4 py-2">
+        <p class="font-mono text-xs font-semibold text-ink">
+            v{{ version.version }}
+            {% with cl=version.last_contributing_clause %}{% if cl %}<span class="ml-1 font-normal text-ink-3">O. Reg. {{ cl.regulation.reg_id }}</span>{% else %}<span class="ml-1 font-normal text-ink-3">base</span>{% endif %}{% endwith %}
+        </p>
+        <span class="font-mono text-[10px] text-ink-3">
+            {{ role }}{% if version.pk == pinned_pk %} &middot; <span class="text-secondary">viewing</span>{% endif %}{% if not version.never_in_force %} &middot; {{ version.effective_date|date:"Y-m-d" }}{% endif %}
+        </span>
+    </div>
+    <div class="p-4">
+        {% if diff %}
+        <div class="prose dark:prose-invert max-w-none markdown-content provision-content font-serif text-sm text-ink-2">{{ diff|safe }}</div>
+        {% else %}
+        {% include "provenance/_provision_content.html" with version=version %}
+        {% endif %}
+    </div>
+</div>

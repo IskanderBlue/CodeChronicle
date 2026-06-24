@@ -1,0 +1,25 @@
+{% comment %} Side-by-side version comparison for the provision permalink.
+
+   Both versions render at once (the accordion's one-at-a-time toggle was
+   useless for actually comparing); changed words stand out because the global
+   .diff-old-unchanged / .diff-new-unchanged rule (base.html) dims unchanged
+   text. The diff is asymmetric per pane and computed in the view via
+   api.formatters._diff_html_content.
+
+   Context: `compare` dict —
+     old / new           CodeEditionProvisionVersion (earlier / later)
+     old_diff / new_diff annotated HTML, or None when a body is image-only
+     pinned_pk           pk of the version whose permalink the reader is on
+{% endcomment %}
+<div class="border border-secondary bg-secondary-soft overflow-hidden">
+    <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-secondary/40 px-3 py-1.5">
+        <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-secondary">Comparing versions</p>
+        <p class="font-mono text-[10px] text-ink-3">
+            {% if compare.new_diff %}Changed text stands out &middot; unchanged is dimmed{% else %}Image-only version &mdash; shown side by side, no highlighting{% endif %}
+        </p>
+    </div>
+    <div class="grid gap-4 p-3 md:grid-cols-2">
+        {% include "provenance/_compare_pane.html" with version=compare.old diff=compare.old_diff pinned_pk=compare.pinned_pk role="Earlier" %}
+        {% include "provenance/_compare_pane.html" with version=compare.new diff=compare.new_diff pinned_pk=compare.pinned_pk role="Later" %}
+    </div>
+</div>
