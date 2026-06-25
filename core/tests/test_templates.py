@@ -779,6 +779,21 @@ class TestLineageRows:
         assert html == plain
 
 
+def test_result_list_row_added_badge_for_amend_add_provision():
+    # The compact row's tag reads "Added" for an amend-add-created provision and
+    # "Amended" for an ordinary amendment — both gated on a contributing clause.
+    added = render_to_string("partials/_result_list_row.html", {
+        "result": {"id": "3.7.6.3.", "title": "Location of Plumbing Fixtures",
+                   "division": "", "clause": {"x": 1}, "is_added": True}})
+    assert "Added" in added
+    assert "Amended" not in added
+
+    amended = render_to_string("partials/_result_list_row.html", {
+        "result": {"id": "3.1.1.1.", "title": "Application", "division": "",
+                   "clause": {"x": 1}, "is_added": False}})
+    assert "Amended" in amended
+
+
 def _band(result_extra: dict[str, Any], **context: Any) -> str:
     base = {
         "version": CodeEditionProvisionVersion(
@@ -805,6 +820,14 @@ class TestProvenanceBand:
         result = {"clause": {"commencement": None}}
         assert "amended" in _band(result)
         assert "amended" not in _band(result, compare_pane=True)
+
+    def test_added_label_for_amend_add_created_provision(self):
+        # A v0 enacted by an amend-add clause reads "· added", not "· amended" —
+        # the introducing reg created it; there was no predecessor to amend.
+        result = {"clause": {"commencement": None}, "is_added": True}
+        html = _band(result)
+        assert "added" in html
+        assert "amended" not in html
 
     def test_from_info_renders_for_base_versions(self):
         # A base version proves its From edge with the base regulation's own

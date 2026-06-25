@@ -332,9 +332,11 @@ def _provenance_result(
     coverage cell".  ``user`` feeds the free-tier gate on lineage links.
     """
     chain = list(matched.versions.order_by("version"))
-    base_regulation = Regulation.objects.filter(
-        edition=matched.edition, role="base"
-    ).first()
+    # The provision's own base reg: edition base for a base original, the
+    # introducing amendment for an amend-add-created provision (see
+    # CodeEditionProvision.origin_regulation).
+    base_regulation = matched.origin_regulation
+    is_added = target_version.is_added_origin
     clause = target_version.last_contributing_clause
     next_version = next(
         (v for v in chain if v.version > target_version.version), None
@@ -348,6 +350,7 @@ def _provenance_result(
         most_recent_clause=clause,
         base_regulation=base_regulation,
         next_version=next_version,
+        is_added=is_added,
     )
     next_clause = next_version.last_contributing_clause if next_version else None
     lineage = resolve_lineage([matched])[matched.pk]
@@ -384,6 +387,7 @@ def _provenance_result(
         "version": target_version,
         "clause": clause,
         "is_base": clause is None,
+        "is_added": is_added,
         "base_regulation": base_regulation,
         "next_version": next_version,
         "lineage_predecessors": lineage.predecessors,

@@ -22,7 +22,7 @@
            never operated, so the band must not assert an in-force period.
            Edge labels switch to Scheduled/Superseded; rail and Dur. drop. {% endcomment %}
         <div class="flex items-center bg-secondary px-3.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-secondary-contrast">
-            {% if result.version.never_in_force %}Never in force{% elif result.clause and not compare_pane %}In force &middot; amended{% else %}In force{% endif %}
+            {% if result.version.never_in_force %}Never in force{% elif result.is_added and not compare_pane %}In force &middot; added{% elif result.clause and not compare_pane %}In force &middot; amended{% else %}In force{% endif %}
         </div>
 
         {% comment %} The attestation rail (result.rail) now carries From / Until /

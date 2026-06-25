@@ -306,17 +306,40 @@ class TestBaseRegulation:
         ]
         assert status["consolidations"][0]["off_line"] == "left"
 
-    def test_amendment_added_provision_drops_the_base(
+    def test_base_point_predating_the_provision_is_dropped(
         self, edition: CodeEdition, provision: CodeEditionProvision
     ) -> None:
-        # Introduced in 2020 — wasn't in the 2012 base reg, so the existence rule
-        # drops the base point entirely.
+        # The existence-rule guard: a base point dated before the provision
+        # existed (here a 2012 edition base fed for a provision introduced 2020)
+        # is dropped entirely. Production no longer feeds a stale edition base for
+        # an added provision — the formatter passes the provision's own origin reg
+        # (see test_added_provision_attested_by_its_origin_reg) — but the guard
+        # still protects against a predating point however it arrives.
         v = _version(provision, 1, date(2020, 1, 1), None)
         _cons(edition, 1, date(2021, 1, 1), date(2021, 1, 1))
         status = derive_status(v, date(2020, 6, 1), base=_base(date(2012, 1, 1)))
         assert status is not None
         assert status["rank"] == "unconfirmed"
         assert all(c["kind"] == "consolidation" for c in status["consolidations"])
+
+    def test_added_provision_attested_by_its_origin_reg(
+        self, provision: CodeEditionProvision
+    ) -> None:
+        # An amend-add-created provision now receives its *own* introducing reg as
+        # the base point (date == its enactment), so the existence rule keeps it
+        # and it reads as an "Enacted by" open tail — the same shape a base
+        # original gets from the edition base reg, not "unconfirmed".
+        v = _version(provision, 0, date(2020, 1, 1), None)
+        status = derive_status(
+            v, date(2020, 6, 1), base=_base(date(2020, 1, 1), label="O. Reg. 593/99")
+        )
+        assert status is not None
+        assert status["rank"] == 4
+        assert status["reconstructed_from"] is False
+        assert [(c["kind"], c["role"]) for c in status["consolidations"]] == [
+            ("base", "prior")
+        ]
+        assert "Enacted by O. Reg. 593/99" in status["status_text"]
 
     def test_geometry_base_version_open_tail_square_dashed_no_ring(
         self, provision: CodeEditionProvision

@@ -207,6 +207,7 @@ def _build_copy_text(
     most_recent_clause: Any,
     base_regulation: Any,
     next_version: Any,
+    is_added: bool = False,
 ) -> str:
     """Reference string for the clipboard copy button.
 
@@ -233,7 +234,16 @@ def _build_copy_text(
     )
     in_force_suffix = f" ({in_force})" if in_force else ""
 
-    if most_recent_clause and most_recent_clause.regulation:
+    if is_added and most_recent_clause and most_recent_clause.regulation:
+        # Added (amend-add-created v0): the producing clause's reg IS this
+        # provision's base, so a single dated "Added by" line — not Base +
+        # Amended-by, which would print the same reg twice.
+        reg = most_recent_clause.regulation
+        lines.append(
+            f"Added by: O. Reg. {reg.reg_id}, "
+            f"cl. {most_recent_clause.clause_id}{in_force_suffix}"
+        )
+    elif most_recent_clause and most_recent_clause.regulation:
         # Amended: the current text was put in force by this clause, so the
         # in-force date belongs on the "Amended by" line (not the regulation's
         # own filing date, which is a different event). The base reg is still
@@ -441,11 +451,11 @@ def _format_single_result(
     appendix_notes = []
     contributing_clauses: list = []
     if provision:
-        # Base regulation: from prefetched edition.regulations
-        for reg in provision.edition.regulations.all():
-            if reg.role == "base":
-                base_regulation = reg
-                break
+        # The provision's own base reg — the edition base for a base original,
+        # but the introducing amendment for an amend-add-created provision (see
+        # CodeEditionProvision.origin_regulation). Reads the prefetched v0 + its
+        # contributing clause, falling back to prefetched edition.regulations.
+        base_regulation = provision.origin_regulation
         # Full version chain: from prefetched provision.versions
         all_versions = list(provision.versions.all())
         # Appendix notes: from prefetched provision.appendix_entries
@@ -488,6 +498,11 @@ def _format_single_result(
         version.last_contributing_clause if version else None
     ) or result.get("clause")
 
+    # A v0 created by an amend-add clause was *added* (enacted) by that reg, not
+    # amended — so its base reg IS the producing clause's reg, and surfaces label
+    # it "added" rather than "amended" (band chip, copy text).
+    is_added = version.is_added_origin if version else False
+
     # Attestation rail: derive_status + geometry. The base regulation is folded in
     # as the enactment origin (and, for the base version, its first attestation).
     # The edition's consolidation calendar is identical for every result of an
@@ -520,6 +535,7 @@ def _format_single_result(
         most_recent_clause=most_recent_clause,
         base_regulation=base_regulation,
         next_version=next_version,
+        is_added=is_added,
     )
 
     # Commencement provenance for the band's two edges, so every version can
@@ -596,6 +612,9 @@ def _format_single_result(
         "most_recent_clause": most_recent_clause,
         "contributing_clauses": contributing_clauses,
         "is_base": result.get("is_base", True),
+        # v0 enacted by an amend-add clause: the band chip reads "· added" (not
+        # "· amended") and the copy text "Added by".
+        "is_added": is_added,
         # Structural heading node (part/section/subsection/division): never
         # carries body text, so the document block suppresses the
         # "Content not yet available" notice rather than implying a data gap.

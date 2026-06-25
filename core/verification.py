@@ -125,12 +125,16 @@ def derive_status(
 ) -> RailStatus | None:
     """The verification status of ``version`` read on ``query_date``.
 
-    ``base`` (optional) describes the edition's base regulation —
-    ``{"date", "label", "url"}`` — which is folded in as a zero-range attestation
-    point. It attests the *base version* with certainty (no amendment chain to have
-    mis-captured) but, via the existence rule + same-version test, does nothing for
-    amended versions; for an amendment-added provision it is dropped entirely
-    (``ver_at(enactment) is None``).
+    ``base`` (optional) describes the **provision's own base regulation** —
+    ``{"date", "label", "url"}`` — folded in as a zero-range attestation point.
+    For a base original this is the edition base reg; for an amend-add-created
+    provision it is the introducing amendment (its v0's producing reg), so the
+    point attests that v0 at its real enactment rather than being dropped. It
+    attests the *base version* with certainty (no amendment chain to have
+    mis-captured) but, via the existence rule + same-version test, does nothing
+    for later amended versions. A base point dated before every version of the
+    provision (e.g. a stale edition base fed for a provision added later) is
+    dropped by the existence rule (``ver_at(point) is None``).
 
     ``consolidations`` (optional) is the edition's pre-fetched attestation calendar;
     pass it to avoid a per-call query when formatting many results of one edition.
@@ -175,7 +179,8 @@ def derive_status(
 
     # Existence rule (decision 3): an attestation covers this provision only if some
     # version of it was in force at that instant — skips pre-existence consolidations
-    # and drops the base point for amendment-added provisions, both for free.
+    # and any base point dated before the provision existed (e.g. a stale edition
+    # base fed for a later-added provision), both for free.
     applicable = [p for p in points if ver_at(p.frm) is not None]
 
     covering = max(

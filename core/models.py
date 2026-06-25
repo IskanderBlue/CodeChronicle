@@ -868,6 +868,41 @@ class CodeEditionProvision(models.Model):
         prefix = f"{self.division} " if self.division else ""
         return f"{prefix}{self.provision_id}"
 
+    @property
+    def base_version(self) -> "CodeEditionProvisionVersion | None":
+        """The chain root — the lowest-numbered (v0) version, or None if empty.
+
+        Reads ``versions.all()`` (warmed by the search prefetch and
+        ``CodeEditionProvisionVersion.Meta.ordering``) and takes the minimum by
+        version number so a reordered prefetch can't pick the wrong root.
+        """
+        versions = list(self.versions.all())
+        return min(versions, key=lambda v: v.version) if versions else None
+
+    @property
+    def origin_regulation(self) -> "Regulation | None":
+        """The regulation that first enacted *this provision*.
+
+        For a provision present since the edition's enactment this is the
+        edition's ``role="base"`` regulation.  For a provision **added by a later
+        amending regulation** — an ``amend_add``-created v0, whose ``clauses`` are
+        non-empty (CCM contract) — it is that amending regulation: the base *for
+        this provision*, not the edition's base reg.  The edition base reg never
+        attested an added provision (it didn't exist at enactment), so showing it
+        as the provision's base is the bug this avoids — e.g. OBC 1997 ``3.7.6.3.``
+        was introduced by O. Reg. 593/99, not the edition base 403/97.
+        """
+        root = self.base_version
+        if root is not None:
+            origin_clause = root.first_contributing_clause
+            if origin_clause is not None:
+                return origin_clause.regulation
+        # Genuine base original (v0 emits no clauses): the edition's base reg.
+        for reg in self.edition.regulations.all():
+            if reg.role == Regulation.Role.BASE:
+                return reg
+        return None
+
 
 class CodeEditionProvisionVersion(models.Model):
     """A frozen snapshot of a provision's content at a point in the amendment chain.
@@ -1009,6 +1044,24 @@ class CodeEditionProvisionVersion(models.Model):
         """
         rows = list(self.codeeditionprovisionversionclause_set.all())
         return rows[0].clause if rows else None
+
+    @property
+    def is_added_origin(self) -> bool:
+        """True when this v0 was *created* by an ``amend_add`` clause.
+
+        The CCM contract's "added" derivation: ``version == 0`` whose single
+        contributing clause is an ``amend_add`` that first materialises the
+        provision (base originals emit no clauses; ``amend_add`` on a *later*
+        version merely adds content to an existing provision, which is an
+        amendment, not an enactment).  Lets surfaces label the creating clause
+        "added" rather than "amended" — it enacted the provision; there was no
+        predecessor to amend.  Pairs with
+        :attr:`CodeEditionProvision.origin_regulation`.
+        """
+        if self.version != 0:
+            return False
+        clause = self.first_contributing_clause
+        return clause is not None and clause.action == RegulationClause.Action.AMEND_ADD
 
     @property
     def grouped_notes(self) -> GroupedNotes:

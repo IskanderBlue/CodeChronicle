@@ -28,7 +28,7 @@
 <div class="mt-3">
     <a href="{% url 'core:regulation_detail' result.clause.regulation.pk %}"
        class="font-mono text-[11px] font-medium ui-cite">
-        View amending regulation (O. Reg. {{ result.clause.regulation.reg_id }})
+        View {% if result.is_added %}introducing{% else %}amending{% endif %} regulation (O. Reg. {{ result.clause.regulation.reg_id }})
     </a>
 </div>
 {% endif %}

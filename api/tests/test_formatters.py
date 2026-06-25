@@ -391,6 +391,103 @@ def test_format_single_result_exposes_until_commencement(monkeypatch):
     assert res["until_commencement_date"] == date(2016, 1, 1)
 
 
+@pytest.mark.django_db
+def test_added_provision_attributes_its_introducing_reg(monkeypatch):
+    """An amend-add-created provision (v0 produced by an ``amend_add`` clause)
+    attributes its *introducing* reg as the base — not the edition base — and is
+    flagged ``is_added`` so the band reads "added" and the copy text "Added by".
+    Mirrors OBC 1997 3.7.6.3., introduced by O. Reg. 593/99, not base 403/97."""
+    from core.models import (
+        Code,
+        CodeEdition,
+        CodeEditionProvision,
+        CodeEditionProvisionVersion,
+        CodeEditionProvisionVersionClause,
+        Regulation,
+        RegulationClause,
+    )
+
+    monkeypatch.setattr(formatters, "_build_code_display_name", lambda c: c)
+    system = Code.objects.create(code="OBC", display_name="OBC")
+    edition = CodeEdition.objects.create(
+        code=system, edition_id="1997", year=1997,
+        effective_date=date(1998, 4, 6), source="e-Laws",
+    )
+    # Edition base — must NOT be the attributed reg for this added provision.
+    Regulation.objects.create(
+        reg_id="403/97", edition=edition, role="base",
+        effective_date=date(1998, 4, 6),
+    )
+    introducing = Regulation.objects.create(
+        reg_id="593/99", edition=edition, role="amendment",
+        effective_date=date(2000, 3, 5),
+    )
+    article = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="3.7.6.3.", level="article",
+    )
+    v0 = CodeEditionProvisionVersion.objects.create(
+        provision=article, version=0, effective_date=date(2000, 3, 5),
+        ineffective_date=date(2006, 12, 31), title="Location of Plumbing Fixtures",
+    )
+    clause = RegulationClause.objects.create(
+        regulation=introducing, clause_id="3",
+        action=RegulationClause.Action.AMEND_ADD,
+        target_level="section", target_id="3.7.",
+    )
+    CodeEditionProvisionVersionClause.objects.create(
+        version=v0, clause=clause, apply_order=0,
+    )
+
+    res = formatters._format_single_result(
+        {"code_edition": "OBC_1997", "provision": article, "version": v0,
+         "id": "3.7.6.3.", "division": ""}
+    )
+
+    # Base reg is the introducing amendment, not the edition base 403/97.
+    assert res["base_regulation"].reg_id == "593/99"
+    assert res["is_added"] is True
+    # Copy text: one dated "Added by" line, no "Base:" duplicate of the same reg.
+    assert "Added by: O. Reg. 593/99, cl. 3 (2000-03-05)" in res["copy_text"]
+    assert "Base: O. Reg." not in res["copy_text"]
+
+
+@pytest.mark.django_db
+def test_base_original_still_attributes_edition_base_reg(monkeypatch):
+    """A genuine base original (v0 with no producing clause) keeps the edition
+    base reg and is not flagged ``is_added`` — the unchanged-path regression."""
+    from core.models import (
+        Code,
+        CodeEdition,
+        CodeEditionProvision,
+        CodeEditionProvisionVersion,
+        Regulation,
+    )
+
+    monkeypatch.setattr(formatters, "_build_code_display_name", lambda c: c)
+    system = Code.objects.create(code="OBC", display_name="OBC")
+    edition = CodeEdition.objects.create(
+        code=system, edition_id="1997", year=1997,
+        effective_date=date(1998, 4, 6), source="e-Laws",
+    )
+    Regulation.objects.create(
+        reg_id="403/97", edition=edition, role="base",
+        effective_date=date(1998, 4, 6),
+    )
+    article = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="1.1.1.1.", level="article",
+    )
+    v0 = CodeEditionProvisionVersion.objects.create(
+        provision=article, version=0, effective_date=date(1998, 4, 6),
+    )
+
+    res = formatters._format_single_result(
+        {"code_edition": "OBC_1997", "provision": article, "version": v0,
+         "id": "1.1.1.1.", "division": ""}
+    )
+    assert res["base_regulation"].reg_id == "403/97"
+    assert res["is_added"] is False
+
+
 def _commencement_fixture():
     """An edition pair for the base-regulation commencement fallbacks.
 

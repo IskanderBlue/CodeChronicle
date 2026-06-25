@@ -13,6 +13,6 @@
     <span class="shrink-0 font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-secondary">Contains {{ result.child_match_count }} child{{ result.child_match_count|pluralize:",ren" }}</span>
     {% endif %}
     {% if result.clause %}
-    <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">Amended</span>
+    <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">{% if result.is_added %}Added{% else %}Amended{% endif %}</span>
     {% endif %}
 </div>
