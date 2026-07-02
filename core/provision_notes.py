@@ -6,9 +6,9 @@ taxonomy because it owns the note-emission sites, tagging each note at
 construction (CCM impl-139).  CodeChronicle's job is purely presentational:
 map each producer ``kind`` to a display *tier* and render it.
 
-CCM ships **16 consumer-facing kinds** (the Path-A-internal kinds
+CCM ships **17 consumer-facing kinds** (the Path-A-internal kinds
 ``elaws-future-amendment`` / ``italics-drift`` / ``presentation-drift`` never
-reach us).  Of those 16, two get special handling at the load boundary rather
+reach us).  Of those 17, two get special handling at the load boundary rather
 than a display tier:
 
 ``snapshot-divergence``
@@ -77,6 +77,9 @@ _KIND_TIER: dict[str, str] = {
     "strike-text-override-title": "record",
     "strike-case-insensitive": "record",
     "amend-add-anchor-override": "record",
+    # printed table number carries a note marker "(N)" the shipped
+    # table id/caption drops (CCM records the strip at parse time)
+    "table-id-note-marker": "record",
 }
 
 # Short label for the annotation labels and record-notes disclosure chips.
@@ -95,6 +98,7 @@ _KIND_LABEL: dict[str, str] = {
     "strike-text-override-title": "Strike override (title)",
     "strike-case-insensitive": "Strike (case-insensitive)",
     "amend-add-anchor-override": "Anchor override",
+    "table-id-note-marker": "Table note marker",
 }
 
 # The integrity tier holds two semantically different warnings, so its red-box
