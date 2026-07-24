@@ -17,7 +17,12 @@ from core.models import (
     RegulationClause,
 )
 
-from .engine import SEARCH_RESULT_LIMIT, compute_corpus_stats, score_versions
+from .engine import (
+    SEARCH_CANDIDATE_LIMIT,
+    SEARCH_RESULT_LIMIT,
+    compute_corpus_stats,
+    score_versions,
+)
 
 
 def _clause_through_prefetch() -> Prefetch:
@@ -112,15 +117,21 @@ def execute_search(params: dict[str, Any]) -> dict[str, Any]:
 
     corpus_stats = compute_corpus_stats(in_force_qs)
 
+    # Score a candidate pool, group, *then* trim to the display limit.  The
+    # order matters: grouping can only pair results it can see, so trimming
+    # first would drop both members of any pair below the cutoff and render a
+    # transition as a lone version.
     results = score_versions(
         query=" ".join(keywords),
         versions_qs=in_force_qs,
         corpus_stats=corpus_stats,
         provision_references=provision_references,
+        limit=SEARCH_CANDIDATE_LIMIT,
         raw_query=params.get("raw_query", ""),
     )
 
     results = _group_transitions(results)
+    results = _limit_with_pairs(results, SEARCH_RESULT_LIMIT)
     results = _add_source_date(results, search_date)
 
     applicable_codes = _unique_edition_names(results)
@@ -326,6 +337,41 @@ def _merge_provision_mapping_transitions(
         paired_pks.add(new_pk)
 
     return results
+
+
+def _limit_with_pairs(
+    results: list[dict[str, Any]], limit: int
+) -> list[dict[str, Any]]:
+    """Trim to ``limit`` cards, counting a transition pair as a single card.
+
+    Both members of a pair render as one compare card, so charging them two
+    slots would let a transition crowd out an unrelated result.  A member whose
+    partner is already admitted rides in free — and the scan continues past the
+    slot cap looking for exactly those partners, since nothing guarantees the
+    two sit adjacent in score order.
+
+    Admitting a pair by its higher-scoring member (the one that reaches the cap
+    first) is what keeps this stable: the lower-scoring member is never the
+    reason a pair is admitted, so the cutoff behaves the same as it would for a
+    single result at that rank.
+    """
+    kept: list[dict[str, Any]] = []
+    admitted_pairs: set[str] = set()
+    cards = 0
+
+    for result in results:
+        pair_key = (result.get("transition_context") or {}).get("pair_key")
+        if pair_key and pair_key in admitted_pairs:
+            kept.append(result)
+            continue
+        if cards >= limit:
+            continue
+        cards += 1
+        kept.append(result)
+        if pair_key:
+            admitted_pairs.add(pair_key)
+
+    return kept
 
 
 def _version_num(result: dict[str, Any]) -> int:

@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from api.search.orchestration import execute_search
+from api.search.orchestration import _limit_with_pairs, execute_search
 from core.models import (
     Code,
     CodeEdition,
@@ -316,3 +316,70 @@ class TestExecuteSearchDateFiltering:
         })
 
         assert response["result_count"] == 0
+
+
+def _row(rid: str, pair_key: str | None = None, is_primary: bool = True) -> dict:
+    """A minimal scored-result row for the pair-aware limiter."""
+    row: dict = {"id": rid}
+    if pair_key:
+        row["transition_context"] = {"pair_key": pair_key, "is_primary": is_primary}
+    return row
+
+
+class TestLimitWithPairs:
+    """``_limit_with_pairs`` trims to N *cards*, not N rows."""
+
+    def test_plain_results_trim_to_the_limit(self):
+        rows = [_row(str(i)) for i in range(20)]
+
+        kept = _limit_with_pairs(rows, 10)
+
+        assert [r["id"] for r in kept] == [str(i) for i in range(10)]
+
+    def test_a_pair_costs_one_card_not_two(self):
+        # 9 singles + a pair == 10 cards, so 11 rows survive.
+        rows = [_row(str(i)) for i in range(9)]
+        rows += [_row("old", "map:1", False), _row("new", "map:1", True)]
+        rows += [_row("filler")]
+
+        kept = _limit_with_pairs(rows, 10)
+
+        assert len(kept) == 11
+        assert {r["id"] for r in kept} >= {"old", "new"}
+        assert "filler" not in {r["id"] for r in kept}
+
+    def test_partner_below_the_cutoff_is_still_admitted(self):
+        # The regression this guards: the pair's high-scoring member ranks 10th
+        # and its partner 12th.  Trimming before grouping dropped the partner
+        # and the transition rendered as a lone version.
+        rows = [_row(str(i)) for i in range(9)]
+        rows += [_row("new", "map:1", True)]
+        rows += [_row("noise")]
+        rows += [_row("old", "map:1", False)]
+
+        kept = _limit_with_pairs(rows, 10)
+
+        ids = [r["id"] for r in kept]
+        assert "new" in ids and "old" in ids
+        assert "noise" not in ids
+
+    def test_pair_entirely_below_the_cutoff_is_excluded(self):
+        rows = [_row(str(i)) for i in range(10)]
+        rows += [_row("old", "map:1", False), _row("new", "map:1", True)]
+
+        kept = _limit_with_pairs(rows, 10)
+
+        assert len(kept) == 10
+        assert "old" not in {r["id"] for r in kept}
+        assert "new" not in {r["id"] for r in kept}
+
+    def test_independent_pairs_each_cost_one_card(self):
+        rows = [
+            _row("a-old", "map:1", False), _row("a-new", "map:1", True),
+            _row("b-old", "map:2", False), _row("b-new", "map:2", True),
+        ]
+
+        kept = _limit_with_pairs(rows, 2)
+
+        assert len(kept) == 4
+        assert {r["id"] for r in kept} == {"a-old", "a-new", "b-old", "b-new"}

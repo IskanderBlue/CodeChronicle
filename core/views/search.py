@@ -76,16 +76,25 @@ def _lineage_nav_direction(
 # One-click example queries shown in the empty search state. Curated, not
 # data-driven: each must return a real result with its FIRST hit in a
 # supported edition (OBC 2006 — 1997 isn't supported yet), and the set spans
-# the search modes — natural-language keywords, a bare article reference
-# (exercises extract_section_references), and a transition period (the
-# maintenance-inspection chip: at 2014-07-01 the first result is the
-# OBC 2006 C ↔ 2012 C 1.10.2.4. transition_compare card, so the diff view is
-# one click away).  Every chip carries a ``date`` — it sets the AS-OF picker
-# on click (the picker always overrides the date the LLM reads from the
-# text), and an undated chip would search today, which falls outside every
-# loaded edition's window and returns nothing.  All four verified rank-1
-# through the full run_search pipeline (LLM parse included) 2026-06-12,
-# against the post-cancelled-amendments-fix reingest.
+# the search modes — natural-language keywords and a bare article reference
+# (exercises extract_section_references).  Every chip carries a ``date`` — it
+# sets the AS-OF picker on click (the picker always overrides the date the LLM
+# reads from the text), and an undated chip would search today, which falls
+# outside every loaded edition's window and returns nothing.
+#
+# The reference chip does double duty: C 1.10.2.4. at 2014-07-01 is one of only
+# three provisions whose OBC 2006 and 2012 versions are in force at the same
+# time (2014-01-01 .. 2016-01-01), so the reference path returns both and the
+# result is a transition_compare card — the diff view one click from an empty
+# page.  Article 3.1.8.1. used to hold this slot; it was picked arbitrarily as
+# "any article reference" (tasks/complete/intro-explanation-page.md) and had no
+# reason to stay once a reference could demonstrate two things at once.
+#
+# Caveat: the free tier is scoped to OBC 2006 (core.access), so it sees only the
+# 2006 half and gets a plain single result — the compare card renders for Pro.
+# Do NOT re-point the keyword chips at a transition; the pair ranks 14/15 for
+# "maintenance inspection", below the 10-card cut, which is why the old claim
+# that that chip produced a card was wrong.
 EXAMPLE_QUERIES = [
     {"query": "fire separation between dwelling units, Ontario, 2010", "date": "2010-06-01"},
     {"query": "guards and handrails for a stairway", "date": "2010-06-01"},
@@ -93,7 +102,7 @@ EXAMPLE_QUERIES = [
         "query": "when must a maintenance inspection be conducted, Ontario, 2014",
         "date": "2014-07-01",
     },
-    {"query": "3.1.8.1.", "date": "2010-06-01"},
+    {"query": "1.10.2.4.", "date": "2014-07-01"},
 ]
 
 

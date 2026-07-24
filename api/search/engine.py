@@ -17,7 +17,18 @@ from django.db.models import QuerySet
 
 from core.models import CodeEditionProvisionVersion
 
+#: Cards shown to the user.  Applied by the orchestrator *after* grouping, so a
+#: transition pair costs one card rather than two — see
+#: ``orchestration._limit_with_pairs``.
 SEARCH_RESULT_LIMIT = 10
+
+#: Ceiling on the scored candidate pool handed to the grouping stage.  Grouping
+#: can only pair results it can see, and pair members score identically (same
+#: text), so they rank adjacent — a pool of just SEARCH_RESULT_LIMIT would drop
+#: both members of any pair sitting below the display cutoff and silently
+#: present a transition as a single version.  A pair below this pool boundary is
+#: still missed; raising it costs only scoring work, no extra queries.
+SEARCH_CANDIDATE_LIMIT = 50
 
 
 # Declared as Any so both the real module (try) and the None fallback
@@ -189,7 +200,10 @@ def score_versions(
         corpus_stats: Pre-computed IDF weights and average document length
             for the corpus.
         provision_references: Explicit provision ID references from the query.
-        limit: Max results to return.
+        limit: Max results to return, clamped to SEARCH_CANDIDATE_LIMIT.  This
+            is the candidate pool, not the display limit — the orchestrator
+            groups transition pairs over this list and then trims to
+            SEARCH_RESULT_LIMIT cards.
         raw_query: The user's original typed text.  A keyword counts as a
             *direct* match only if it appears verbatim here; keywords the LLM
             added (morphological variants, related topics) and engine synonyms
@@ -199,7 +213,7 @@ def score_versions(
     Returns:
         Scored result dicts sorted by score descending.
     """
-    limit = max(1, min(limit, 50))
+    limit = max(1, min(limit, SEARCH_CANDIDATE_LIMIT))
 
     has_query = query and isinstance(query, str) and query.strip()
     has_refs = bool(provision_references)
