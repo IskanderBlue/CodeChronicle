@@ -386,9 +386,12 @@ def test_transition_compare_renders_per_version_band_and_provenance():
         effective_date = date(2014, 1, 1)
         ineffective_date = None
 
-    def _version_dict(*, code, edition_name, is_primary, version_obj, eff_label):
+    def _version_dict(
+        *, code, edition_name, is_primary, version_obj, eff_label, pane_label
+    ):
         return {
             "id": "1.4.1.2.",
+            "pane_label": pane_label,
             "title": "Defined Terms",
             "code": code,
             "code_edition": code,
@@ -415,9 +418,11 @@ def test_transition_compare_renders_per_version_band_and_provenance():
         "has_renderable_content": True,
         "versions": [
             _version_dict(code="OBC_2006", edition_name="Ontario Building Code 2006",
-                          is_primary=False, version_obj=MockVersion(), eff_label="old"),
+                          is_primary=False, version_obj=MockVersion(), eff_label="old",
+                          pane_label="350/06"),
             _version_dict(code="OBC_2012", edition_name="Ontario Building Code 2012",
-                          is_primary=True, version_obj=MockVersionNew(), eff_label="new"),
+                          is_primary=True, version_obj=MockVersionNew(), eff_label="new",
+                          pane_label="332/12"),
         ],
     }
 
@@ -443,6 +448,11 @@ def test_transition_compare_renders_per_version_band_and_provenance():
     # at runtime, so neither version showed its text.
     assert "showDiff: true" in html
     assert "old body" in html and "new body" in html
+    # Pane labels arrive precomputed from merge_transition_compare_results — the
+    # template no longer derives them, so the two panes stay distinguishable even
+    # when a single clause produced both versions.
+    assert "350/06 version (previous)" in html
+    assert "332/12 version" in html
 
     # ── Master-detail (metadata_in_rail=True): chain/metadata moves to the rail ──
     middle = render_to_string(

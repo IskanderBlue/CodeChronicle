@@ -800,6 +800,95 @@ def test_diff_html_content_returns_none_when_input_empty():
     assert formatters._diff_html_content(None, None) == (None, None)
 
 
+class _StubRegulation:
+    def __init__(self, reg_id: str) -> None:
+        self.reg_id = reg_id
+
+
+class _StubClause:
+    def __init__(self, reg_id: str) -> None:
+        self.regulation = _StubRegulation(reg_id)
+
+
+def _transition_pair(*, old_id, new_id, old_clause, new_clause):
+    """One pair_key'd old/new pair, in the order the formatter receives them."""
+    return [
+        {
+            "id": new_id,
+            "code": "OBC_1997",
+            "score": 0.9,
+            "clause": new_clause,
+            "code_display_name": "OBC 1997",
+            "transition_context": {"pair_key": "pair", "is_primary": True},
+        },
+        {
+            "id": old_id,
+            "code": "OBC_1997",
+            "score": 0.8,
+            "clause": old_clause,
+            "code_display_name": "OBC 1997",
+            "transition_context": {"pair_key": "pair", "is_primary": False},
+        },
+    ]
+
+
+def _merged_versions(results):
+    merged = [r for r in results if r.get("result_type") == "transition_compare"]
+    assert len(merged) == 1
+    return merged[0]["versions"]
+
+
+def test_transition_pane_labels_name_each_introducing_regulation():
+    old_version, new_version = _merged_versions(
+        formatters.merge_transition_compare_results(
+            _transition_pair(
+                old_id="1.4.1.2.",
+                new_id="1.4.1.2.",
+                old_clause=_StubClause("350/06"),
+                new_clause=_StubClause("332/12"),
+            )
+        )
+    )
+    assert old_version["pane_label"] == "350/06"
+    assert new_version["pane_label"] == "332/12"
+
+
+def test_transition_pane_labels_disambiguate_when_one_clause_made_both():
+    """A cascading renumber amends a run of articles in a single directive, so
+    both versions resolve to the same reg_id and the regulation alone stops
+    telling the panes apart.  Each pane then leads with its own provision id."""
+    shared_clause = _StubClause("22/98")
+    old_version, new_version = _merged_versions(
+        formatters.merge_transition_compare_results(
+            _transition_pair(
+                old_id="9.23.9.6.",
+                new_id="9.23.9.7.",
+                old_clause=shared_clause,
+                new_clause=shared_clause,
+            )
+        )
+    )
+    assert old_version["pane_label"] == "9.23.9.6. · 22/98"
+    assert new_version["pane_label"] == "9.23.9.7. · 22/98"
+
+
+def test_transition_pane_labels_disambiguate_base_enactment_versions():
+    """Neither version has a contributing clause, so both fall back to the same
+    edition display name — the provision id is all that separates them."""
+    old_version, new_version = _merged_versions(
+        formatters.merge_transition_compare_results(
+            _transition_pair(
+                old_id="9.23.9.6.",
+                new_id="9.23.9.7.",
+                old_clause=None,
+                new_clause=None,
+            )
+        )
+    )
+    assert old_version["pane_label"] == "9.23.9.6. · OBC 1997"
+    assert new_version["pane_label"] == "9.23.9.7. · OBC 1997"
+
+
 def test_has_renderable_content_false_when_no_content():
     result = formatters.merge_transition_compare_results(
         [

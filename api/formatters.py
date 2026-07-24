@@ -886,6 +886,19 @@ def group_formatted_results(
     return output
 
 
+def _transition_pane_label(version: Dict[str, Any]) -> str:
+    """Name one pane of a transition-compare card by its introducing regulation.
+
+    Falls back to the edition display name when the version has no contributing
+    clause — a base-enactment version, whose enacting instrument the CCM payload
+    does not carry.
+    """
+    clause = version.get("clause")
+    regulation = getattr(clause, "regulation", None) if clause is not None else None
+    reg_id = getattr(regulation, "reg_id", None)
+    return str(reg_id or version.get("code_display_name") or "")
+
+
 def merge_transition_compare_results(
     formatted_results: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -932,6 +945,18 @@ def merge_transition_compare_results(
             continue
 
         consumed_keys.add(pair_key)
+        # Pane labels.  Each version normally names its introducing regulation,
+        # but one clause can produce both members — a cascading renumber amends
+        # a run of articles in a single directive, so both panes resolve to the
+        # same reg_id and the label stops telling them apart.  When that happens
+        # lead with each pane's own provision id, which is what actually differs.
+        old_label = _transition_pane_label(old_version)
+        new_label = _transition_pane_label(new_version)
+        if old_label == new_label:
+            old_label = f"{old_version.get('id') or ''} · {old_label}".strip(" ·")
+            new_label = f"{new_version.get('id') or ''} · {new_label}".strip(" ·")
+        old_version["pane_label"] = old_label
+        new_version["pane_label"] = new_label
         has_renderable_content = bool(
             old_version.get("html_content")
             or old_version.get("page_images")

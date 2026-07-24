@@ -115,7 +115,7 @@
         <div class="border border-secondary">
             <div class="flex items-center justify-between gap-3 bg-secondary px-4 py-2">
                 <p class="font-mono text-sm font-semibold text-secondary-contrast">
-                    {{ version.clause.regulation.reg_id|default:version.code_display_name }} version
+                    {{ version.pane_label }} version
                 </p>
                 <span class="border border-secondary-contrast/40 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary-contrast">In force</span>
             </div>
@@ -128,7 +128,7 @@
         <div x-show="comparePrevious" x-cloak class="border border-rule bg-surface-2">
             <div class="flex items-center justify-between gap-3 border-b border-rule px-4 py-2">
                 <p class="font-mono text-sm font-semibold text-ink-2">
-                    {{ version.clause.regulation.reg_id|default:version.code_display_name }} version
+                    {{ version.pane_label }} version
                 </p>
                 <span class="border border-rule px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3">Previous</span>
             </div>
@@ -150,7 +150,7 @@
     <div class="border border-secondary">
         <div class="flex items-center justify-between gap-3 bg-secondary px-4 py-2">
             <p class="font-mono text-sm font-semibold text-secondary-contrast">
-                {{ version.clause.regulation.reg_id|default:version.code_display_name }} version
+                {{ version.pane_label }} version
             </p>
             <span class="border border-secondary-contrast/40 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary-contrast">In force</span>
         </div>
@@ -164,7 +164,7 @@
             :aria-expanded="showPrevious ? 'true' : 'false'"
             class="flex w-full items-center gap-2 border border-rule bg-surface-2 px-4 py-3 text-left font-mono text-sm font-semibold text-ink-2 hover:border-secondary hover:text-secondary">
             <span class="ui-caret"></span>
-            {{ version.clause.regulation.reg_id|default:version.code_display_name }} version (previous)
+            {{ version.pane_label }} version (previous)
         </button>
         <div x-show="showPrevious" x-cloak class="mt-1 space-y-3 border border-rule bg-surface-2 p-4 accordion-content">
             {% include "partials/_transition_version_body.html" with version=version metadata_in_rail=metadata_in_rail query_date=query_date %}

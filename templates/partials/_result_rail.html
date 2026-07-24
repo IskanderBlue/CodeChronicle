@@ -21,7 +21,7 @@
        shown. {% endcomment %}
     <div{% if not version.transition_context.is_primary %} x-show="comparePrevious" x-cloak{% endif %}>
         <p class="mb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-            {{ version.clause.regulation.reg_id|default:version.code_display_name }}
+            {{ version.pane_label }}
             <span class="text-secondary">&middot; {% if version.transition_context.is_primary %}in force{% else %}previous{% endif %}</span>
         </p>
         {% include "partials/_provenance_rail.html" with result=version collapsible_chain=True %}
