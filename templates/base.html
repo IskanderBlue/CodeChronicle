@@ -389,6 +389,27 @@
             transform: translateX(-50%);
             background: repeating-linear-gradient(to bottom, rgb(var(--ink-3) / .5) 0 3px, transparent 3px 6px);
         }
+
+        /* /list-punctuation/ — the list-insertion punctuation guide.  The whole
+           point of the page is that one mark in the output was supplied by our
+           convention rather than enacted, so the worked example needs to make
+           that mark, and only that mark, visually separable from the ones the
+           regulation put there.  `.supplied` reuses the same paper-yellow
+           underlay as mark.match-highlight (the "not from the record" role);
+           `.enacted` is a plain weight bump, deliberately quieter. */
+        .punct-guide .ex { font-family: 'Source Serif 4', Georgia, serif; font-size: 15px; line-height: 1.6; }
+        .punct-guide .supplied {
+            background: var(--highlight-soft); color: rgb(var(--ink));
+            padding: 1px 2px; font-weight: 600;
+            -webkit-box-decoration-break: clone; box-decoration-break: clone;
+        }
+        .dark .punct-guide .supplied { border-bottom: 1px solid rgb(var(--highlight)); }
+        .punct-guide .enacted { color: rgb(var(--ink)); font-weight: 600; }
+        .punct-guide .ex-label {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+            color: rgb(var(--ink-3));
+        }
     </style>
 
     {% comment %} Tailwind utilities — the CLI-built stylesheet, used in BOTH dev

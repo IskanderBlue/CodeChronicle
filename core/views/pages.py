@@ -38,6 +38,24 @@ def verification_guide(request):
     return render(request, "verification_guide.html")
 
 
+def list_punctuation(request):
+    """Editorial convention: how a phrase inserted into a list is punctuated.
+
+    An amend-add directive names the words to insert and says nothing about the
+    mark that joins them, so the mapping supplies one by a fixed convention
+    (mirror the neighbouring separator, with non-peer exceptions).  That mark is
+    the one thing on a reconstructed provision the regulation did not put there,
+    so it gets stated publicly rather than only in the producer's code.
+
+    Static reference, ungated like the verification guide and data-sources page
+    — convention only, no provision content.  Copy source of truth is
+    ``tasks/complete/list-insertion-punctuation.md``; the rule itself lives in CCM
+    (``amendment/html/insert.py``).  CCM ``tasks/supplied-separator-note.md``
+    adds the matching per-provision disclosure, which will link here.
+    """
+    return render(request, "list_punctuation.html")
+
+
 def data_sources(request):
     """Data sourcing & coverage page.
 

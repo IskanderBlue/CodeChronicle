@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+
+{% block title %}How inserted phrases are punctuated - CodeChronicle{% endblock %}
+
+{% comment %} Editorial-convention page for amend-add list insertions. Static copy —
+   source of truth is tasks/complete/list-insertion-punctuation.md, and the rule it describes
+   is CCM src/chronicle_mapping/amendment/html/insert.py:708-723.
+
+   The framing matters and is easy to get wrong: this page discloses a mark WE supply,
+   it does not claim superiority over e-Laws. Two marks sit side by side in the worked
+   example — the join separator (ours, .supplied) and the pre-existing serial comma
+   (as enacted, .enacted) — and the page fails if a reader leaves conflating them.
+   Every e-Laws divergence named below is cited to a real provision; do not add an
+   uncited one. See the task doc's "What this page must not claim".
+
+   The .punct-guide wrapper carries the two mark styles; see base.html. {% endcomment %}
+{% block content %}
+<div class="punct-guide mx-auto max-w-4xl px-4 py-8">
+    <div class="mb-10 text-center">
+        <h1 class="font-serif text-4xl font-bold text-ink sm:text-5xl">How inserted phrases are punctuated</h1>
+        <p class="mt-4 text-sm text-ink-3">One mark on the page that the regulation did not put there</p>
+    </div>
+
+    <div class="space-y-8 border border-rule bg-surface-2 p-6 sm:p-8">
+        <p class="text-ink-2">
+            CodeChronicle reconstructs each provision from the regulation as enacted and then applies
+            every amending regulation exactly as it directs. Almost all of that is mechanical: an
+            amendment says which words to strike and which to add, and the reconstruction does it.
+            <strong class="text-ink">Punctuation is the exception.</strong> When an amendment inserts
+            a phrase into an existing list, it directs the words and says nothing about the mark that
+            joins them &mdash; and something has to be chosen. This page says what we choose, and why,
+            so that the one mark on the page we supplied is not mistaken for one the legislature did.
+        </p>
+
+        <section>
+            <h2 class="mb-3 font-serif text-xl font-bold text-ink">The convention</h2>
+            <p class="border-l-2 border-secondary bg-surface py-3 pl-4 pr-3 text-ink-2">
+                When an amendment adds a phrase to an existing list, the amending regulation almost
+                never says how to punctuate the join, so the mapping supplies that separator by a
+                fixed convention &mdash; <strong class="text-ink">matching the separator the
+                surrounding text already uses at the insertion point</strong> &mdash; and leaves every
+                other mark in the sentence exactly as enacted.
+            </p>
+            <p class="mt-3 text-ink-2">
+                In practice: where the neighbouring items are separated by commas, the new phrase is
+                joined with a comma, as a peer of the items around it. Where they are not, it is
+                joined with a plain space. Nothing else in the sentence is touched &mdash; so where
+                the list already carried a serial comma before its final <em>or</em>&thinsp;/&thinsp;<em>and</em>,
+                that comma survives the insertion.
+            </p>
+        </section>
+
+        <section>
+            <h2 class="mb-1 font-serif text-xl font-bold text-ink">A worked example</h2>
+            <p class="mb-4 text-sm text-ink-3">
+                O.&nbsp;Reg. 22/98, s.&nbsp;33 amends the definition of <em>building system</em> in the
+                Ontario Building Code 1997, Article&nbsp;11.1.1.2.
+            </p>
+
+            <div class="divide-y divide-rule-2 border-y border-rule-2">
+                <div class="py-3">
+                    <div class="ex-label mb-1">As enacted &mdash; O. Reg. 403/97</div>
+                    <p class="ex text-ink-2">&hellip;a plumbing system<span class="enacted">,</span> or an electrical system.</p>
+                </div>
+                <div class="py-3">
+                    <div class="ex-label mb-1">The amendment directs</div>
+                    <p class="ex text-ink-2">add <span class="text-ink">&ldquo;a sewage system&rdquo;</span> after <span class="text-ink">&ldquo;plumbing system&rdquo;</span> &mdash; and stops there</p>
+                </div>
+                <div class="py-3">
+                    <div class="ex-label mb-1">CodeChronicle</div>
+                    <p class="ex text-ink-2">&hellip;a plumbing system<span class="supplied">,</span> a sewage system<span class="enacted">,</span> or an electrical system.</p>
+                </div>
+                <div class="py-3">
+                    <div class="ex-label mb-1">Ontario e-Laws consolidation</div>
+                    <p class="ex text-ink-2">&hellip;a plumbing system, a sewage system or an electrical system.</p>
+                </div>
+            </div>
+
+            <p class="mt-4 text-ink-2">
+                Two different things are happening in that one line, and they are worth keeping apart.
+                The comma we <span class="supplied">supplied</span> is the one after
+                <em>plumbing system</em> &mdash; the join, which the amendment left open. The comma
+                before <em>or</em> is the <span class="enacted">serial comma the 1997 regulation
+                already carried</span>; we leave it alone, and the e-Laws consolidation drops it. Only
+                that second comma is a difference from e-Laws, and it is not this convention&rsquo;s
+                doing &mdash; it is what happens when nothing is changed.
+            </p>
+        </section>
+
+        <section>
+            <h2 class="mb-3 font-serif text-xl font-bold text-ink">Where the convention does not apply</h2>
+            <p class="mb-3 text-ink-2">
+                Matching the neighbouring separator is only right when the added phrase is a genuine
+                list item. Some insertions are not: they attach to the term before them rather than
+                extending the list, and they take a plain space even where a comma sits beside the
+                anchor. For example:
+            </p>
+            <ul class="ml-2 list-inside list-disc space-y-1 text-ink-2">
+                <li>a parenthetical qualifier &mdash; <span class="font-mono text-[12.5px] text-ink">(FT1 Rating)</span></li>
+                <li>a phrase led by a coordinating conjunction &mdash; <em>and Sentences 3.3.4.11.(11)&hellip;</em></li>
+                <li>a subordinate clause &mdash; <em>as if the glazed openings were unprotected openings</em></li>
+            </ul>
+            <p class="mt-3 text-ink-2">
+                Each of these grammatically modifies the preceding term, so punctuating it as a peer
+                of the list items would change how the provision reads.
+            </p>
+        </section>
+
+        <section>
+            <h2 class="mb-3 font-serif text-xl font-bold text-ink">Why this can differ from e-Laws</h2>
+            <p class="mb-3 text-ink-2">
+                The official e-Laws consolidation also makes presentation choices about list
+                punctuation, in both directions, without any amending regulation directing them:
+            </p>
+            <ul class="ml-2 list-inside list-disc space-y-1 text-ink-2">
+                <li><strong class="text-ink">Dropping a serial comma the filing has.</strong> OBC 2006,
+                    Sentence 8.2.1.5.(1): O.&nbsp;Reg. 350/06 files
+                    <em>&ldquo;no Class 1, 2, or 3 sewage system&rdquo;</em>; e-Laws renders
+                    <em>&ldquo;Class 1, 2 or 3&rdquo;</em>.</li>
+                <li><strong class="text-ink">Adding one the print does not have.</strong> OBC 1997,
+                    Articles 2.7.2.1. and 2.7.2.2.: the filed text reads
+                    <em>&ldquo;Parts 3, 5, 6, 7 and 9&rdquo;</em>; e-Laws inserts a comma before
+                    <em>and</em>.</li>
+                <li><strong class="text-ink">Both within a single provision.</strong> OBC 1997,
+                    Article 1.1.3.2., where serial commas are added and dropped across the same
+                    definition list.</li>
+            </ul>
+            <p class="mt-3 text-ink-2">
+                We note this not as a criticism &mdash; consolidating decades of amendments into
+                readable text requires exactly these judgment calls &mdash; but because it is the same
+                kind of choice our join convention is. The difference is that ours is written down
+                here, applied uniformly, and confined to the mark the amendment left open.
+            </p>
+        </section>
+
+        <p class="border-t border-rule-2 pt-4 text-xs text-ink-3">
+            CodeChronicle is not an official copy of the law. For any decision that matters, verify
+            against the official consolidation on
+            <a href="https://www.ontario.ca/laws" target="_blank" rel="noopener noreferrer" class="ui-link">e-Laws</a>
+            &mdash; see our <a href="{% url 'core:terms_of_service' %}" class="ui-link">Terms of Service</a>
+            and <a href="{% url 'core:data_sources' %}" class="ui-link">Data Sources</a>.
+        </p>
+    </div>
+</div>
+{% endblock %}
