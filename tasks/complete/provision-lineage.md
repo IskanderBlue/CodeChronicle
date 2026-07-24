@@ -157,7 +157,7 @@ The viewer's current prev/next-edition buttons already do exactly this
 (`viewer_edition_nav` + `_viewer_edition_nav.html` locked branch) — step 3's
 replacement rows must preserve that behaviour, and steps 2–3 should take the
 gate as a rendering input from day one. See
-`tasks/free-tier-obc2006-scope.md`.
+`tasks/complete/free-tier-obc2006-scope.md`.
 
 ## Implementation order
 

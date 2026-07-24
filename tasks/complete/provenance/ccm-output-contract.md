@@ -770,10 +770,41 @@ situation honestly renders "transition not yet mapped".
   coverage claim over deleted rows would mint false "discontinued"
   verdicts). The payload re-declares whatever the load still covers.
 
-> **Status (2026-06-11):** CCM does not emit `mapping_coverage` yet —
-> the two dev-DB rows (1997→2006, 2006→2012) are inserted manually after
-> every reload as a stopgap. Coordinate emission with CCM; this is the
-> remaining contract gap for provision lineage.
+> **Status (2026-07-23):** CCM emits `mapping_coverage` — the current
+> OBC_2006 and OBC_2012 payloads each declare their incoming transition
+> (verified against `data/outputs`). The manual-insert stopgap is
+> retired; a reload restores coverage natively.
+
+## `verification_coverage[]` — NOT ingested for e-Laws editions
+
+CCM's provenance contract (`docs/cc-provenance-contract.md` in the CCM
+repo) defines a `verification_coverage[]` wire key: per-edition spans
+declaring which date ranges were cross-checked against an authoritative
+consolidation. **CodeChronicle does not consume this key for e-Laws
+editions and CCM need not emit it for them.**
+
+Why: CC already owns the e-Laws attestation calendar as its
+`Consolidation` table — one row per captured consolidation period,
+built CC-side from each cached page's own date-range banner
+(`scripts/build_elaws_consolidations.py`, loaded via
+`manage.py load_consolidations`). A captured consolidation page is one
+fact read two ways — the thing CC links to (source provenance) and the
+thing the text was cross-checked against (confidence) — so a second,
+shipped copy of the same calendar would only drift. Per-(provision,
+query-date) confidence ranks are derived at read time from those rows
+plus each version's `effective_date`/`ineffective_date`
+(`core/verification.derive_status()`); nothing per-version is stored or
+ingested. Design + rank vocabulary: `tasks/complete/verification-coverage.md`.
+
+The wire key stays relevant for **periodic/PDF editions** (NBC, print
+OBC), where there are no e-Laws snapshots for CC to self-build from:
+their attestation points (reprint dates) would load into the same
+`Consolidation` table as zero-range `[d, d]` rows, sourced from CCM.
+Shape to be settled with CCM when acquisition unblocks — see
+`tasks/n-periodic-consolidation-coverage.md`. Optionally, for e-Laws
+editions CCM may still emit the key as a load-time cross-check (assert
+its `[start, end]` envelope matches CC's consolidation rows) without CC
+storing it.
 
 ## Image Pre-Rendering
 
@@ -826,3 +857,5 @@ the clause's `page` number.
 - Separate amendment JSON files (everything consolidated per edition)
 - OCR text for tables (tables are images)
 - Editions with incomplete amendment chains
+- `verification_coverage[]` for e-Laws editions (CC self-builds that
+  calendar from cached consolidation pages; see the section above)

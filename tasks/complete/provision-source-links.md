@@ -102,3 +102,11 @@ force-load unverified into prod without a deliberate call.
   `memory/project_base_enactment_gap.md`.
 - `data/elaws_consolidations.json` is a generated artifact; prod flow needs the
   CCM repo checked out beside CC to regenerate.
+
+## Update (2026-07-23)
+
+All three REMAINING items are done: code committed, both axes live on prod
+(2026-06-15), and item 3 (rail source links) implemented — each `O. Reg.`
+row in `_provenance_rail.html` (Base, amendment chain, Next) now carries a
+small `· ext` external link to `Regulation.source_url` (new tab, labelled
+via `source_link_label`), rendered only when the URL exists.

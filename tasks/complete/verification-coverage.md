@@ -408,3 +408,11 @@ build order:
 - **Blocked upstream:** periodic (PDF/NBC) coverage depends on CCM acquiring
   consolidation PDFs; until then non-OBC editions have no consolidation rows
   (all dates `unconfirmed`).
+
+## Update (2026-07-23)
+
+Contract note written: ccm-output-contract.md now documents that CC derives
+confidence from its own Consolidation table and does not ingest the
+verification_coverage[] wire key for e-Laws editions. The upstream-blocked
+periodic/PDF work is split out to tasks/n-periodic-consolidation-coverage.md.
+This card is complete.

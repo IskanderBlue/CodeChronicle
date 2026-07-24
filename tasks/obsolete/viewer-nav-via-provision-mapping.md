@@ -1,6 +1,6 @@
 # Viewer edition-nav via ProvisionMapping — SUPERSEDED
 
-**Status: SUPERSEDED 2026-06-10 by `tasks/provision-lineage.md`. Do not
+**Status: SUPERSEDED 2026-06-10 by `tasks/complete/provision-lineage.md`. Do not
 implement this plan.**
 
 This task planned to *fix* the viewer's prev/next-edition buttons by
