@@ -112,56 +112,6 @@ def test_execute_search_doors_fire_safety():
 
 
 @pytest.mark.django_db
-def test_get_applicable_codes_ontario_2026():
-    """Test that ON province correctly resolves to OBC and NBC codes."""
-    from config.code_metadata import get_applicable_codes
-
-    obc = Code.objects.create(code="OBC", display_name="Ontario Building Code")
-    nbc = Code.objects.create(
-        code="NBC", display_name="National Building Code", is_national=True
-    )
-    ProvinceCode.objects.create(province="ON", code=obc)
-    CodeEdition.objects.create(
-        code=obc,
-        edition_id="2024",
-        year=2024,
-        effective_date=date(2025, 1, 1),
-    )
-    CodeEdition.objects.create(
-        code=nbc,
-        edition_id="2025",
-        year=2025,
-        effective_date=date(2025, 1, 1),
-    )
-
-    codes = get_applicable_codes("ON", date(2026, 2, 5))
-
-    assert "OBC_2024" in codes
-    assert "NBC_2025" in codes
-
-
-@pytest.mark.django_db
-def test_get_applicable_codes_ontario_2010():
-    """Test that a 2010 date resolves to a CCM OBC edition if loaded."""
-    from config.code_metadata import get_applicable_codes
-
-    obc = Code.objects.create(code="OBC", display_name="Ontario Building Code")
-    ProvinceCode.objects.create(province="ON", code=obc)
-    CodeEdition.objects.create(
-        code=obc,
-        edition_id="2006_v01",
-        year=2006,
-        effective_date=date(2006, 1, 1),
-        source="elaws",
-    )
-
-    codes = get_applicable_codes("ON", date(2010, 6, 1))
-    obc_codes = [c for c in codes if c.startswith("OBC_")]
-    assert len(obc_codes) == 1
-    assert obc_codes[0].startswith("OBC_2006_v")
-
-
-@pytest.mark.django_db
 def test_execute_search_no_codes():
     """Test when no codes are found — province has no ProvinceCode mapping."""
     params = {"date": "1950-01-01", "keywords": ["fire"], "province": "XX"}

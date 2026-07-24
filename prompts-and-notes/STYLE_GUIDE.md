@@ -57,7 +57,7 @@ from anthropic import Anthropic
 
 # Local
 from api.llm_parser import parse_user_query
-from config.code_metadata import get_applicable_codes
+from config.code_metadata import get_code_display_name
 ```
 
 ### Naming Conventions

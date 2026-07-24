@@ -19,8 +19,8 @@
 - Apps:
   - `core/`: custom `User`, search history, cache/prompt models, rate limiting, HTMX views.
   - `api/`: Django Ninja API (`/api/search`, `/api/history`, `/api/codes`, `/api/health`).
-- `config/`: `code_metadata.py` (DB-backed `get_applicable_codes()`), `keywords.py`.
-- Flow: Rate limit -> LLM parse -> cache -> `execute_search()` -> `get_applicable_codes()` -> `building-code-mcp` -> format -> history save.
+- `config/`: `code_metadata.py` (`get_code_display_name()`), `keywords.py`.
+- Flow: Rate limit -> LLM parse -> cache -> `execute_search()` (per-version in-force query across all editions of the province's code -> `score_versions()` -> `_group_transitions()`) -> format -> history save. No edition-resolution step; `building-code-mcp` supplies only `SYNONYMS`.
 - Frontend: Django templates + HTMX + Alpine.js + Tailwind (CDN). Partials in `templates/partials/`.
 
 ### Settings & Env

@@ -78,15 +78,23 @@ Hand-written, non-utility CSS (component classes, `x-cloak`, htmx/diff helpers) 
 
 - **core/** - Custom User model (email-only, no username via `AUTH_USER_MODEL = 'core.User'`), SearchHistory, QueryCache/QueryPrompt models, RateLimitMiddleware, and frontend views (HTMX-based)
 - **api/** - Django Ninja REST API. Key endpoints: `/api/search` (POST), `/api/history` (GET), `/api/codes` (GET), `/api/health` (GET)
-- **config/** - Configuration helpers: `code_metadata.py` reads DB-backed code metadata (`get_applicable_codes()`), `keywords.py` has the valid keyword list.
+- **config/** - Configuration helpers: `code_metadata.py` (`get_code_display_name()`), `keywords.py` has the valid keyword list.
 
 ### Request Flow
 
 ```
 User query → RateLimitMiddleware → llm_parser.parse_user_query() (Claude API with tool_use)
-→ QueryCache check/store → api/search.execute_search() → config.get_applicable_codes()
-→ BuildingCodeMCP.search_code() → api/formatters.format_search_results() → SearchHistory.create()
+→ QueryCache check/store → api/search.execute_search()
+   → in-force version query (per-version window, all editions of the province's code)
+   → engine.score_versions() → orchestration._group_transitions()
+→ api/formatters.format_search_results() → SearchHistory.create()
 ```
+
+Search is DB-backed end to end. There is no edition-resolution step — the
+in-force filter runs at the **version** level (`effective_date <= d <
+ineffective_date`) across every edition of the province's code, which is what
+lets two editions' versions co-exist during a transition. `building-code-mcp`
+is now used only for its `SYNONYMS` table, not for searching.
 
 ### Frontend
 
