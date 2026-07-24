@@ -3,8 +3,9 @@
    Both versions render at once (the accordion's one-at-a-time toggle was
    useless for actually comparing); changed words stand out because the global
    .diff-old-unchanged / .diff-new-unchanged rule (base.html) dims unchanged
-   text. The diff is asymmetric per pane and computed in the view via
-   api.formatters._diff_html_content.
+   text — the marking is inverted, so it is the *unchanged* words that get
+   wrapped. Each pane marks its own side of the diff (old: deletions, new:
+   insertions); computed in the view via api.formatters._diff_html_content.
 
    Context: `compare` dict —
      old / new           CodeEditionProvisionVersion (earlier / later)

@@ -119,10 +119,18 @@ def _diff_html_content(
     old_html: str | None,
     new_html: str | None,
 ) -> Tuple[str | None, str | None]:
-    """Diff two HTML strings with asymmetric styling per pane.
+    """Word-diff two HTML strings, wrapping the *unchanged* words on each side.
 
-    Old (comparison) pane: unchanged text is lowlighted, changed text is normal.
-    New (current) pane: unchanged text is normal, changed text is highlighted.
+    The marking is inverted from the usual diff: changed words are left bare and
+    the words both sides share are wrapped in ``diff-old-unchanged`` /
+    ``diff-new-unchanged``, which ``base.html`` dims to 0.7 opacity. So what
+    stands out is what differs — no highlight colour needed, and a pane with no
+    changes reads as uniformly dim rather than uniformly loud.
+
+    The opcodes are shared but each side is walked on its own index range, so the
+    old pane marks deletions and the new pane marks insertions. The two class
+    names differ only as styling hooks; the CSS currently treats them alike.
+
     All HTML tags and original whitespace are preserved.
     Returns (annotated_old, annotated_new); both None if either input is empty.
     """
