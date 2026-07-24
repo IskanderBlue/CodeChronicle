@@ -87,3 +87,26 @@ standard refs like `A101-M`) ARE admitted into VALID_KEYWORDS and match
 via has_key exactly. Implement by replacing the `.isalpha()` filter with
 one that also accepts hyphenated keys, drop the dead `" " in kw` disjunct,
 and pin the policy with a test.
+
+## Done (2026-07-23)
+
+- `scripts/extract_keywords.py`: filter extracted into `is_searchable_keyword()`
+  — plain keys must be `.isalpha()`; hyphenated keys are admitted when every
+  hyphen-joined part is alphanumeric and at least one letter appears. The dead
+  `" " in kw` disjunct is gone (confirmed dead in practice: zero space-containing
+  entries in the shipped vocabulary, synonyms seed included).
+- **Bonus fix — the reader was stale.** The script still read `keyword_counts`
+  at the provision/table entry level and a legacy `keywords` list; the current
+  CCM contract puts `keyword_counts` on each provision *version* (version-level
+  tables carry none). With the old reader the script extracted only the ~40
+  SYNONYMS seeds. Reader rewritten for the versioned shape.
+- `config/keywords.py` regenerated from the shipped OBC 1997/2006/2012 outputs:
+  7,094 keys (old file was from a stale corpus). 38 hyphenated keys admitted
+  (`barrier-free`, `fire-resistance`, `table-a-1`…); 403 hyphenated keys still
+  correctly dropped — all dotted table-ID tokens like `table-11.2.1.1.-a`,
+  whose parts fail `isalnum()`. No `a101-m`-style keys exist in the current
+  corpus (CCM's producer-side hyphen split landed first), but the policy is
+  corpus-independent.
+- Policy pinned by `api/tests/test_keyword_vocabulary.py`: parametrized
+  admit/drop cases plus an invariant that every shipped VALID_KEYWORDS entry
+  satisfies the predicate.

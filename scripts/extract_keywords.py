@@ -7,6 +7,25 @@ from coloured_logger import Logger
 logger = Logger(__name__)
 
 
+def is_searchable_keyword(kw: str) -> bool:
+    """Vocabulary admission policy for a producer-emitted keyword key.
+
+    Plain words must be purely alphabetic (drops bare numbers and page/figure
+    noise like ``12a``).  Hyphenated keys are admitted when every hyphen-joined
+    part is alphanumeric and at least one letter appears anywhere — this is
+    what lets objective codes and standard designations (``a101-m``,
+    ``f03-os1-dot-2``, appendix refs like ``a-1``) into VALID_KEYWORDS so the
+    parser can emit them and ``has_key`` can match them exactly, per the
+    decision in tasks/complete/keyword-vocabulary-hyphen-filter.md.  Producer
+    keys never contain spaces (the CCM tokenizer splits on every
+    non-``[a-z0-9-]`` character), so no phrase branch exists.
+    """
+    if "-" in kw:
+        parts = kw.split("-")
+        return all(p.isalnum() for p in parts) and any(c.isalpha() for c in kw)
+    return kw.isalpha()
+
+
 def extract_keywords():
     # Path to the neighboring CodeChronicleMapping repo
     maps_dir = os.path.abspath(os.path.join("..", "CodeChronicleMapping", "data", "outputs"))
@@ -33,26 +52,18 @@ def extract_keywords():
         try:
             with open(map_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                for entry in list(data.get("provisions", [])) + list(data.get("tables", [])):
-                    # Prefer keyword_counts dict (new format)
-                    kw_counts = entry.get("keyword_counts")
-                    if isinstance(kw_counts, dict):
-                        for kw in kw_counts:
-                            if isinstance(kw, str) and len(kw) > 2:
-                                keywords.add(kw.lower())
-                        continue
-                    # Fall back to keywords list (legacy format)
-                    section_keywords = entry.get("keywords", [])
-                    if isinstance(section_keywords, list):
-                        for kw in section_keywords:
-                            if isinstance(kw, str) and len(kw) > 2:
-                                keywords.add(kw.lower())
+            # keyword_counts lives on each provision *version* (tables carry
+            # none) — the same per-version dicts the search engine's has_key
+            # filter queries, so the vocabulary and the index can't skew.
+            for provision in data.get("provisions", []):
+                for version in provision.get("versions", []):
+                    for kw in version.get("keyword_counts") or {}:
+                        if isinstance(kw, str) and len(kw) > 2:
+                            keywords.add(kw.lower())
         except Exception as e:
             logger.error("Error processing %s: %s", map_file, e)
 
-    # Filter keywords (only alphabetic, no numbers unless common like 'Part 3')
-    # and remove extremely common words if they are too noisy
-    filtered_keywords = sorted([kw for kw in keywords if kw.isalpha() or " " in kw])
+    filtered_keywords = sorted(kw for kw in keywords if is_searchable_keyword(kw))
 
     # Write to config/keywords.py
     output_path = os.path.join("config", "keywords.py")
