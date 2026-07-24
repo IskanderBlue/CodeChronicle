@@ -5,7 +5,6 @@ Static and settings page views.
 from typing import Any
 
 from allauth.account.forms import ChangePasswordForm
-from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
 from django.shortcuts import render
@@ -149,28 +148,20 @@ PRICING_COMPARISON: list[dict[str, str | None]] = [
 
 
 def pricing(request):
-    """Pricing and subscription tiers.
-
-    Tracks the free-tier content gate: while FREE_TIER_GATING_ENABLED is
-    off, everyone gets everything, so the early-access placeholder (free
-    for now, unlimited) is the truthful page.  Flipping the flag swaps in
-    the Free/Pro plan cards in the same deploy — the two can't skew.
-    """
-    if settings.FREE_TIER_GATING_ENABLED:
-        plans = _pricing_plans(request.user)
-        return render(
-            request,
-            "pricing.html",
-            {
-                "plans": plans,
-                # Per-column accent flags for the row cells (the boxes carry
-                # the border, but rows live outside the plans loop).
-                "free_current": plans[0]["is_current"],
-                "pro_current": plans[1]["is_current"],
-                "comparison": PRICING_COMPARISON,
-            },
-        )
-    return render(request, "pricing_early_access.html")
+    """Pricing and subscription tiers."""
+    plans = _pricing_plans(request.user)
+    return render(
+        request,
+        "pricing.html",
+        {
+            "plans": plans,
+            # Per-column accent flags for the row cells (the boxes carry
+            # the border, but rows live outside the plans loop).
+            "free_current": plans[0]["is_current"],
+            "pro_current": plans[1]["is_current"],
+            "comparison": PRICING_COMPARISON,
+        },
+    )
 
 
 @login_required

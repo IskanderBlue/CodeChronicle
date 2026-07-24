@@ -1,8 +1,8 @@
 """Free-tier content gate (core.access) — helpers and gated surfaces.
 
-The gate ships behind FREE_TIER_GATING_ENABLED (default off), so every
-gating test flips the flag on via the ``settings`` fixture; the default-off
-tests pin the no-user-facing-change guarantee.
+Gating is unconditional (the FREE_TIER_GATING_ENABLED rollout switch was
+removed after soaking on in prod); tests pin the free scope via
+``settings.FREE_TIER_CODE_NAMES``.
 """
 
 from datetime import date
@@ -69,14 +69,7 @@ def free_user(db):
 
 
 class TestAccessHelpers:
-    def test_gating_disabled_everyone_unrestricted(self, settings):
-        settings.FREE_TIER_GATING_ENABLED = False
-        assert user_is_unrestricted(None)
-        assert user_is_unrestricted(AnonymousUser())
-        assert edition_allowed(AnonymousUser(), "OBC_2012")
-
-    def test_gating_on_anonymous_scoped_to_free_set(self, settings):
-        settings.FREE_TIER_GATING_ENABLED = True
+    def test_anonymous_scoped_to_free_set(self, settings):
         settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
         assert not user_is_unrestricted(None)
         assert not user_is_unrestricted(AnonymousUser())
@@ -84,22 +77,19 @@ class TestAccessHelpers:
         assert not edition_allowed(AnonymousUser(), "OBC_2012")
 
     @pytest.mark.django_db
-    def test_gating_on_free_user_scoped(self, settings, free_user):
-        settings.FREE_TIER_GATING_ENABLED = True
+    def test_free_user_scoped(self, settings, free_user):
         settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
         assert not user_is_unrestricted(free_user)
         assert edition_allowed(free_user, "OBC_2006")
         assert not edition_allowed(free_user, "OBC_2012")
 
     @pytest.mark.django_db
-    def test_gating_on_pro_user_unrestricted(self, settings, pro_user):
-        settings.FREE_TIER_GATING_ENABLED = True
+    def test_pro_user_unrestricted(self, settings, pro_user):
         settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
         assert user_is_unrestricted(pro_user)
         assert edition_allowed(pro_user, "OBC_2012")
 
     def test_partition_results_counts_locked_per_edition(self, settings):
-        settings.FREE_TIER_GATING_ENABLED = True
         settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
         results = [
             {"code_edition": "OBC_2006", "id": "a"},
@@ -110,10 +100,11 @@ class TestAccessHelpers:
         assert [r["id"] for r in kept] == ["a"]
         assert locked == {"OBC_2012": 2}
 
-    def test_partition_results_unrestricted_passthrough(self, settings):
-        settings.FREE_TIER_GATING_ENABLED = False
+    @pytest.mark.django_db
+    def test_partition_results_unrestricted_passthrough(self, settings, pro_user):
+        settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
         results = [{"code_edition": "OBC_2012", "id": "b"}]
-        kept, locked = partition_results(AnonymousUser(), results)
+        kept, locked = partition_results(pro_user, results)
         assert kept == results
         assert locked == {}
 
@@ -123,7 +114,6 @@ class TestGatedViews:
     """Full-page and partial surfaces with the gate flipped on."""
 
     def _enable(self, settings):
-        settings.FREE_TIER_GATING_ENABLED = True
         settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
 
     def test_permalink_locked_edition_403_teaser(
@@ -148,13 +138,6 @@ class TestGatedViews:
     ):
         self._enable(settings)
         client.force_login(pro_user)
-        response = client.get("/provision/OBC_2012/B/1.1.1.1./v0/")
-        assert response.status_code == 200
-
-    def test_permalink_locked_edition_open_when_gating_off(
-        self, settings, client: Client, two_editions
-    ):
-        settings.FREE_TIER_GATING_ENABLED = False
         response = client.get("/provision/OBC_2012/B/1.1.1.1./v0/")
         assert response.status_code == 200
 
@@ -241,16 +224,7 @@ class TestGatedViews:
 
 @pytest.mark.django_db
 class TestPricingPage:
-    """The pricing view tracks the gate flag, so page and gate can't skew."""
-
-    def test_gating_off_serves_early_access_placeholder(self, settings, client: Client):
-        settings.FREE_TIER_GATING_ENABLED = False
-        content = client.get("/pricing/").content.decode()
-        assert "Early Access" in content
-        assert "Choose your plan" not in content
-
-    def test_gating_on_serves_plan_cards(self, settings, client: Client):
-        settings.FREE_TIER_GATING_ENABLED = True
+    def test_serves_plan_cards(self, client: Client):
         content = client.get("/pricing/").content.decode()
         assert "Choose your plan" in content
         assert "Ontario Building Code 2006" in content
@@ -260,10 +234,7 @@ class TestPricingPage:
         assert "Roadmap" in content
         assert "currently in early access" not in content
 
-    def test_gating_on_pro_user_sees_pro_as_current(
-        self, settings, client: Client, pro_user
-    ):
-        settings.FREE_TIER_GATING_ENABLED = True
+    def test_pro_user_sees_pro_as_current(self, client: Client, pro_user):
         client.force_login(pro_user)
         content = client.get("/pricing/").content.decode()
         assert "Manage Subscription" in content

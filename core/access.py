@@ -6,9 +6,6 @@ subscription or ``pro_courtesy``) are unrestricted.  Every gated surface —
 search execution, viewer partials, provision permalinks, regulation detail,
 edition chain — calls these helpers rather than re-deriving tier logic.
 
-The whole gate is inert until ``settings.FREE_TIER_GATING_ENABLED`` is
-flipped on (see the go-live checklist in tasks/free-tier-obc2006-scope.md).
-
 Locked content renders as a teaser with an upgrade CTA, not a silent
 omission: free users should see that other editions exist.
 """
@@ -21,12 +18,9 @@ from django.conf import settings
 def user_is_unrestricted(user: Any) -> bool:
     """True when ``user`` may access every edition.
 
-    Always true while gating is disabled.  ``user`` may be a ``User``,
-    ``AnonymousUser``, or ``None`` (the service layer passes ``None`` for
-    anonymous searches).
+    ``user`` may be a ``User``, ``AnonymousUser``, or ``None`` (the service
+    layer passes ``None`` for anonymous searches).
     """
-    if not settings.FREE_TIER_GATING_ENABLED:
-        return True
     if user is None or not getattr(user, "is_authenticated", False):
         return False
     return bool(getattr(user, "has_active_subscription", False))

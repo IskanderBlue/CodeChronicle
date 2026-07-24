@@ -55,7 +55,7 @@ sectionContentUrl() in search.html.
 {% endcomment %}
 <div id="cc-search-id" hidden data-search-id="{{ search_id|default_if_none:'' }}"></div>
 {% comment %}
-Free-tier teaser (only set while FREE_TIER_GATING_ENABLED): results from
+Free-tier teaser (set only for non-Pro searchers): results from
 editions outside the free scope were dropped before formatting; name what was
 hidden rather than silently returning less. Covers the all-locked case too
 (e.g. a 2014 as-of date resolving entirely to OBC 2012) — the counts explain

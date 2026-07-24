@@ -20,6 +20,7 @@ from core.models import (
     EditionTransition,
     ProvisionDisposition,
     ProvisionMapping,
+    User,
 )
 from core.provision_lineage import (
     DISCONTINUED,
@@ -397,9 +398,13 @@ class TestRenderFields:
             == "replaces"
         )
 
-    def test_links_unlocked_while_gating_disabled(self, lineage_fixtures):
+    def test_links_unlocked_for_pro_users(self, lineage_fixtures, settings):
+        settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
+        pro = User.objects.create_user(
+            email="pro@example.com", password="testpass", pro_courtesy=True,
+        )
         lineage = resolve_lineage(list(CodeEditionProvision.objects.all()))
-        annotate_lineage_locks(lineage.values(), None)
+        annotate_lineage_locks(lineage.values(), pro)
         for lin in lineage.values():
             for direction in (lin.predecessors, lin.successors):
                 assert all(li.locked is False for li in direction.links)
@@ -407,10 +412,9 @@ class TestRenderFields:
     def test_out_of_scope_targets_lock_for_free_users(
         self, lineage_fixtures, settings
     ):
-        # Anonymous, gating on, only OBC 2006 in free scope: the forward
-        # link into OBC 2012 locks (upsell), the backward link into the
-        # in-scope OBC 2006 stays a real link.
-        settings.FREE_TIER_GATING_ENABLED = True
+        # Anonymous, only OBC 2006 in free scope: the forward link into
+        # OBC 2012 locks (upsell), the backward link into the in-scope
+        # OBC 2006 stays a real link.
         settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
         lineage = resolve_lineage(
             [lineage_fixtures["p06_renum_old"], lineage_fixtures["p12_renum_new"]]

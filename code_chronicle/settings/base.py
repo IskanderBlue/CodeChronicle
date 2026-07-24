@@ -209,16 +209,10 @@ RATE_LIMIT_AUTHENTICATED = 3  # searches per day for logged-in free users
 # ===================
 # Free-tier content gating (core.access)
 # ===================
-# Master switch for the content-scoped tier split: when on, anonymous and
-# signed-in non-Pro users are limited to the editions named below; Pro
-# (active subscription or pro_courtesy) is unrestricted.  Ships OFF so the
-# gate can be deployed and tested before Pro is purchasable — flipping it
-# while the pricing page still says "free unlimited" would strand free
-# users with nothing to buy (go-live checklist:
-# tasks/free-tier-obc2006-scope.md).
-FREE_TIER_GATING_ENABLED = (
-    os.environ.get("FREE_TIER_GATING_ENABLED", "False").lower() == "true"
-)
+# Content-scoped tier split (unconditional since 2026-07: the old
+# FREE_TIER_GATING_ENABLED switch soaked on in prod and was removed):
+# anonymous and signed-in non-Pro users are limited to the editions named
+# below; Pro (active subscription or pro_courtesy) is unrestricted.
 # Canonical edition names (CodeEdition.code_name, e.g. "OBC_2006") in the
 # free scope.  Env-backed so the free window can widen without a deploy.
 FREE_TIER_CODE_NAMES = [

@@ -146,8 +146,8 @@ def run_search(
                 "results": [],
             }
 
-        # Free-tier content gate (inert unless FREE_TIER_GATING_ENABLED):
-        # drop results from editions outside the user's scope BEFORE
+        # Free-tier content gate: drop results from editions outside the
+        # user's scope BEFORE
         # formatting, keeping per-edition counts so the UI renders a teaser
         # ("N results in OBC 2012 — available on Pro") rather than silently
         # returning less.  The formatter already renders a transition pair

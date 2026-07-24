@@ -152,13 +152,6 @@ STRIPE_TEST_SECRET_KEY = _resolve_runtime_setting(
 STRIPE_LIVE_MODE = _resolve_runtime_setting("STRIPE_LIVE_MODE", default="true").lower() == "true"
 STRIPE_PRO_PRICE_ID = _resolve_runtime_setting("STRIPE_PRO_PRICE_ID", default=STRIPE_PRO_PRICE_ID)
 
-# Free-tier content gate: flip by adding FREE_TIER_GATING_ENABLED=true to
-# the app_runtime_secrets bundle and restarting the web container (the
-# bundle is read once per process). Defaults off, matching base.py.
-FREE_TIER_GATING_ENABLED = (
-    _resolve_runtime_setting("FREE_TIER_GATING_ENABLED", default="false").lower() == "true"
-)
-
 # Hashed static filenames for cache busting (e.g. tailwind.a1b2c3d4.css)
 STORAGES = {
     "staticfiles": {

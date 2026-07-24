@@ -29,9 +29,9 @@
 
 ### Rate Limits & Subscriptions
 - Anonymous: 1 search/day. Authenticated (free and Pro): unlimited.
-- Content gating (`core/access.py`, behind `FREE_TIER_GATING_ENABLED`, default off): when on,
-  anonymous + non-Pro users are scoped to `FREE_TIER_CODE_NAMES` (OBC 2006); Pro
-  (Stripe/dj-stripe or `pro_courtesy`) unrestricted. Go-live: `tasks/free-tier-obc2006-scope.md`.
+- Content gating (`core/access.py`, unconditional): anonymous + non-Pro users are scoped
+  to `FREE_TIER_CODE_NAMES` (OBC 2006); Pro (Stripe/dj-stripe or `pro_courtesy`)
+  unrestricted. History: `tasks/complete/free-tier-obc2006-scope.md`.
 
 ### Code Style
 - Ruff: `E,F,I,N,W`, line length 100, py312.

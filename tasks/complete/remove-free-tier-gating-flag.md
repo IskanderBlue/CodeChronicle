@@ -28,7 +28,7 @@ every gate read conditional. Existing accounts were grandfathered
   ways. `FREE_TIER_CODE_NAMES` stays — it's the scope definition, not the
   switch.
 - Docs: update CLAUDE.md "Rate Limiting & Subscriptions" and
-  `tasks/free-tier-obc2006-scope.md` (then move it to `tasks/complete/`).
+  `tasks/complete/free-tier-obc2006-scope.md` (then move it to `tasks/complete/`).
 
 ## Acceptance
 
@@ -36,3 +36,15 @@ every gate read conditional. Existing accounts were grandfathered
   templates, tests, docs, bundle).
 - Anonymous + non-Pro scoped to OBC 2006, Pro unrestricted — identical
   behaviour to flag-on before the deletion.
+
+## Completed (2026-07-23)
+
+Flag removed everywhere code-side: access.py early-out, pricing branch +
+pricing_early_access.html, settings reads (base + production), flag-off
+tests (passthrough tests repointed at a Pro user), stale comments, and
+CLAUDE.md/AGENTS.md copy. New root conftest.py widens FREE_TIER_CODE_NAMES
+to fixture editions for non-gating tests (gating always-on flipped the
+test-suite default). Gate: 381 tests, ruff/mypy/pyright 0, manage.py check
+clean. The prod bundle key removal is deliberately deferred until after
+deploy (old code still reads the key and would fall back to default-off):
+see tasks/x-remove-gating-flag-bundle-key.md.
