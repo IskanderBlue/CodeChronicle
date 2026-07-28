@@ -169,6 +169,39 @@
             transition: color .12s, text-decoration-color .12s;
         }
         .ui-cite:hover { color: rgb(var(--secondary-2)); text-decoration-color: rgb(var(--secondary-2)); }
+        /* Within-edition citation, linked inline in provision body text
+           (core.cross_refs.linkify).  It wears .ui-cite too — a citation IS a
+           metadata-citation link — so .cross-ref only marks the kind, for
+           styling hooks and tests.  Written by Python, not a template, so
+           these must be component classes: Tailwind utilities emitted from a
+           .py file aren't reliably in the build's content scan.  The plain
+           .cross-ref class carries no rules of its own — it's the marker the
+           chip/no-link forms below and the tests key on. */
+        /* Extra target versions when the referent was amended while the citing
+           version stood still — same chip vocabulary as the permalink
+           hierarchy nav (_permalink_nav_item.html). */
+        .cross-ref-chip {
+            display: inline-block; margin-left: 3px; padding: 0 4px;
+            font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px;
+            background: rgb(var(--secondary-soft));
+        }
+        /* The curator's *intended* reading, hung off a printed citation whose id
+           also resolves (core.cross_refs._alternate_chips).  Amber = our
+           editorial input, deliberately unlike the secondary-tinted version
+           chip: this points at a DIFFERENT provision, not another version of the
+           same one.  The leading "≈" and the note-on-hover say why two appear. */
+        .cross-ref-alt {
+            display: inline-block; margin-left: 3px; padding: 0 4px;
+            font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px;
+            background: var(--highlight-soft); border: 1px dashed rgb(var(--ink-3));
+        }
+        .cross-ref-alt::before { content: "\2248\00a0"; opacity: 0.65; }
+        /* A citation whose printed id was never enacted (CCM no-link
+           correction): disclosed with the curator's note on hover, never
+           linked — there is nothing to link to. */
+        .cross-ref-nolink {
+            border-bottom: 1px dotted rgb(var(--ink-3)); cursor: help;
+        }
         .ui-action {
             display: inline-flex; align-items: center; gap: 6px;
             font-family: 'JetBrains Mono', ui-monospace, monospace;

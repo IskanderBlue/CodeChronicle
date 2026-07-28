@@ -15,6 +15,8 @@ from core.models import (
     CodeEditionProvisionVersion,
     CodeEditionProvisionVersionClause,
     EditionTransition,
+    ProvisionCrossReference,
+    ProvisionCrossReferenceAlternate,
     ProvisionDisposition,
     ProvisionMapping,
     ProvisionVersionTable,
@@ -796,6 +798,205 @@ class TestProvisionDispositions:
 
         call_command("load_edition", "--source", str(edition_json))
         assert ProvisionDisposition.objects.count() == 0
+
+
+@pytest.mark.django_db
+class TestCrossReferences:
+    """The top-level ``cross_references[]`` array (CCM ``e77daa68``)."""
+
+    #: v1 of 1.1.3.2. reads "…of this Code, other than Part 8, that will…" —
+    #: a citation whose surface text is nothing like its target's id, which is
+    #: exactly why the producer ships the text and we anchor on it.
+    SURFACE = "Part 8"
+
+    def _load(self, edition_json: Path, refs: list[dict]) -> None:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        data["cross_references"] = refs
+        edition_json.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(edition_json))
+
+    def _ref(self, **overrides) -> dict:
+        ref = {
+            "from_provision_id": "1.1.3.2.",
+            "from_division": "Division A",
+            "from_version": 1,
+            "surface_text": self.SURFACE,
+            "to_provision_id": "1.1.3.",
+            "to_division": "Division A",
+            "targets": [
+                {"version": 0, "effective_date": "1998-04-06",
+                 "ineffective_date": ""},
+            ],
+            "note": "",
+        }
+        ref.update(overrides)
+        return ref
+
+    def test_record_is_stored_and_anchored(self, edition_json: Path) -> None:
+        self._load(edition_json, [self._ref()])
+
+        record = ProvisionCrossReference.objects.get()
+        assert record.from_version.provision.provision_id == "1.1.3.2."
+        assert record.from_version.version == 1
+        assert record.to_provision is not None
+        assert record.to_provision.provision_id == "1.1.3."
+        assert record.surface_text == self.SURFACE
+        # Position is derived at load; the producer ships none.
+        assert record.occurrence == 0
+
+    def test_targets_are_stored_verbatim(self, edition_json: Path) -> None:
+        """CCM resolved the slice with the whole edition in hand — we store it,
+        we don't re-derive it (the ``pair_key`` discipline)."""
+        targets = [
+            {"version": 0, "effective_date": "1998-04-06",
+             "ineffective_date": "2000-01-01"},
+            {"version": 1, "effective_date": "2000-01-01", "ineffective_date": ""},
+        ]
+        self._load(edition_json, [self._ref(targets=targets)])
+        assert ProvisionCrossReference.objects.get().targets == targets
+
+    def test_no_link_correction_keeps_the_citation(self, edition_json: Path) -> None:
+        """The printed id was never enacted: null FK, note preserved."""
+        self._load(edition_json, [self._ref(
+            to_provision_id="", to_division="", targets=[],
+            note="As filed, this points to a Sentence never enacted.",
+        )])
+
+        record = ProvisionCrossReference.objects.get()
+        assert record.to_provision is None
+        assert record.targets == []
+        assert "never enacted" in record.note
+
+    def test_unlocatable_surface_loads_unanchored(self, edition_json: Path) -> None:
+        """The block-straddle case — stored, listed, but not linked inline."""
+        self._load(edition_json, [self._ref(surface_text="Section 9.41.")])
+        assert ProvisionCrossReference.objects.get().occurrence is None
+
+    def test_repeated_surface_anchors_in_emission_order(
+        self, edition_json: Path
+    ) -> None:
+        """v1 says "provision" several times; two records, two occurrences."""
+        self._load(edition_json, [
+            self._ref(surface_text="provision of this Code"),
+            self._ref(surface_text="provision for which"),
+        ])
+        occurrences = {
+            r.surface_text: r.occurrence
+            for r in ProvisionCrossReference.objects.all()
+        }
+        assert occurrences == {
+            "provision of this Code": 0, "provision for which": 0,
+        }
+
+    def test_producer_span_is_stored_and_suppresses_derivation(
+        self, edition_json: Path
+    ) -> None:
+        """The shipped shape: container + offsets, taken as given.
+
+        The span here deliberately points at a *different* occurrence than
+        surface matching would pick, so a stored ``start`` proves the load
+        didn't re-derive one.
+        """
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        html = next(
+            v["html"]
+            for p in data["provisions"] if p["provision_id"] == "1.1.3.2."
+            for v in p["versions"] if v["version"] == 1
+        )
+        start = html.rindex("provision")
+        self._load(edition_json, [self._ref(
+            surface_text="provision", container="body",
+            start=start, end=start + len("provision"),
+        )])
+
+        record = ProvisionCrossReference.objects.get()
+        assert record.container == "body"
+        assert (record.start, record.end) == (start, start + len("provision"))
+        assert record.occurrence is None
+
+    def test_table_record_anchors_against_the_table_string(
+        self, edition_json: Path
+    ) -> None:
+        """A ``table`` record's offsets index the table's own html, not the body."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        for p in data["provisions"]:
+            if p["provision_id"] != "1.1.3.2.":
+                continue
+            for v in p["versions"]:
+                if v["version"] == 1:
+                    v["tables"] = [{
+                        "table_id": "Table-1.1.3.2.",
+                        "caption": "Definitions",
+                        "images": [], "notes": "",
+                        "html": "<td>per Article 1.1.3.1.</td>",
+                        "order": 0,
+                    }]
+        edition_json.write_text(json.dumps(data), encoding="utf-8")
+
+        self._load(edition_json, [self._ref(
+            surface_text="Article 1.1.3.1.", container="table",
+            table_id="Table-1.1.3.2.", start=8, end=8 + len("Article 1.1.3.1."),
+        )])
+
+        record = ProvisionCrossReference.objects.get()
+        assert record.container == "table"
+        assert record.table_id == "Table-1.1.3.2."
+        assert record.start == 8
+
+    def test_unknown_target_is_dropped(self, edition_json: Path) -> None:
+        """The producer raises on unresolved citations, so a target absent from
+        the payload is an ingest mismatch — dropped, not stored half-resolved."""
+        self._load(edition_json, [self._ref(to_provision_id="99.99.99.99.")])
+        assert ProvisionCrossReference.objects.count() == 0
+
+    def test_absent_array_is_not_an_error(self, edition_json: Path) -> None:
+        """Editions built before CCM e77daa68 simply carry no citations."""
+        call_command("load_edition", "--source", str(edition_json))
+        assert ProvisionCrossReference.objects.count() == 0
+
+    def test_alternate_is_stored_as_a_child_row(self, edition_json: Path) -> None:
+        """The printed id leads; the curator's intended reading rides in
+        ``alternates[]`` and lands as a child row, its targets verbatim."""
+        alt_targets = [
+            {"version": 0, "effective_date": "1998-04-06", "ineffective_date": ""},
+        ]
+        self._load(edition_json, [self._ref(
+            to_provision_id="1.1.3.",  # what the Code printed
+            note="Prints 1.1.3.; the row appears to mean 1.1.",
+            alternates=[{
+                "to_provision_id": "1.1.",  # what we believe was meant
+                "to_division": "Division A",
+                "targets": alt_targets,
+            }],
+        )])
+
+        record = ProvisionCrossReference.objects.get()
+        assert record.to_provision is not None
+        assert record.to_provision.provision_id == "1.1.3."  # primary = printed
+        alt = record.alternates.get()
+        assert alt.to_provision is not None
+        assert alt.to_provision.provision_id == "1.1."  # alternate = intended
+        assert alt.targets == alt_targets  # stored verbatim, never re-derived
+
+    def test_absent_alternates_key_yields_no_child_rows(
+        self, edition_json: Path
+    ) -> None:
+        """``alternates`` is omitted when empty — the common case."""
+        self._load(edition_json, [self._ref()])
+        assert ProvisionCrossReferenceAlternate.objects.count() == 0
+
+    def test_unknown_alternate_dropped_primary_survives(
+        self, edition_json: Path
+    ) -> None:
+        """An intended id absent from the payload drops only the alternate; the
+        printed link still stands (unlike a missing *primary*, which drops the
+        whole record)."""
+        self._load(edition_json, [self._ref(
+            alternates=[{"to_provision_id": "99.99.99.", "to_division": "",
+                         "targets": []}],
+        )])
+        assert ProvisionCrossReference.objects.count() == 1
+        assert ProvisionCrossReferenceAlternate.objects.count() == 0
 
 
 @pytest.mark.django_db

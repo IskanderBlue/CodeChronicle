@@ -1,0 +1,37 @@
+{% comment %} A list of within-edition cross-references, as a collapsed disclosure.
+
+   Context: `entries` — rows from `core.cross_refs.cites` (outbound) or
+   `.cited_by` (inbound), each {provision_id, division, url, title, and either
+   `surface_text` or `version`}; `label` — the heading text; `count_label` —
+   optional singular/plural noun.
+
+   Two jobs.  Outbound: the only cross-reference affordance on a version
+   rendered as page images, where there is no html to link into.  Inbound: the
+   fan-in, which no printed code or e-Laws page carries — only a whole-edition
+   index can answer "what pointed here".
+{% endcomment %}
+{% if entries %}
+<div class="mt-4 border-t border-rule pt-3" x-data="{ open: false }">
+    <button type="button" @click.stop="open = !open"
+        class="flex cursor-pointer items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3 hover:text-ink">
+        <span x-text="open ? '&#9662;' : '&#9656;'" class="text-[10px]"></span>
+        {{ label }} ({{ entries|length }})
+    </button>
+    <ul x-show="open" x-cloak class="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-l border-rule pl-2">
+        {% for entry in entries %}
+        <li class="text-[13px]">
+            {% if entry.url %}
+            <a href="{{ entry.url }}" @click.stop class="font-mono ui-cite" title="{{ entry.title|default:entry.surface_text }}">
+                {% if entry.division %}<span class="text-ink-3">{{ entry.division }}</span> {% endif %}{{ entry.provision_id }}{% if entry.version_label %}<span class="text-ink-3"> {{ entry.version_label }}</span>{% endif %}
+            </a>
+            {% else %}
+            <span class="font-mono text-ink-3">{{ entry.provision_id }}</span>
+            {% endif %}
+            {% for alt in entry.alternates %}
+            <a href="{{ alt.url }}" @click.stop class="cross-ref-alt ui-cite font-mono" title="Reading we believe was intended: {{ alt.title }}">{{ alt.provision_id }}</a>
+            {% endfor %}
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}

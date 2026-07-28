@@ -85,6 +85,12 @@ def execute_search(params: dict[str, Any]) -> dict[str, Any]:
         "transition_provision__provision",
     ).prefetch_related(
         "tables",
+        # Within-edition citations + the provision each points at, so the
+        # formatter can link them inline without a query per result.  The
+        # alternate (curator's intended reading) rides along so the printed
+        # link can carry its corrected-reading chip without another query.
+        "cross_references__to_provision",
+        "cross_references__alternates__to_provision",
         "contributing_clauses__regulation",
         # Through-set (apply_order ordered) so the result version's
         # last_contributing_clause reads from cache rather than re-querying.

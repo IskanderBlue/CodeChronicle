@@ -24,7 +24,8 @@ populate its provenance models for that edition.
   "provisions": [ ... ],
   "provision_mappings": [ ... ],
   "provision_discontinuations": [ ... ],
-  "mapping_coverage": [ ... ]
+  "mapping_coverage": [ ... ],
+  "cross_references": [ ... ]
 }
 ```
 
@@ -774,6 +775,108 @@ situation honestly renders "transition not yet mapped".
 > OBC_2006 and OBC_2012 payloads each declare their incoming transition
 > (verified against `data/outputs`). The manual-insert stopgap is
 > retired; a reload restores coverage natively.
+
+## `cross_references[]`
+
+Resolved internal citations: one record per citation in a provision
+version's body, already resolved to the target version(s) in force while
+the citing version stood.
+
+```json
+{
+  "from_provision_id": "3.2.2.10.", "from_division": "B", "from_version": 0,
+  "surface_text": "Subsection 3.2.5.",
+  "container": "body", "table_id": "", "start": 412, "end": 429,
+  "to_provision_id": "3.2.5.", "to_division": "B",
+  "targets": [
+    {"version": 0, "effective_date": "2006-12-31", "ineffective_date": "2010-01-01"}
+  ],
+  "alternates": [],
+  "note": ""
+}
+```
+
+`to_provision_id` is **what the Code printed** — never a curator's silent
+correction (that moved to `alternates[]`; see below). `alternates[]` is
+**omitted when empty**, not `[]` — read it as `record.get("alternates", [])`.
+
+Ingested into `ProvisionCrossReference`, one row per record; each alternate
+into a child `ProvisionCrossReferenceAlternate` row.
+
+### Position: `container` + `start` / `end`
+
+- **`container`** — which emitted string the offsets index: `"body"` (the
+  version's `html`), `"table"` (a `tables[].html`), or `"note"` (that
+  table's `tables[].notes`). `table_id` names the table for the latter
+  two, in the shipped `Table-4.1.8.6.` form; empty for `body`. The three
+  are separately-emitted strings — an offset never indexes a
+  concatenation.
+- **`start` / `end`** — character offsets into that string, verbatim from
+  the producer. CC does **no matching**: rendering is `html[start:end]`,
+  wrapped. This is the settled shape (agreed 2026-07-23, CCM
+  `tasks/cross-ref-consumer-gaps.md` §Decisions); it replaces an earlier
+  `occurrence`-index proposal, which was a lossy compression of exactly
+  this information.
+- **A span may contain markup.** A citation printed across a block
+  boundary spans `Section</p><p>9.38.`. That is not an error and nothing
+  is dropped: `core.cross_refs` links one anchor per text run inside the
+  span (a single `<a>` would nest a block element in an inline one), with
+  the fan-out chips attached once, to the last run.
+- **Pre-span payloads** (built before CCM shipped offsets) carry only
+  `surface_text`. For those the load derives a position per container —
+  n-th literal occurrence, longest surface first with claimed spans masked
+  so `Sentence 3.7.4.3.` can't anchor onto `Sentence 3.7.4.3.(5)` — and
+  stores it as `occurrence`. That path is a **fallback and lossy**: it
+  cannot see the 176 of 11,454 records (1.5%; 170/0/6 across OBC
+  1997/2006/2012) whose text straddles a block boundary, nor the handful
+  of surfaces that also appear as *external* citations the detector
+  excluded per-occurrence. Such records store `occurrence = null` —
+  listed under "cites"/"cited by", not linked inline. The loader logs both
+  counts; the path retires when the editions rebuild with spans.
+
+### Everything else
+
+- **`targets` is stored verbatim** — the producer resolved the slice with
+  the whole edition's timeline in hand, so CC never re-derives it (the
+  same discipline as `EditionTransition`'s `pair_key`).
+- **Provision→provision only.** A `Table 9.10.14.4.` citation resolves to
+  the provision that *owns* the table; `surface_text` keeps what was
+  printed. Tables and notes are containers, never targets.
+- **Curator corrections travel in `alternates[]`.** When a record carries a
+  `note`, `to_provision_id` is still *what the Code printed*; the reading the
+  curator believes was intended (if any) rides in `alternates[]`. Each element
+  has the same three keys a primary link has — `to_provision_id`,
+  `to_division`, `targets[]` — resolved and date-sliced by the producer, so
+  the alternate's `targets` is stored **verbatim** exactly as the primary's is.
+  There is no per-alternate note; the record's single `note` explains the pair.
+  Placement is producer-derived, never re-derived by CC: if the printed id
+  resolves it is the primary and the curator's reading is the alternate; if the
+  printed id does not resolve, the curator's reading *is* the primary (no
+  alternate); if neither resolves, the record ships an empty target with the
+  `note` alone. `len(alternates) <= 1` today, but it is a list — ingest all of
+  them. Each becomes a `ProvisionCrossReferenceAlternate` child; CC renders the
+  printed target as the anchor and each alternate as a `.cross-ref-alt` chip
+  whose tooltip carries the `note`.
+- **No-link records** (`to_provision_id: ""`, `targets: []`, no `alternates`)
+  are the residual case where the printed id was never enacted and no better
+  reading could be established. Stored with a null FK; the surface text and
+  `note` still render, unlinked.
+- **Tables no longer resolve to a grandparent.** A citation to a table whose
+  article the edition never enacted used to land on the table's grandparent
+  provision with an empty `note` (reading as an ordinary link). The producer no
+  longer walks a table id up the trunk; those records are now adjudicated and
+  carry a `note` (and, where a better reading exists, an `alternates[]` entry).
+  Nothing for CC to special-case — the targets simply got correct.
+- **Rendering** differs by surface, because the two ask different
+  questions. Search has a date, so each citation links the single target
+  version in force on it. The permalink page pins a *version*, so a
+  citation whose referent was amended mid-window fans out into one link
+  per target version — the presentation the hierarchy nav already uses
+  (`_permalink_nav_item.html`). 39% of OBC 2012 records are multi-target.
+- Linkification runs **before** `highlight_terms`; the reverse order lets
+  `<mark>` split a surface string out from under the fallback matcher.
+- The **fan-in** ("cited by") is CC-derived from the same rows, filtered to
+  citing versions whose in-force window overlaps the one on screen.
 
 ## `verification_coverage[]` — NOT ingested for e-Laws editions
 

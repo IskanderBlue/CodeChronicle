@@ -2,8 +2,9 @@
 Core models for CodeChronicle.
 """
 
+import re
 from datetime import date, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
@@ -12,6 +13,22 @@ from django.utils import timezone
 from djstripe.models import Customer, Subscription
 
 from core.provision_notes import GroupedNotes, group_notes
+
+
+def natural_provision_key(provision_id: str) -> tuple[tuple[int, int, str], ...]:
+    """Sort key that orders 'A.1.10.' after 'A.1.9.' (numeric segments).
+
+    Each segment is wrapped as ``(kind, number, text)`` so numeric and word
+    segments never compare directly — a subtree can mix shapes like 'Part 3'
+    and '3.17.', and a bare ``(int | str)`` tuple would raise ``TypeError`` on
+    the cross-type compare.  Lives here rather than in a view because every
+    surface that lists provisions needs the same order.
+    """
+    parts = re.split(r"(\d+)", provision_id or "")
+    return tuple(
+        (0, int(p), "") if p.isdigit() else (1, 0, p.lower())
+        for p in parts if p
+    )
 
 
 class UserManager(BaseUserManager["User"]):
@@ -262,6 +279,14 @@ class EngagementEvent(models.Model):
         PROVISION_VERSION_VIEW = "provision_version_view", "Provision version view"
         REGULATION_VIEW = "regulation_view", "Regulation view"
         RESULT_LINK_CLICK = "result_link_click", "Result link click"
+        # A free-tier user met the content gate: they asked for something (or
+        # were shown that something exists) that their tier can't open.  The
+        # conversion signal — every other event type records value delivered,
+        # this one records value withheld.  ``context.surface`` distinguishes
+        # an explicit attempt on a known target (permalink / regulation_detail
+        # / edition_chain / search_viewer) from an impression (search_results,
+        # where the user only saw a locked count).
+        LOCKED_CONTENT_VIEW = "locked_content_view", "Locked content view"
 
     user = models.ForeignKey(
         User,
@@ -816,6 +841,7 @@ class CodeEditionProvision(models.Model):
     # Reverse relations (see note on CodeEdition).
     versions: "models.Manager[CodeEditionProvisionVersion]"
     children: "models.Manager[CodeEditionProvision]"
+    cited_by: "models.Manager[ProvisionCrossReference]"
     # FK id-shadows, plugin-only — declared for Pyright.
     edition_id: int
     parent_id: int | None
@@ -916,6 +942,12 @@ class CodeEditionProvisionVersion(models.Model):
 
     # Reverse relations (see note on CodeEdition).
     tables: "models.Manager[ProvisionVersionTable]"
+    cross_references: "models.Manager[ProvisionCrossReference]"
+    # Render-time annotations, not DB fields: the body with within-edition
+    # citations linked, and the list form of the same records
+    # (``core.cross_refs.annotate_versions``).
+    linked_html: str
+    cross_ref_cites: list[dict[str, Any]]
     codeeditionprovisionversionclause_set: (
         "models.Manager[CodeEditionProvisionVersionClause]"
     )
@@ -985,6 +1017,47 @@ class CodeEditionProvisionVersion(models.Model):
         return self.effective_date <= day and (
             self.ineffective_date is None or day < self.ineffective_date
         )
+
+    def overlaps(self, other: "CodeEditionProvisionVersion") -> bool:
+        """Do this version's in-force window and ``other``'s overlap?
+
+        Half-open ``[effective, ineffective)``; ``None`` is an open end.  A
+        *zero-duration* version (effective == ineffective, see
+        :attr:`never_in_force`) is a window of length zero — it overlaps
+        nothing under the plain test, so such a version would silently drop
+        out of any overlap-driven surface.  These do occur: a base-edition v0
+        superseded on the edition's own start date (e.g. OBC 2012 B 1.3.1.2.
+        v0, 2014-01-01 → 2014-01-01).  Treat it as the instant {effective} and
+        ask whether the other window contains it, so the base version still
+        appears alongside its later siblings.
+
+        Used by the permalink hierarchy nav (``views.regulation._related_links``)
+        and the cross-reference "cited by" panel (``core.cross_refs``) — both
+        answer "could a reader of this version have been looking at that one".
+        """
+        self_point = (
+            self.ineffective_date is not None
+            and self.ineffective_date == self.effective_date
+        )
+        other_point = (
+            other.ineffective_date is not None
+            and other.ineffective_date == other.effective_date
+        )
+        if self_point and other_point:
+            return self.effective_date == other.effective_date
+        if self_point:
+            return other.in_force_on(self.effective_date)
+        if other_point:
+            return self.in_force_on(other.effective_date)
+        self_before = (
+            self.ineffective_date is not None
+            and self.ineffective_date <= other.effective_date
+        )
+        other_before = (
+            other.ineffective_date is not None
+            and other.ineffective_date <= self.effective_date
+        )
+        return not self_before and not other_before
 
     @property
     def never_in_force(self) -> bool:
@@ -1113,6 +1186,11 @@ class CodeEditionProvisionVersionClause(models.Model):
 class ProvisionVersionTable(models.Model):
     """Table content associated with a provision version."""
 
+    # Render-time annotations, not DB fields: the same strings with
+    # within-edition citations linked (``core.cross_refs.annotate_tables``).
+    linked_html: str
+    linked_notes: str
+
     version = models.ForeignKey(
         CodeEditionProvisionVersion, on_delete=models.CASCADE, related_name="tables",
     )
@@ -1135,6 +1213,156 @@ class ProvisionVersionTable(models.Model):
 
     def __str__(self):
         return f"{self.version} — {self.table_id}"
+
+
+class ProvisionCrossReference(models.Model):
+    """One internal citation in a provision version's body, resolved upstream.
+
+    A provision's text cites others of the same code ("Sentence 3.2.1.1.(2)",
+    "Table 9.10.14.4.", "Subsection 3.2.6.").  CCM detects each citation and —
+    with the whole edition's version timeline in hand at assembly — resolves it
+    to the *specific target version(s) in force while the citing version stood*
+    (contract §"Top-level: ``cross_references[]``").
+
+    ``targets`` is that resolution, stored exactly as shipped: a list of
+    ``{"version": int, "effective_date": iso, "ineffective_date": iso|""}``
+    already clipped to the citing version's window.  It is **not** re-derived
+    here — the producer answered it once, authoritatively, and a second
+    derivation is the divergence :class:`EditionTransition`'s ``pair_key`` rule
+    exists to prevent.  Several entries mean the referent was amended while the
+    citing version stood still (39% of OBC 2012 records); the surface picks the
+    one in force on the date on screen.
+
+    ``to_provision`` is **what the Code printed** — the citation's literal id,
+    resolved.  On a record carrying a curator ``note`` this used to be our
+    corrected reading; the producer moved that reading into ``alternates`` and
+    leads with the printed id (contract §``cross_references[]``), because the
+    Crown's words outrank our reading of them and the reader should see both.
+    It is null only for a **no-link** correction: the printed id was never
+    enacted, so there is nothing to point at, but ``surface_text`` and ``note``
+    still ship so the citation is disclosed rather than silently dropped.
+
+    ``alternates`` (reverse of :class:`ProvisionCrossReferenceAlternate`) holds
+    the curator's *intended* reading when the printed id resolves but a human
+    judged a different provision was meant — a transposed standard reference, a
+    renumber the row never caught up with.  The renderer links the printed id
+    as the primary anchor and hangs each alternate off it as a chip, the
+    ``note`` explaining the divergence; ignoring it would silently link ~150
+    corrected citations to the uncorrected provision, with no error to catch it.
+
+    ``container`` names which emitted string the citation sits in — the
+    version's own ``html``, or a table's ``html`` / ``notes`` (``table_id``
+    identifies which).  ``start``/``end`` are character offsets into that
+    string, shipped by the producer, which is what makes the anchor exact: a
+    span may legitimately contain markup when the printed citation straddles a
+    block boundary (``Section</p><p>9.38.``), and the renderer splits the
+    anchor across the runs rather than dropping the link.
+
+    ``occurrence`` is the pre-span fallback: for a payload built before CCM
+    shipped spans, the load derives which literal occurrence of
+    ``surface_text`` this record anchors to (:func:`core.cross_refs.assign_occurrences`).
+    ``None`` there means the text could not be located — the citation still
+    counts for the "cites"/"cited by" lists but is not linked inline.  Records
+    carrying ``start``/``end`` never consult it.
+    """
+
+    # FK id-shadows, plugin-only — declared for Pyright.
+    from_version_id: int
+    to_provision_id: int | None
+    # Reverse relation — declared for Pyright.
+    alternates: "models.Manager[ProvisionCrossReferenceAlternate]"
+
+    class Container(models.TextChoices):
+        BODY = "body", "Body"
+        TABLE = "table", "Table"
+        NOTE = "note", "Table note"
+
+    from_version = models.ForeignKey(
+        CodeEditionProvisionVersion,
+        on_delete=models.CASCADE,
+        related_name="cross_references",
+    )
+    to_provision = models.ForeignKey(
+        CodeEditionProvision,
+        null=True, blank=True,
+        on_delete=models.CASCADE,
+        related_name="cited_by",
+    )
+    surface_text = models.CharField(max_length=200)
+    container = models.CharField(
+        max_length=10, choices=Container.choices, default=Container.BODY,
+    )
+    #: Owning table for a ``table``/``note`` record, in the shipped
+    #: ``Table-4.1.8.6.`` form (matches ``ProvisionVersionTable.table_id``).
+    table_id = models.CharField(max_length=200, blank=True, default="")
+    start = models.PositiveIntegerField(null=True, blank=True)
+    end = models.PositiveIntegerField(null=True, blank=True)
+    occurrence = models.PositiveSmallIntegerField(null=True, blank=True)
+    targets = models.JSONField(default=list, blank=True)
+    note = models.TextField(blank=True, default="")
+    #: Emission order within the citing version — a stable render order for
+    #: the "cites" list, and the tiebreak when two records share a surface.
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "provision_cross_references"
+        ordering = ["order"]
+        indexes = [
+            models.Index(fields=["to_provision"]),
+            models.Index(fields=["from_version"]),
+        ]
+
+    def __str__(self):
+        target = self.to_provision or "(no link)"
+        return f"{self.from_version} → {target} ({self.surface_text})"
+
+
+class ProvisionCrossReferenceAlternate(models.Model):
+    """A curator's *intended* reading of a citation whose printed id resolves.
+
+    The parent :class:`ProvisionCrossReference` leads with what the Code
+    printed; when a human judged a different provision was actually meant — and
+    the printed id nonetheless resolves, so a redirect would break a link that
+    was never wrong and a no-link would drop one that resolves fine — the
+    intended reading rides here instead of replacing the primary.  The reader
+    gets both: printed target as the anchor, this as a chip, the parent's
+    ``note`` saying why two appear (contract §``cross_references[]`` →
+    ``alternates[]``).
+
+    ``targets`` is stored verbatim, exactly as the primary's is — the producer
+    date-sliced it against the citing version's window with the same code path,
+    so it is never re-derived here.  ``to_provision`` may be null on the same
+    terms as the primary (an intended id that does not itself resolve), though
+    in practice the intended reading is the one that does.  The field is a list
+    because "printed vs intended" is unlikely to be the only case, but nothing
+    yet emits more than one (``len(alternates) <= 1`` today).
+    """
+
+    # FK id-shadows, plugin-only — declared for Pyright.
+    cross_reference_id: int
+    to_provision_id: int | None
+
+    cross_reference = models.ForeignKey(
+        ProvisionCrossReference,
+        on_delete=models.CASCADE,
+        related_name="alternates",
+    )
+    to_provision = models.ForeignKey(
+        CodeEditionProvision,
+        null=True, blank=True,
+        on_delete=models.CASCADE,
+        related_name="cited_as_alternate",
+    )
+    targets = models.JSONField(default=list, blank=True)
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "provision_cross_reference_alternates"
+        ordering = ["order"]
+        indexes = [models.Index(fields=["cross_reference"])]
+
+    def __str__(self):
+        return f"{self.cross_reference_id} alt→ {self.to_provision or '(no link)'}"
 
 
 class ProvisionMapping(models.Model):

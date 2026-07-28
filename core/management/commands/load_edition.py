@@ -10,6 +10,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.models import Count, Q
 
+from core.cross_refs import assign_occurrences
 from core.models import (
     Code,
     CodeEdition,
@@ -19,6 +20,8 @@ from core.models import (
     CorpusCurrency,
     EditionTransition,
     ProvinceCode,
+    ProvisionCrossReference,
+    ProvisionCrossReferenceAlternate,
     ProvisionDisposition,
     ProvisionMapping,
     ProvisionVersionTable,
@@ -209,6 +212,10 @@ class Command(BaseCommand):
             coverage_count = self._load_mapping_coverage(
                 code, data.get("mapping_coverage", []),
             )
+            xref_count, xref_unanchored = self._load_cross_references(
+                prov_lookup, version_lookup, data.get("provisions", []),
+                data.get("cross_references", []),
+            )
 
         # Refresh the masthead provenance stamp once per load — outside the
         # atomic block, so it snapshots committed data.  (Computing the
@@ -219,7 +226,8 @@ class Command(BaseCommand):
         logger.info(
             "Loaded %s %s: %d regulations, %d clauses, %d assets, %d provisions, "
             "%d versions, %d version-clause links, %d tables, %d mappings, "
-            "%d dispositions, %d covered transitions; corpus current to %s",
+            "%d dispositions, %d covered transitions, %d cross-references "
+            "(%d unanchored); corpus current to %s",
             code_str,
             edition_str,
             len(reg_lookup),
@@ -232,6 +240,8 @@ class Command(BaseCommand):
             mapping_count,
             disposition_count,
             coverage_count,
+            xref_count,
+            xref_unanchored,
             currency.data_current_to,
         )
 
@@ -854,6 +864,208 @@ class Command(BaseCommand):
             )
 
         return len(mappings_to_create)
+
+    def _container_html(
+        self, provisions: list[dict[str, Any]]
+    ) -> dict[tuple[str, str, int], dict[tuple[str, str], str]]:
+        """Every emitted string a citation span can index, per version.
+
+        Keyed ``(container, table_id)``: ``("body", "")`` is the version's own
+        html, ``("table", tid)`` / ``("note", tid)`` a table's html / notes.
+        Built from the payload (not the ORM) because this runs mid-load, before
+        the table rows are queryable.
+        """
+        strings: dict[tuple[str, str, int], dict[tuple[str, str], str]] = {}
+        for prov_data in provisions:
+            provision_id = prov_data["provision_id"]
+            division = prov_data.get("division", "")
+            for ver_data in prov_data.get("versions", []):
+                by_container: dict[tuple[str, str], str] = {
+                    ("body", ""): ver_data.get("html", "") or "",
+                }
+                for tbl in ver_data.get("tables", []):
+                    table_id = tbl["table_id"]
+                    by_container[("table", table_id)] = tbl.get("html", "") or ""
+                    by_container[("note", table_id)] = tbl.get("notes", "") or ""
+                strings[(provision_id, division, ver_data["version"])] = by_container
+        return strings
+
+    def _load_cross_references(
+        self,
+        prov_lookup: dict[tuple[str, str], CodeEditionProvision],
+        version_lookup: dict[tuple[str, str, int], CodeEditionProvisionVersion],
+        provisions: list[dict[str, Any]],
+        cross_references: list[dict[str, Any]],
+    ) -> tuple[int, int]:
+        """Persist the top-level ``cross_references[]`` array.
+
+        Each record is one resolved internal citation (contract §
+        ``cross_references[]``).  Two things are stored **verbatim** because
+        the producer resolved them with the whole edition in hand, and a second
+        derivation here could only disagree: ``targets`` (the target's version
+        timeline clipped to the citing version's window — the same discipline
+        as the transition ``pair_key``) and the ``container`` / ``start`` /
+        ``end`` span saying exactly which characters of which emitted string
+        the citation occupies.
+
+        Pre-span payloads (built before CCM shipped offsets) carry neither, so
+        ``assign_occurrences`` derives a position per container by matching the
+        surface text.  That path is lossy — see ``core.cross_refs`` — and dies
+        with the next edition rebuild.
+
+        A record whose ``to_provision_id`` is empty is a curator **no-link**
+        correction (the printed id was never enacted) — stored with a null FK
+        so the citation and its note still reach the reader.
+        """
+        container_html = self._container_html(provisions)
+        # Grouped per (version, container) — the unit ``assign_occurrences``
+        # searches.  Keyed by lookup tuple rather than model instance:
+        # ``Model.__hash__`` raises on an unsaved row, and this runs inside the
+        # transaction that created them.
+        grouped: dict[
+            tuple[tuple[str, str, int], str, str], list[ProvisionCrossReference]
+        ] = {}
+        missing_targets = 0
+        missing_alt_targets = 0
+        spanned = 0
+        # Curator "intended reading" specs, keyed by ``id()`` of the parent
+        # record — the records are unsaved here (``Model.__hash__`` raises on a
+        # null pk), so ``id()`` is the only safe handle until ``bulk_create``
+        # backfills the pks.
+        alt_specs: dict[
+            int, list[tuple[CodeEditionProvision | None, list[dict[str, Any]]]]
+        ] = {}
+
+        for order, ref_data in enumerate(cross_references):
+            from_key = (
+                ref_data["from_provision_id"],
+                ref_data.get("from_division", ""),
+                ref_data["from_version"],
+            )
+            version = version_lookup.get(from_key)
+            if version is None:
+                logger.warning(
+                    "Cross-reference from unknown version %s/%s v%s; skipping",
+                    *from_key,
+                )
+                continue
+
+            to_provision: CodeEditionProvision | None = None
+            to_id = ref_data.get("to_provision_id", "")
+            if to_id:
+                to_provision = prov_lookup.get(
+                    (to_id, ref_data.get("to_division", ""))
+                )
+                if to_provision is None:
+                    # The producer raises on unresolved citations, so this is a
+                    # payload/ingest mismatch rather than expected data.
+                    missing_targets += 1
+                    logger.warning(
+                        "Cross-reference %s -> %s: target provision not found",
+                        ref_data["from_provision_id"], to_id,
+                    )
+                    continue
+
+            container = ref_data.get("container") or ProvisionCrossReference.Container.BODY
+            table_id = ref_data.get("table_id", "")
+            start, end = ref_data.get("start"), ref_data.get("end")
+            if start is not None and end is not None:
+                spanned += 1
+            record = ProvisionCrossReference(
+                from_version=version,
+                to_provision=to_provision,
+                surface_text=ref_data["surface_text"],
+                container=container,
+                table_id=table_id,
+                start=start,
+                end=end,
+                targets=ref_data.get("targets", []),
+                note=ref_data.get("note", ""),
+                order=order,
+            )
+            grouped.setdefault((from_key, container, table_id), []).append(record)
+
+            # ``alternates`` is omitted when empty (contract §cross_references[]),
+            # so ``.get`` with a default, not ``[key]``.  Each carries the same
+            # three keys the primary does; store ``targets`` verbatim.
+            resolved_alts: list[
+                tuple[CodeEditionProvision | None, list[dict[str, Any]]]
+            ] = []
+            for alt in ref_data.get("alternates", []):
+                alt_id = alt.get("to_provision_id", "")
+                alt_provision = (
+                    prov_lookup.get((alt_id, alt.get("to_division", "")))
+                    if alt_id else None
+                )
+                if alt_id and alt_provision is None:
+                    missing_alt_targets += 1
+                    logger.warning(
+                        "Cross-reference %s -> %s: alternate provision not found",
+                        ref_data["from_provision_id"], alt_id,
+                    )
+                    continue
+                resolved_alts.append((alt_provision, alt.get("targets", [])))
+            if resolved_alts:
+                alt_specs[id(record)] = resolved_alts
+
+        to_create: list[ProvisionCrossReference] = []
+        unanchored = 0
+        for (from_key, container, table_id), records in grouped.items():
+            html = container_html.get(from_key, {}).get((container, table_id), "")
+            unanchored += assign_occurrences(html, records)
+            to_create.extend(records)
+
+        if to_create:
+            ProvisionCrossReference.objects.bulk_create(to_create)
+
+        # Alternates need the parent pk, so build them after the parents land.
+        alternates_to_create: list[ProvisionCrossReferenceAlternate] = []
+        for record in to_create:
+            for alt_order, (alt_provision, alt_targets) in enumerate(
+                alt_specs.get(id(record), [])
+            ):
+                alternates_to_create.append(
+                    ProvisionCrossReferenceAlternate(
+                        cross_reference=record,
+                        to_provision=alt_provision,
+                        targets=alt_targets,
+                        order=alt_order,
+                    )
+                )
+        if alternates_to_create:
+            ProvisionCrossReferenceAlternate.objects.bulk_create(alternates_to_create)
+            logger.info(
+                "%d cross-references carry a curator's intended-reading alternate",
+                len(alternates_to_create),
+            )
+
+        if unanchored:
+            # Pre-span payloads only: citations straddling a block boundary in
+            # the emitted html (CCM matched on normalised text).  They still
+            # list under "cites"/"cited by", they just don't link inline.
+            logger.warning(
+                "%d of %d cross-references carry no producer span and could "
+                "not be anchored by surface text; they render as plain text",
+                unanchored, len(to_create),
+            )
+        if to_create and spanned != len(to_create):
+            logger.info(
+                "%d of %d cross-references carry producer spans",
+                spanned, len(to_create),
+            )
+        if missing_targets:
+            logger.warning(
+                "%d cross-references named a target provision absent from this "
+                "payload and were dropped", missing_targets,
+            )
+        if missing_alt_targets:
+            logger.warning(
+                "%d cross-references named an alternate provision absent from "
+                "this payload; the alternate was dropped (printed link stands)",
+                missing_alt_targets,
+            )
+
+        return len(to_create), unanchored
 
     def _load_provision_dispositions(
         self,
