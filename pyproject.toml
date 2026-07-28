@@ -29,9 +29,6 @@ dependencies = [
     # backend auto-detects v3 when installed; no ENGINE change needed.
     "psycopg[binary]>=3.1",
 
-    # Building code search
-    "building-code-mcp>=1.2.0",
-
     # LLM
     "anthropic>=0.18",
 
@@ -110,7 +107,6 @@ exclude = ['/migrations/', '^venv/']
 # of being hidden by a blanket ignore_missing_imports.
 [[tool.mypy.overrides]]
 module = [
-    "building_code_mcp.*",
     "allauth.*",
     "djstripe.*",
     "coloured_logger",

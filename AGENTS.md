@@ -4,7 +4,7 @@
 
 ### Project
 - CodeChronicle: Django 5 app for historical Canadian building code search (OBC/NBC).
-- Natural-language queries are parsed via Anthropic tool calling into structured params (date, province, keywords, building_type), then searched with `building-code-mcp`.
+- Natural-language queries are parsed via Anthropic tool calling into structured params (date, province, keywords, building_type), then searched against the in-force provision versions in the database.
 
 ### Key Commands (run inside `venv/`)
 - Install: `pip install -e ".[dev]"`
@@ -20,7 +20,7 @@
   - `core/`: custom `User`, search history, cache/prompt models, rate limiting, HTMX views.
   - `api/`: Django Ninja API (`/api/search`, `/api/history`, `/api/codes`, `/api/health`).
 - `config/`: `code_metadata.py` (`get_code_display_name()`), `keywords.py`.
-- Flow: Rate limit -> LLM parse -> cache -> `execute_search()` (per-version in-force query across all editions of the province's code -> `score_versions()` -> `_group_transitions()`) -> format -> history save. No edition-resolution step; `building-code-mcp` supplies only `SYNONYMS`.
+- Flow: Rate limit -> LLM parse -> cache -> `execute_search()` (per-version in-force query across all editions of the province's code -> `score_versions()` -> `_group_transitions()`) -> format -> history save. No edition-resolution step; query-term synonyms come from `config/synonyms.py` (vendored from the retired `building-code-mcp` dependency).
 - Frontend: Django templates + HTMX + Alpine.js + Tailwind (CDN). Partials in `templates/partials/`.
 
 ### Settings & Env

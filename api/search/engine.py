@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from math import log
 from typing import Any
 
-from building_code_mcp.mcp_server import SYNONYMS
 from django.db.models import QuerySet
 
+from config.synonyms import SYNONYMS
 from core.models import CodeEditionProvisionVersion
 
 #: Cards shown to the user.  Applied by the orchestrator *after* grouping, so a

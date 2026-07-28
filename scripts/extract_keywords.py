@@ -4,6 +4,8 @@ import os
 
 from coloured_logger import Logger
 
+from config.synonyms import SYNONYMS
+
 logger = Logger(__name__)
 
 
@@ -31,18 +33,13 @@ def extract_keywords():
     maps_dir = os.path.abspath(os.path.join("..", "CodeChronicleMapping", "data", "outputs"))
     map_files = glob.glob(os.path.join(maps_dir, "*.json"))
 
-    # Derive synonyms dynamically from the mcp_server.py
-    try:
-        from building_code_mcp.mcp_server import SYNONYMS
-
-        common_synonyms = set()
-        for key, vals in SYNONYMS.items():
-            common_synonyms.add(key.lower())
-            for v in vals:
-                common_synonyms.add(v.lower())
-    except ImportError:
-        logger.warning("Could not import SYNONYMS from building_code_mcp. Falling back to empty.")
-        common_synonyms = set()
+    # Seed the vocabulary with both sides of every synonym pair, so a user's
+    # query term survives expansion even when the corpus never uses it.
+    common_synonyms = set()
+    for key, vals in SYNONYMS.items():
+        common_synonyms.add(key.lower())
+        for v in vals:
+            common_synonyms.add(v.lower())
 
     keywords = set(common_synonyms)
 
