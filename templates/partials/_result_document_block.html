@@ -137,6 +137,15 @@
 </div>
 {% endif %}
 
+{% comment %} Within-edition citations.  The HTML body carries them inline
+   (linked to the version in force on the query date); a page-image body has no
+   text to link into, so its outbound citations list here instead.  "Cited by"
+   is the fan-in — shown on every render mode. {% endcomment %}
+{% if result.page_images and result.cross_ref_cites %}
+{% include "partials/_cross_ref_list.html" with entries=result.cross_ref_cites label="Cites" %}
+{% endif %}
+{% include "partials/_cross_ref_list.html" with entries=result.cited_by label="Cited by" %}
+
 {# Provenance & legal notes — caveats/annotations sit directly under the text. #}
 {% if result.version %}
 {% include "partials/_version_notes.html" with version=result.version %}
@@ -178,13 +187,14 @@
     {% if table.images %}
     {% include "partials/_document_images.html" with entries=table.images alt_text=table.table_id container_class="table-container" %}
     {% elif table.html %}
+    {# `linked_html` / `linked_notes`: same strings, citations linked (see _table.html). #}
     <div class="overflow-y-auto table-container prose dark:prose-invert max-w-none provision-table-html" style="max-height: 500px;">
-        {{ table.html|safe }}
+        {% if table.linked_html %}{{ table.linked_html|safe }}{% else %}{{ table.html|safe }}{% endif %}
     </div>
     {% endif %}
     {% if table.notes %}
     <div class="mt-2 border-t border-rule pt-2 text-xs text-ink-3">
-        {{ table.notes|safe }}
+        {% if table.linked_notes %}{{ table.linked_notes|safe }}{% else %}{{ table.notes|safe }}{% endif %}
     </div>
     {% endif %}
     </div>

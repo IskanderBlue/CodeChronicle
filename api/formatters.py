@@ -11,11 +11,19 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple
 from api.band import parse_iso_date
 from api.search.engine import _ref_parts
 from config.code_metadata import get_code_display_name
+from core.cross_refs import (
+    annotate_tables,
+    cited_by_map,
+    cites,
+    in_container,
+    linkify,
+)
 from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     EditionTransition,
+    ProvisionCrossReference,
     Regulation,
 )
 from core.provision_lineage import annotate_lineage_locks, resolve_lineage
@@ -528,7 +536,27 @@ def _format_single_result(
             base=base_input(base_regulation), consolidations=cons,
         )
 
+    # Within-edition citations, linked to the target as it read on the query
+    # date (this surface HAS a date, unlike the version-pinned permalink, so
+    # each citation resolves to a single version rather than fanning out).
+    # Runs BEFORE highlight_terms: highlighting inserts <mark> mid-text and
+    # would split a citation's surface string out from under the matcher.
+    cross_ref_records = list(version.cross_references.all()) if version else []
+    cross_ref_cites: list[dict[str, Any]] = []
     html_content = result.get("html_content")
+    if cross_ref_records:
+        cross_ref_cites = cites(cross_ref_records, code_edition, on_date=query_date)
+        if html_content:
+            html_content = linkify(
+                html_content,
+                in_container(cross_ref_records, ProvisionCrossReference.Container.BODY),
+                code_edition, on_date=query_date,
+            )
+        # Tables carry their own citation spans (separate emitted strings).
+        annotate_tables(
+            result.get("tables") or [], cross_ref_records, code_edition,
+            on_date=query_date,
+        )
     if html_content and appendix_notes:
         html_content = _linkify_appendix_refs(html_content)
     if html_content and terms:
@@ -608,6 +636,9 @@ def _format_single_result(
             result.get("matched_terms_indirect") or [],
         ),
         "html_content": html_content,
+        # List form of the same citations — the only cross-reference affordance
+        # on a version rendered as page images (no html to link into).
+        "cross_ref_cites": cross_ref_cites,
         "page_images": result.get("page_images") or [],
         "tables": result.get("tables") or [],
         "group_type": None,
@@ -1107,6 +1138,21 @@ def _nest_child_results(
     return [r for r in results if _nest_result_key(r) not in absorbed_child_keys]
 
 
+def _attach_cited_by(formatted: List[Dict[str, Any]]) -> None:
+    """Stamp the within-edition fan-in onto every result, in one query.
+
+    Same batching rationale as :func:`_attach_lineage`, and the same placement
+    on the still-flat list so transition panes and nested children see the key.
+    Restricted per result to the citing versions in force alongside the version
+    shown (``core.cross_refs.cited_by_map``).
+    """
+    versions = [r["version"] for r in formatted if r.get("version")]
+    fan_in = cited_by_map(versions)
+    for result in formatted:
+        version = result.get("version")
+        result["cited_by"] = fan_in.get(version.pk, []) if version else []
+
+
 def _attach_lineage(formatted: List[Dict[str, Any]], user: Any = None) -> None:
     """Stamp lineage rows onto every result, one batched resolver call.
 
@@ -1157,6 +1203,7 @@ def format_search_results(
         for result in results
     ]
     _attach_lineage(formatted, user)
+    _attach_cited_by(formatted)
     formatted.sort(key=lambda item: item.get("score", 0), reverse=True)
     grouped = group_formatted_results(formatted, query_date=parsed_query_date)
     merged = merge_transition_compare_results(grouped)

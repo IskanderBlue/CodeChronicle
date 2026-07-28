@@ -17,6 +17,7 @@ from api.formatters import (
     select_commencement_record,
 )
 from core.access import edition_allowed
+from core.cross_refs import annotate_versions, cited_by
 from core.events import record_event
 from core.models import (
     CodeEdition,
@@ -26,6 +27,7 @@ from core.models import (
     ProvisionVersionTable,
     Regulation,
     RegulationClause,
+    natural_provision_key,
 )
 from core.permalinks import provision_permalink_url
 from core.provision_lineage import annotate_lineage_locks, resolve_lineage
@@ -209,19 +211,9 @@ def _clause_targets(clause: RegulationClause) -> list[dict[str, Any]]:
     return targets
 
 
-def _natural_key(provision_id: str) -> tuple[tuple[int, int, str], ...]:
-    """Sort key that orders 'A.1.10.' after 'A.1.9.' (numeric segments).
-
-    Each segment is wrapped as ``(kind, number, text)`` so numeric and word
-    segments never compare directly — a subtree can mix shapes like
-    'Part 3' and '3.17.', and a bare ``(int | str)`` tuple would raise
-    ``TypeError`` on the cross-type compare.
-    """
-    parts = re.split(r"(\d+)", provision_id or "")
-    return tuple(
-        (0, int(p), "") if p.isdigit() else (1, 0, p.lower())
-        for p in parts if p
-    )
+#: Provision-id ordering, shared with every other surface that lists
+#: provisions (``core.models.natural_provision_key``).
+_natural_key = natural_provision_key
 
 
 # ── Hierarchical permalink navigation ────────────────────────────────────
@@ -235,27 +227,13 @@ def _natural_key(provision_id: str) -> tuple[tuple[int, int, str], ...]:
 def _overlaps(
     a: CodeEditionProvisionVersion, b: CodeEditionProvisionVersion
 ) -> bool:
-    """Do two versions' in-force windows overlap? (half-open, None = open end).
+    """Do two versions' in-force windows overlap?
 
-    A *zero-duration* version (effective == ineffective) is a half-open
-    interval of length zero — it overlaps nothing under the plain test, so
-    such a version would silently drop out of the nav.  These do occur:
-    a base-edition v0 that was superseded on the edition's own start date
-    (e.g. OBC 2012 B 1.3.1.2. v0, 2014-01-01→2014-01-01).  Treat it as the
-    instant {effective} and ask whether the other window contains it, so the
-    base version still links alongside its later siblings.
+    Thin wrapper over ``CodeEditionProvisionVersion.overlaps`` (which owns the
+    zero-duration handling), kept as a local name because the nav helpers below
+    read as interval logic rather than model calls.
     """
-    a_point = a.ineffective_date is not None and a.ineffective_date == a.effective_date
-    b_point = b.ineffective_date is not None and b.ineffective_date == b.effective_date
-    if a_point and b_point:
-        return a.effective_date == b.effective_date
-    if a_point:
-        return b.in_force_on(a.effective_date)
-    if b_point:
-        return a.in_force_on(b.effective_date)
-    a_before_b = a.ineffective_date is not None and a.ineffective_date <= b.effective_date
-    b_before_a = b.ineffective_date is not None and b.ineffective_date <= a.effective_date
-    return not a_before_b and not b_before_a
+    return a.overlaps(b)
 
 
 def _related_links(
@@ -923,6 +901,17 @@ def provision_permalink(
 
     by_provision[matched.pk] = [target_version]
 
+    # Within-edition citations, linked inline.  This page pins a version rather
+    # than a date, so a citation whose referent was amended mid-window fans out
+    # into one link per target version — the presentation the hierarchy nav
+    # already uses for a multi-version neighbour (_permalink_nav_item.html).
+    annotate_versions(
+        [v for versions in by_provision.values() for v in versions],
+        code_name,
+        on_date=anchor_date,
+        fan_out=True,
+    )
+
     # Optional version comparison: ``?compare=<version>`` renders the matched
     # provision as a side-by-side diff of the two versions' bodies — both panes
     # visible at once with changed words highlighted — so a reader can actually
@@ -989,6 +978,9 @@ def provision_permalink(
         "compare_version_number": (
             compare_version.version if compare_version is not None else None
         ),
+        # Fan-in: the provisions that pointed *here* while this version stood.
+        # Not in the printed code — only a whole-edition index can answer it.
+        "cited_by": cited_by(target_version, matched, code_name),
     })
 
 

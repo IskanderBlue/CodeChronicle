@@ -26,8 +26,12 @@
         {% if table.images %}
         {% include "partials/_document_images.html" with entries=table.images alt_text=table.table_id container_class="table-container max-w-none provision-table-html" %}
         {% elif table.html %}
+        {% comment %} `linked_html` / `linked_notes` are the same strings with
+           within-edition citations linked (core.cross_refs.annotate_tables);
+           each falls back to the raw string on any surface that didn't
+           annotate. {% endcomment %}
         <div class="provision-table-html prose dark:prose-invert max-w-none">
-            {{ table.html|safe }}
+            {% if table.linked_html %}{{ table.linked_html|safe }}{% else %}{{ table.html|safe }}{% endif %}
         </div>
         {% else %}
         <p class="font-serif text-sm italic text-ink-3">Table content not available.</p>
@@ -35,7 +39,7 @@
 
         {% if table.notes %}
         <div class="mt-2 pt-2 border-t border-rule text-xs text-ink-3">
-            {{ table.notes|safe }}
+            {% if table.linked_notes %}{{ table.linked_notes|safe }}{% else %}{{ table.notes|safe }}{% endif %}
         </div>
         {% endif %}
     </div>

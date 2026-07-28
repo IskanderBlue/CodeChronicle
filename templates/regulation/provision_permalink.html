@@ -70,6 +70,14 @@
             <div class="mt-3 border border-rule">
                 {% include "partials/_viewer_section_content.html" %}
             </div>
+            {% comment %} Fan-in for the pinned version: which provisions pointed
+               here while it stood.  Not in the printed code — only a
+               whole-edition citation index can answer it. {% endcomment %}
+            {% if cited_by %}
+            <div class="px-4">
+                {% include "partials/_cross_ref_list.html" with entries=cited_by label="Cited by" %}
+            </div>
+            {% endif %}
         </div>
 
         {# Col 3 — provenance metadata rail (lg+ only; folded into the banner on mobile) #}
