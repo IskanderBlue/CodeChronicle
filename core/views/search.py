@@ -318,8 +318,25 @@ def viewer_section_content(request: HttpRequest):
         return render(request, "partials/_viewer_section_content.html", empty_ctx)
 
     # Free-tier gate: provision content from an edition outside the user's
-    # scope renders as a locked teaser (no content, no engagement event).
+    # scope renders as a locked teaser instead of the text.  The refusal is
+    # recorded as a locked_content_view — the user asked for this provision by
+    # name and was turned away, which is the conversion signal, not a non-event.
+    # Guarded on HX-Request for the same reason the view capture below is: only
+    # a genuine drill-in counts, not a crawler or a refreshed URL.
     if not edition_allowed(request.user, f"{code}_{edition_id}"):
+        if request.headers.get("HX-Request"):
+            record_event(
+                request,
+                event_type=EngagementEvent.EventType.LOCKED_CONTENT_VIEW,
+                object_type="CodeEditionProvision",
+                search_id=request.GET.get("search_id"),
+                context={
+                    "surface": "search_viewer",
+                    "code_edition": f"{code}_{edition_id}",
+                    "provision_id": provision_id,
+                    "division": division,
+                },
+            )
         return render(
             request,
             "partials/_viewer_section_content.html",
@@ -493,6 +510,28 @@ def search_results(request):
                 # Present -> render the date-specific validation message and
                 # echo the bad value back to the user (see the partial).
                 "invalid_date": result.get("invalid_date"),
+            },
+        )
+
+    # The search turned up results this user's tier can't open.  Recorded as an
+    # *impression* (surface="search_results") rather than an attempt: the locked
+    # editions render as a count, not as clickable rows, so this is the only
+    # place most free users ever meet the gate — the other locked_content_view
+    # surfaces need a permalink or a cross-edition link to reach.  One row per
+    # search, carrying the per-edition counts, attributed to the search itself
+    # so a later report can join demand (query) to what was withheld.
+    locked_editions = result.get("locked_editions") or {}
+    if locked_editions:
+        record_event(
+            request,
+            event_type=EngagementEvent.EventType.LOCKED_CONTENT_VIEW,
+            object_type="CodeEdition",
+            search_id=result.get("search_history_id"),
+            context={
+                "surface": "search_results",
+                "locked_editions": locked_editions,
+                "locked_count": sum(locked_editions.values()),
+                "shown_count": len(result["results"]),
             },
         )
 

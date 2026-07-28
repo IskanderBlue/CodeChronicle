@@ -632,6 +632,41 @@
         }
     });
 
+    // Source-link beacon for the results list. The sibling handler below routes
+    // the viewer overlay's citation link through recordLinkClick(), but the
+    // overlay is not reachable from the current results UI, so in practice every
+    // source link a user can click is one of these — the "consolidation" and
+    // "ext" citations on the provenance rail. They leave for e-Laws with no
+    // server round-trip, so delegation here is the only capture point.
+    // Scoped to #results-area (masthead/footer links are not result engagement)
+    // and to off-origin destinations, so internal links keep to the
+    // decorateResultLinks() path and are not double-counted.
+    // object_id is null — the client has no pk for an e-Laws URL; the href and
+    // label carry enough for report-time resolution, same shape as ccRecordView.
+    // Registered on the CAPTURE phase (the trailing `true`), which is load-
+    // bearing: the "ext" citation links carry Alpine's `@click.stop`, so a
+    // bubble-phase listener here never sees them — capture runs before the
+    // target's own handlers, so `.stop` cannot suppress the beacon. Verified in
+    // the browser: 22 of the 42 result source links stop propagation.
+    document.addEventListener('click', function (e) {
+        const a = e.target.closest && e.target.closest('#results-area a[href]');
+        if (!a) return;
+        let url;
+        try {
+            url = new URL(a.getAttribute('href'), window.location.origin);
+        } catch (err) { return; }
+        if (url.origin === window.location.origin) return;
+        window.ccPostEvent({
+            event_type: 'result_link_click',
+            object_type: 'Regulation',
+            context: {
+                surface: 'source_link',
+                href: url.href,
+                label: (a.innerText || '').trim().slice(0, 60),
+            },
+        });
+    }, true);
+
     // PDF-download beacon: the link lives in a JS-cloned <template>, so it's
     // outside Alpine's reactive DOM — catch it by delegation and route through
     // the overlay component's recordLinkClick() for the viewerResult context.

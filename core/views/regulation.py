@@ -693,14 +693,32 @@ def _parse_iso_date(value: str | None) -> date | None:
 
 
 def _locked_edition_response(
-    request: HttpRequest, edition: CodeEdition
+    request: HttpRequest, edition: CodeEdition, *, surface: str
 ) -> HttpResponse:
     """A 403 teaser page for content outside the user's free-tier scope.
 
     Gating happens *after* the object lookup so the page can name the
     edition; a free user following a cross-edition link sees what exists
     and how to unlock it, never a bare 403 or a silent 404.
+
+    Records a ``locked_content_view`` on the way out.  This is the single
+    choke point for the three gated page views, so every refusal is captured
+    here rather than at each call site — a new gated view gets the signal by
+    using this helper.  ``surface`` says which view refused; the caller must
+    pass it since the helper can't tell.
     """
+    record_event(
+        request,
+        event_type=EngagementEvent.EventType.LOCKED_CONTENT_VIEW,
+        object_type="CodeEdition",
+        object_id=edition.pk,
+        search_id=request.GET.get("search_id"),
+        context={
+            "surface": surface,
+            "code_edition": edition.code_name,
+            "path": request.path,
+        },
+    )
     return render(
         request,
         "locked_edition.html",
@@ -721,7 +739,9 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
         pk=pk,
     )
     if not edition_allowed(request.user, regulation.edition.code_name):
-        return _locked_edition_response(request, regulation.edition)
+        return _locked_edition_response(
+            request, regulation.edition, surface="regulation_detail"
+        )
     # ``clause_id`` is a CharField, so a DB ``order_by`` is lexicographic
     # (1, 10, 11, 2, 3, …).  Re-sort in Python on the natural key so clauses
     # read in numeric order (1, 2, 3, …, 10, 11, …) — the order a reader
@@ -813,7 +833,7 @@ def provision_permalink(
         provision_id=provision_id,
     )
     if not edition_allowed(request.user, matched.edition.code_name):
-        return _locked_edition_response(request, matched.edition)
+        return _locked_edition_response(request, matched.edition, surface="permalink")
     target_version = get_object_or_404(
         CodeEditionProvisionVersion, provision=matched, version=version,
     )
@@ -979,7 +999,7 @@ def edition_chain(request: HttpRequest, pk: int) -> HttpResponse:
         pk=pk,
     )
     if not edition_allowed(request.user, edition.code_name):
-        return _locked_edition_response(request, edition)
+        return _locked_edition_response(request, edition, surface="edition_chain")
     regulations = (
         edition.regulations
         .select_related("amends")
