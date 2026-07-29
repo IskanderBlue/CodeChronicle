@@ -992,6 +992,15 @@ class CodeEditionProvisionVersion(models.Model):
     html = models.TextField(blank=True, default="")
     page_images = models.JSONField(null=True, blank=True)
     keyword_counts = models.JSONField(null=True, blank=True)
+    # Counts over the title *alone*, tokenized by CCM with the same function
+    # that produced ``keyword_counts`` (which is the title + body + table-text
+    # union).  The scorer scores title and body as separate BM25F fields and
+    # recovers the body counts by subtracting these — see ``api.search.engine``.
+    # NULL for editions loaded before CCM began emitting the field; the scorer
+    # then contributes nothing from the title, which is exactly single-field
+    # BM25 — so an un-reloaded edition ranks as it did before, rather than
+    # ranking wrongly.
+    title_keyword_counts = models.JSONField(null=True, blank=True)
     # Provenance/annotation notes, shipped by CCM already tagged as
     # ``[{"kind": ..., "text": ...}]`` (CCM owns the kind taxonomy) and stored
     # verbatim — see ``core.provision_notes`` for the kind→display-tier map and

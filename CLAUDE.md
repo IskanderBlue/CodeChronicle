@@ -137,6 +137,31 @@ matches" where that's true — not at Everything, and not under the
 `weak_matches_only` fallback (`shown_noun` / `locked_noun`, resolved in the
 view).
 
+**Scoring is BM25F over two fields, title and body** (`api/search/engine.py`).
+CCM ships `keyword_counts` (the title + body + table-text union) alongside
+`title_keyword_counts` (the title alone, same tokenizer); the body's counts are
+the difference, floored at zero. Two rules the maths depends on:
+
+- **Saturate once, across both fields.** Field contributions are summed as
+  length-normalized frequencies *before* the `k1` saturation, not scored
+  per-field and added — otherwise a long body and a matching title each
+  collect a near-full `k1 + 1` and a document doubles the intended ceiling.
+- **With no title counts it reduces exactly to the old single-field BM25**
+  (`raw*(k1+1)/(raw + k1*norm)` is algebraically `saturate(raw/norm)`), so an
+  edition loaded before CCM emitted the field ranks as it always did rather
+  than ranking wrongly. Reload to enable the weighting.
+
+`BM25F_TITLE_WEIGHT` (3.0) is the one knob worth tuning. The title field exists
+because a merged bag can't tell a provision that *is* "Maintenance Inspection
+Program" from one mentioning the phrase once — after tokenization both are the
+integer 1 — and because it relieves a real tension in `BM25_B`: b was set to
+0.75 to suppress the Part 11 "Compliance Alternatives" mega-tables, but b only
+knows "long is suspicious" and punishes long *relevant* provisions identically.
+The title tells them apart. `avg_title_len` averages over titled versions only
+— a missing field is not a short field. Note CCM's tokenizer does no stemming,
+so the title boost must apply to indirect (LLM-variant) terms too, or it fires
+on the user's choice of plural.
+
 Search is DB-backed end to end. There is no edition-resolution step — the
 in-force filter runs at the **version** level (`effective_date <= d <
 ineffective_date`) across every edition of the province's code, which is what

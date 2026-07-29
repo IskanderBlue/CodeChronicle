@@ -589,6 +589,7 @@ class Command(BaseCommand):
                     html=ver_data.get("html", ""),
                     page_images=ver_data.get("page_images"),
                     keyword_counts=ver_data.get("keyword_counts"),
+                    title_keyword_counts=ver_data.get("title_keyword_counts"),
                     notes=normalize_loaded_notes(ver_data.get("notes")),
                     revoked=bool(ver_data.get("revoked", False)),
                 )

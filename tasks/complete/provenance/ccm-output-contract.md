@@ -242,6 +242,7 @@ Provision bboxes encompass the provision text plus any associated tables.
         {"image": "documents/obc_1997_v2.pdf/42.webp", "bboxes": [{"x": 0.065, "y": 0.75, "w": 0.43, "h": 0.025}]}
       ],
       "keyword_counts": {"fire": 3, "safety": 1},
+      "title_keyword_counts": {"definitions": 1},
 
       "tables": []
     },
@@ -258,6 +259,7 @@ Provision bboxes encompass the provision text plus any associated tables.
       "html": "<p>In this Code,</p><p>...amended...</p>",
       "page_images": [],
       "keyword_counts": {"fire": 3, "safety": 1, "sewage": 2},
+      "title_keyword_counts": {"definitions": 1},
       "notes": [
         {"kind": "elaws-note", "text": "Note: On March 31, 2023, ... is revoked. (See: O. Reg. 434/22, s. 1 (2))"},
         {"kind": "elaws-html-substitution", "text": "html replaced with e-Laws snapshot value (effective 1998-04-06); text-equivalent fingerprint match."}
@@ -352,6 +354,7 @@ legacy pre-classification shape and is **rejected** at ingest.
         {"image": "documents/obc_1997_appendix.pdf/12.webp", "bboxes": [{"x": 0.065, "y": 0.62, "w": 0.43, "h": 0.025}]}
       ],
       "keyword_counts": {},
+      "title_keyword_counts": {},
 
       "tables": []
     }
@@ -484,6 +487,47 @@ Null when no transition applies.
 > named `transition_provision_id` and carried a bare provision id
 > string.  CCM no longer emits the legacy field; CC's ingestor raises
 > on encountering it (re-emit from CCM if you have an old JSON).
+
+### `versions[].keyword_counts` / `versions[].title_keyword_counts`
+
+Two term-frequency maps from CCM's tokenizer
+(`chronicle_mapping.shared.keywords.extract_keyword_counts`):
+
+- **`keyword_counts`** — the **union**: title + body text + table text
+  (captions, cell text, notes). Truncated to the 1000 most frequent
+  terms. This is what CC's candidate filter keys on
+  (`keyword_counts__has_key`).
+- **`title_keyword_counts`** — the **title alone**, same tokenizer.
+  Always present, `{}` for an untitled version — never absent, so a
+  consumer never has to read key-absence as a third state.
+
+The title's terms therefore appear in *both* maps. CC recovers the
+body-only counts by subtracting, and scores title and body as separately
+weighted BM25F fields. Floor the subtraction at zero: because
+`keyword_counts` is truncated at 1000 terms and `title_keyword_counts` is
+not, a rare title word on a very long provision can be present in the
+title map and absent from the union without either being wrong.
+
+Both maps come from the same tokenizer by construction —
+`title_keyword_counts` is stamped at CCM's write boundary
+(`assembler/edition_writer._apply_title_keyword_counts`), the one point
+every pipeline path converges on, rather than in the per-path version
+constructors. That matters to the consumer: the subtraction above is only
+meaningful if both sides tokenize a word the same way.
+
+Why the split exists: once tokenized, a word in the provision's *title*
+and the same word in a footnote are the same integer, so a merged bag
+cannot tell "this provision is about maintenance inspections" from "it
+mentions them once in passing". Ontario's drafting convention names each
+provision after its subject, which makes the title close to a
+hand-written topic label on every document in the corpus.
+
+> **Migration note (2026-07-29):** `title_keyword_counts` is new.
+> Editions loaded before it shipped have SQL `NULL` there; CC treats that
+> as `{}`, which makes the title field contribute nothing and reduces its
+> scorer *exactly* to the single-field BM25 it used before. An
+> un-reloaded edition therefore ranks as it always did rather than
+> ranking wrongly — reload to enable the title weighting.
 
 ### `versions[].page_images`
 

@@ -78,53 +78,149 @@ def _fuzzy_match_score(query_term: str, target_terms: set[str], threshold: int =
 BM25_K1 = 1.2
 BM25_B = 0.75
 
+# Title-field parameters (BM25F).  A provision's title is scored as its own
+# field, separately from the body, because the merged bag CCM ships cannot
+# distinguish "this provision is *about* maintenance inspections" (the phrase
+# is its title) from "it mentions them once in a proviso" — after tokenization
+# both are the integer 1.  Ontario's drafting convention names each provision
+# after its subject, which makes the title close to a hand-written topic label
+# on every document in the corpus.
+#
+# This also relieves a real tension in ``BM25_B``.  b was set high (0.75)
+# specifically to stop the Part 11 "Compliance Alternatives" mega-tables, which
+# mention every topic in the code, from top-ranking every query — but b only
+# knows "long documents are suspicious", so it penalizes a genuinely relevant
+# long provision just as hard.  The title tells the two apart: the mega-table's
+# title matches nothing, the relevant provision's title matches the query.
+#
+# ``b`` is low for titles: a title's length carries almost no spam signal, so
+# normalizing it hard would mostly punish provisions with descriptive names.
+BM25_B_TITLE = 0.3
+#: How much one occurrence in the title outweighs one in the body.  The single
+#: knob worth tuning here; 3.0 is the conventional starting point for corpora
+#: with short, highly indicative titles.
+BM25F_TITLE_WEIGHT = 3.0
 
-def _bm25_tf(term: str, counts: dict[str, int], length_norm: float) -> float:
-    """BM25-saturated term frequency.
 
-    ``length_norm`` is the document's ``1 - b + b * doc_len / avg_doc_len``
-    factor, precomputed once per document.  At average length the component is
-    exactly 1.0 for a single occurrence (same anchor as the old ``1 + log(tf)``
-    scheme) and asymptotes to ``k1 + 1`` no matter how often the term repeats.
+def _bm25_saturate(tf: float) -> float:
+    """Map an accumulated, length-normalized term frequency onto ``[0, k1+1)``.
+
+    Split out from the field accumulation because BM25F saturates *once*, over
+    the summed contributions of every field.  Saturating per field and adding
+    the results would let a long body and a matching title each collect a
+    nearly-full ``k1 + 1``, so a document could roughly double the intended
+    ceiling by matching in two places.
+
+    At a normalized frequency of 1.0 (one occurrence, average length, no title
+    hit) this returns exactly 1.0 — the same anchor the scorer has always had,
+    which is what keeps a perfect match on the typed words landing near 1.0
+    after query-side normalization.
     """
-    raw = counts.get(term, 0)
-    if raw <= 0:
+    if tf <= 0:
         return 0.0
-    return raw * (BM25_K1 + 1) / (raw + BM25_K1 * length_norm)
+    return tf * (BM25_K1 + 1) / (BM25_K1 + tf)
+
+
+def _bm25f_tf(
+    term: str,
+    counts: dict[str, int],
+    title_counts: dict[str, int],
+    body_norm: float,
+    title_norm: float,
+) -> float:
+    """Field-weighted, then saturated, term frequency for one term.
+
+    ``counts`` is CCM's ``keyword_counts`` — the title + body + table-text
+    *union* — and ``title_counts`` its title-only companion, so the body's own
+    count is the difference.  The subtraction is floored at zero: CCM truncates
+    ``keyword_counts`` at its 1000 most frequent terms, so a rare title word on
+    a mega-provision can be present in the title counts and absent from the
+    union without either field being wrong.
+
+    With an empty ``title_counts`` this reduces *exactly* to the single-field
+    BM25 the scorer used before — ``raw * (k1+1) / (raw + k1*norm)`` is
+    algebraically identical to ``saturate(raw/norm)``.  That equivalence is
+    what makes an un-reloaded edition (no title counts yet) rank as it always
+    did rather than ranking wrongly.
+    """
+    accumulated = 0.0
+
+    raw_body = counts.get(term, 0) - title_counts.get(term, 0)
+    if raw_body > 0:
+        accumulated += raw_body / body_norm
+
+    raw_title = title_counts.get(term, 0)
+    if raw_title > 0:
+        accumulated += BM25F_TITLE_WEIGHT * raw_title / title_norm
+
+    return _bm25_saturate(accumulated)
+
+
+def _field_length_norm(field_len: int, avg_len: float, b: float) -> float:
+    """BM25 length normalizer ``1 - b + b * len/avg`` for one field.
+
+    Never returns 0 for any ``b < 1`` (the ``1 - b`` term is a floor), so
+    callers can divide by it unguarded even for a zero-length field.
+    """
+    if avg_len <= 0:
+        return 1.0
+    return 1 - b + b * (field_len / avg_len)
 
 
 @dataclass(frozen=True)
 class CorpusStats:
-    """Corpus-level scoring inputs, computed in one pass over keyword_counts."""
+    """Corpus-level scoring inputs, computed in one pass over the count fields."""
 
     idf: dict[str, float] = field(default_factory=dict)
-    avg_doc_len: float = 0.0
+    #: Mean length of the *body* field — the union's token count minus the
+    #: title's.  Not the whole document: title tokens are normalized against
+    #: their own field average below.
+    avg_body_len: float = 0.0
+    #: Mean length of the title field, averaged over versions that *have* a
+    #: title.  Untitled versions are excluded deliberately — a missing field is
+    #: not a short field, and letting the many title-less versions drag the mean
+    #: down would make ordinary titles look long and quietly shrink the title
+    #: weight for exactly the provisions it is meant to help.
+    avg_title_len: float = 0.0
 
 
 def compute_corpus_stats(
     versions_qs: QuerySet[CodeEditionProvisionVersion],
 ) -> CorpusStats:
-    """Compute IDF weights and average document length for a corpus.
+    """Compute IDF weights and per-field average lengths for a corpus.
 
-    Both come from the same pass over every version's ``keyword_counts``
-    (the JSON fields are the expensive part to fetch, so one pass matters).
-    A document's length is its total token count, ``sum(counts.values())``.
+    All of it comes from one pass over every version's count fields (the JSON
+    columns are the expensive part to fetch, so one pass matters).
+
+    IDF is computed over the union, not per field: a term is "in" a document
+    whether it appeared in the title or the body.  Splitting IDF by field would
+    make a title term's rarity depend on which field it landed in, which is not
+    what rarity means.
     """
     total_docs = 0
-    total_len = 0
+    total_body_len = 0
+    titled_docs = 0
+    total_title_len = 0
     doc_freq: dict[str, int] = {}
-    for kw_counts in versions_qs.values_list("keyword_counts", flat=True):
+    for kw_counts, title_counts in versions_qs.values_list(
+        "keyword_counts", "title_keyword_counts",
+    ):
         if not kw_counts:
             continue
         total_docs += 1
-        total_len += sum(kw_counts.values())
+        title_len = sum((title_counts or {}).values())
+        total_body_len += max(0, sum(kw_counts.values()) - title_len)
+        if title_len:
+            titled_docs += 1
+            total_title_len += title_len
         for keyword in kw_counts:
             doc_freq[keyword] = doc_freq.get(keyword, 0) + 1
     if total_docs == 0:
         return CorpusStats()
     return CorpusStats(
         idf={kw: log(1 + total_docs / df) for kw, df in doc_freq.items()},
-        avg_doc_len=total_len / total_docs,
+        avg_body_len=total_body_len / total_docs,
+        avg_title_len=total_title_len / titled_docs if titled_docs else 0.0,
     )
 
 
@@ -292,11 +388,18 @@ def score_versions(
         version_tables = list(version.tables.all())
         title = version.title or ""
         kw_counts: dict[str, int] = version.keyword_counts or {}
+        # Title-only counts, same tokenizer, shipped alongside the union.  NULL
+        # until the edition is reloaded from a CCM build that emits it; an
+        # empty dict makes every title contribution zero, which is precisely
+        # the single-field behaviour this scorer had before.
+        title_counts: dict[str, int] = version.title_keyword_counts or {}
         # CCM tokenizes the title into keyword_counts at ingest, so the doc's
-        # searchable terms are exactly its keys — a separate title-word set
+        # searchable terms are essentially its keys — a separate title-word set
         # would only re-add stopwords CCM deliberately filtered out, which can
-        # match but never score (tf reads keyword_counts).
-        all_terms = set(kw_counts.keys())
+        # match but never score.  The title keys are unioned in only to cover
+        # CCM's 1000-term truncation of keyword_counts, which can drop a rare
+        # title word from the union on a very long provision.
+        all_terms = set(kw_counts.keys()) | set(title_counts.keys())
 
         score = 0.0
         match_type = None
@@ -328,22 +431,33 @@ def score_versions(
             direct_matched = direct_terms & all_terms
             indirect_matched = indirect_terms & all_terms
             if direct_matched or indirect_matched:
-                # BM25 length factor: how far this document sits above or
-                # below corpus-average length.  Without it the Part 11
-                # "Compliance Alternatives" mega-tables — which mention every
-                # term in the code at high counts — top-rank every query.
-                doc_len = sum(kw_counts.values())
-                length_norm = (
-                    1 - BM25_B + BM25_B * (doc_len / corpus_stats.avg_doc_len)
-                    if corpus_stats.avg_doc_len > 0
-                    else 1.0
+                # Per-field length factors: how far this document's body and
+                # title sit above or below their own corpus averages.  Without
+                # the body one the Part 11 "Compliance Alternatives"
+                # mega-tables — which mention every term in the code at high
+                # counts — top-rank every query.
+                title_len = sum(title_counts.values())
+                body_len = max(0, sum(kw_counts.values()) - title_len)
+                body_norm = _field_length_norm(
+                    body_len, corpus_stats.avg_body_len, BM25_B,
+                )
+                title_norm = _field_length_norm(
+                    title_len, corpus_stats.avg_title_len, BM25_B_TITLE,
                 )
                 numerator = sum(
-                    _bm25_tf(t, kw_counts, length_norm) * get_idf(t)
+                    _bm25f_tf(t, kw_counts, title_counts, body_norm, title_norm)
+                    * get_idf(t)
                     for t in direct_matched
                 )
+                # Indirect terms get the title weighting too.  They have to:
+                # CCM's tokenizer does no stemming, so "inspections" in a title
+                # is a different term from a typed "inspection" and reaches the
+                # scorer only through the LLM's keyword family.  Boosting titles
+                # for direct terms alone would make the title field fire or not
+                # on the user's choice of plural.
                 numerator += 0.9 * sum(
-                    _bm25_tf(t, kw_counts, length_norm) * get_idf(t)
+                    _bm25f_tf(t, kw_counts, title_counts, body_norm, title_norm)
+                    * get_idf(t)
                     for t in indirect_matched
                 )
                 norm_terms = direct_terms if direct_matched else indirect_terms
