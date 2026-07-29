@@ -82,7 +82,9 @@
          (ink-in-a-ruled-box in light, amber in dark) to read as a user
          input.  Single province/date inputs reused across breakpoints —
          the cells stack below the query on < sm to avoid duplicate names. -->
-    <form hx-post="{% url 'core:search_results' %}" hx-target="#results-area"
+    <!-- id is load-bearing: the results-per-search control in the results
+         partial re-runs this same query via hx-include="#search-form". -->
+    <form id="search-form" hx-post="{% url 'core:search_results' %}" hx-target="#results-area"
         hx-on::before-request="document.getElementById('results-area').innerHTML=document.getElementById('loading-tpl').innerHTML">
         {% csrf_token %}
         <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch">
@@ -604,6 +606,92 @@
                 division: (result && result.division) || '',
             },
         });
+    };
+
+    // Relevance-datum control (results header). Lives here, not in the results
+    // partial, because htmx re-swaps that partial on every search and a
+    // component factory must already exist when Alpine initialises the new
+    // markup. Reads its data from the json_script block the partial emits.
+    //
+    // Split of duties: Alpine redraws the bars and the readout locally while
+    // the reader drags, so scrubbing costs nothing; htmx re-runs the search
+    // once, on release, from the range input's native change event. The
+    // pointer handlers therefore have to dispatch that event themselves —
+    // setting an input's value in script does not emit one.
+    window.ccDatum = function (root) {
+        const raw = document.getElementById('cc-datum-data');
+        const data = raw ? JSON.parse(raw.textContent) : { buckets: [], width: 0.05 };
+        const width = data.width || 0.05;
+        const buckets = data.buckets || [];
+        const peak = Math.max.apply(null, buckets.concat([1]));
+        // Every accessible match for this query — the buckets are a partition
+        // of exactly that list, so there is nothing extra to send.
+        const total = buckets.reduce(function (a, b) { return a + b; }, 0);
+
+        // A stored threshold can exceed this query's range — the reader set it
+        // on a search that scored higher. Show it pinned to the top of the
+        // plot rather than letting the range input silently clamp to a value
+        // the line isn't drawn at. Nothing posts until they drag, so the
+        // stored value survives until they actually change it.
+        const maxScore = Math.max(width, buckets.length * width);
+        const at = Math.min(data.threshold || 0, maxScore);
+
+        return {
+            threshold: at,
+            initial: at,
+            maxScore: maxScore,
+            // Square-root height: on a broad query most matches sit in the
+            // weak tail, and a linear scale flattens the ridge being decided
+            // about into a single row of pixels.
+            bars: buckets.map(function (count, i) {
+                return {
+                    centre: (i + 0.5) * width,
+                    height: count === 0 ? 0 : Math.max(3, Math.sqrt(count / peak) * 100),
+                };
+            }),
+            get linePct() {
+                return Math.min(100, (this.threshold / this.maxScore) * 100);
+            },
+            get defaultPct() {
+                return (data.default / this.maxScore) * 100;
+            },
+            get kept() {
+                // At rest, the server's exact count; while dragging, a bucket
+                // estimate on the same rule that colours the bars, so the
+                // readout never contradicts what is drawn under it.
+                if (this.threshold === this.initial) return data.keptExact;
+                const self = this;
+                return buckets.reduce(function (n, count, i) {
+                    return n + ((i + 0.5) * width >= self.threshold ? count : 0);
+                }, 0);
+            },
+            get dropped() {
+                return total - this.kept;
+            },
+            setFromPointer(event) {
+                const plot = root.querySelector('[data-datum-plot]');
+                const box = plot.getBoundingClientRect();
+                const at = ((event.clientX - box.left) / box.width) * this.maxScore;
+                this.threshold = Math.round(Math.min(this.maxScore, Math.max(0, at)) * 100) / 100;
+            },
+            grab(event) {
+                this.dragging = true;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                this.setFromPointer(event);
+            },
+            drag(event) {
+                if (this.dragging) this.setFromPointer(event);
+            },
+            release(event) {
+                if (!this.dragging) return;
+                this.dragging = false;
+                if (this.threshold === this.initial) return;
+                const input = root.querySelector('#cc-datum-range');
+                input.value = this.threshold;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            },
+            dragging: false,
+        };
     };
 
     // Permalink / regulation links inside results navigate to server-rendered

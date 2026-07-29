@@ -55,38 +55,124 @@ sectionContentUrl() in search.html.
 {% endcomment %}
 <div id="cc-search-id" hidden data-search-id="{{ search_id|default_if_none:'' }}"></div>
 {% comment %}
-Free-tier teaser (set only for non-Pro searchers): results from
-editions outside the free scope were dropped before formatting; name what was
-hidden rather than silently returning less. Covers the all-locked case too
-(e.g. a 2014 as-of date resolving entirely to OBC 2012) — the counts explain
-the otherwise-empty result list.
+Results header, and behind it the relevance control.
+
+The count reads "N OF M" ONLY when the render cap held something back. Below
+the cap nothing is hidden, so "43 OF 85" would send the reader hunting for 42
+results that were never withheld — that form used to mean page-size
+truncation, which no longer exists. The cap is explained on hover only where
+it binds, for the same reason.
+
+The noun is the affordance: "close matches" opens the control that decides
+what the word means. Nobody arrives wanting to tune a relevance floor, so the
+instrument stays out of the way until asked for, and closes once set.
+
+Edition names are display prose resolved in the view — the raw code_name
+("OBC_2012") is an internal join key and never reaches the page.
 {% endcomment %}
-{% if locked_editions %}
-<div class="mb-4 border-l-[3px] border-secondary bg-surface-2 p-4">
-    <div class="flex">
-        <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
+<div x-data="{ datumOpen: false }">
+<div class="mb-4 flex flex-wrap items-center gap-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+    {% comment %}
+    The nouns are defaulted here, not just supplied by the view: a missing
+    *filter argument* raises VariableDoesNotExist (unlike a missing {{ var }},
+    which renders empty), and this partial is rendered by several callers with
+    leaner contexts than the search view's.
+    {% endcomment %}
+    {% with noun=shown_noun|default:"result" suffix=shown_noun_suffix|default:"s" %}
+    <span>
+        {% if cap_binds %}<span class="ui-note" title="{{ cap_help }}">{{ results|length }} OF {{ accessible_match_count }}</span> {% else %}{{ results|length }} {% endif %}{% if datum.buckets %}<button type="button" class="ui-action !text-[11px] !tracking-[0.04em]" title="{{ match_threshold_help }}" @click="datumOpen = true" :aria-expanded="datumOpen">{{ noun|upper }}{{ results|length|pluralize:suffix|upper }}<span class="ui-caret"></span></button>{% else %}{{ noun|upper }}{{ results|length|pluralize:suffix|upper }}{% endif %}
+    </span>
+    {% endwith %}
+    {% if applicable_code_names %}
+    <span class="text-rule">&middot;</span>
+    <span class="text-ink-2">
+        {% for name in applicable_code_names %}{{ name }}{% if not forloop.last %} &rarr; {% endif %}{% endfor %}
+    </span>
+    {% endif %}
+</div>
+
+{% comment %}
+Relevance datum, on request. The reader drags a line across this query's own
+score distribution instead of picking a named tier — measured against the real
+corpus, a fixed 0.8 keeps 20 matches on one search, 90 on another and 1 on a
+third, so a tier name can't mean anything stable. Bars left of the line are
+dropped, right of it kept; the readout updates locally on drag (Alpine) and
+only the release re-runs the search (htmx `change`, not `input`). The re-run
+re-renders this whole partial, which is what closes the dialog — "set it and
+it's gone", with no close-on-success wiring to keep in sync.
+{% endcomment %}
+{% if datum.buckets %}
+{{ datum|json_script:"cc-datum-data" }}
+<div x-show="datumOpen" x-cloak class="cc-modal"
+    @click.self="datumOpen = false" @keydown.escape.window="datumOpen = false"
+    role="dialog" aria-modal="true" aria-labelledby="cc-datum-title">
+    {% comment %} Focus the slider on open so a keyboard reader lands on the
+    control itself, not the dialog wrapper. Plain $nextTick rather than x-trap:
+    Alpine's Focus plugin isn't loaded, and a silently-missing directive is
+    worse than no trap. {% endcomment %}
+    <div class="cc-modal-panel" x-data="ccDatum($el)"
+        x-effect="datumOpen && $nextTick(() => $el.querySelector('#cc-datum-range').focus())">
+        <div class="flex items-baseline gap-3 border-b border-rule px-4 py-3">
+            <h2 id="cc-datum-title" class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">
+                Where close matches start
+            </h2>
+            <button type="button" class="ui-disclosure ml-auto" @click="datumOpen = false" aria-label="Close">ESC</button>
         </div>
-        <div class="ml-3">
-            <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">More results on Pro</h3>
-            <p class="mt-2 text-sm text-ink-2">
-                {% for code, count in locked_editions.items %}{{ count }} result{{ count|pluralize }} in {{ code }}{% if not forloop.last %}, {% endif %}{% endfor %}
-                {% if results %}&mdash; hidden on the free plan, which covers OBC 2006 only.{% else %}matched this query, but the free plan covers OBC 2006 only and no OBC 2006 provision matched at this date.{% endif %}
-                <a href="{% url 'core:pricing' %}" class="ui-link font-semibold">See plans</a> to unlock every edition.
+
+        <div class="px-4 pb-4 pt-4">
+            <div class="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+                <span class="text-[19px] font-semibold text-secondary" x-text="threshold.toFixed(2)"></span>
+                <span class="ml-auto"><span class="font-semibold text-ink" x-text="kept"></span> kept</span>
+                <span class="text-rule">&middot;</span>
+                <span><span x-text="dropped"></span> below the line</span>
+            </div>
+
+            {% comment %} Bars are a scale drawing of the corpus's answer, so
+            they get a square-root height: on a broad query most matches sit in
+            the weak tail, and a linear scale flattens the ridge the reader is
+            actually deciding about into a single pixel row. {% endcomment %}
+            <div class="cc-datum-plot" @pointerdown="grab($event)" @pointermove="drag($event)"
+                @pointerup="release($event)" @pointercancel="release($event)" data-datum-plot>
+                <template x-for="(bar, i) in bars" :key="i">
+                    <div class="cc-datum-bar"
+                        :class="bar.centre >= threshold ? 'bg-secondary' : 'bg-rule'"
+                        :style="'height:' + bar.height + '%'"></div>
+                </template>
+                <div class="cc-datum-line" :style="'left:' + linePct + '%'"></div>
+            </div>
+            <div class="relative h-4">
+                <span class="absolute -translate-x-1/2 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-3"
+                    :style="'left:' + defaultPct + '%'" x-show="defaultPct <= 100">&uarr; default</span>
+            </div>
+            <label class="sr-only" for="cc-datum-range">Where close matches start</label>
+            <input type="range" id="cc-datum-range" name="match_threshold" class="w-full accent-secondary"
+                min="0" :max="maxScore" step="0.01" x-model.number="threshold"
+                hx-post="{% url 'core:search_results' %}" hx-target="#results-area"
+                hx-include="#search-form" hx-trigger="change"
+                hx-on::before-request="document.getElementById('results-area').innerHTML=document.getElementById('loading-tpl').innerHTML">
+            <p class="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
+                <span>weakest</span>
+                <span class="float-right" x-text="maxScore.toFixed(1) + ' strongest'"></span>
+            </p>
+            <p class="mt-3 border-t border-rule pt-3 font-serif text-sm text-ink-2">
+                Each bar is a band of matches for this search, tallest where most of them sit.
+                Drop the line to widen; raise it to keep only the strongest.
             </p>
         </div>
     </div>
 </div>
 {% endif %}
-<div class="mb-4 flex flex-wrap items-center gap-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
-    <span>{{ results|length }} RESULT{{ results|length|pluralize|upper }}</span>
-    <span class="text-rule">&middot;</span>
-    <span class="text-ink-2">
-        {% for code in meta.applicable_codes %}{{ code }}{% if not forloop.last %} &rarr; {% endif %}{% endfor %}
-    </span>
 </div>
+
+{% comment %}
+Fallback disclosure: nothing cleared the floor, so the weak matches are shown
+rather than an empty page — but they're labelled, not passed off as close.
+{% endcomment %}
+{% if weak_matches_only %}
+<p class="mb-4 border-l-[3px] border-rule bg-surface-2 px-3 py-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+    No close matches at this threshold &mdash; showing the nearest instead.
+</p>
+{% endif %}
 
 <div x-data='{ activeResult: {% if results %}"{{ results.0.code|escapejs }}_{{ results.0.id|escapejs }}_{{ results.0.division|escapejs }}"{% else %}null{% endif %}, comparePrevious: false, open(key, result) { this.activeResult = key; this.comparePrevious = false; window.ccRecordView && window.ccRecordView(result); } }' data-results-accordion>
 
@@ -172,11 +258,52 @@ the otherwise-empty result list.
 
 </div>
 
+{% comment %}
+Empty state. With the tier split now running before the display limit, an
+empty list means the query genuinely matched nothing this searcher can open —
+so the wording can say which, instead of the old blanket claim that nothing
+matched at all (it had, in a locked edition).
+{% endcomment %}
 {% if not results %}
 <div class="border border-dashed border-rule py-12 text-center">
-    <h3 class="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3">No matching provisions found</h3>
-    <p class="mt-2 font-serif text-base text-ink-2">Try adjusting your keywords or as-of date.</p>
+    <h3 class="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-3">
+        {% if locked_count %}No matching provisions in your plan&rsquo;s editions{% else %}No matching provisions found{% endif %}
+    </h3>
+    <p class="mt-2 font-serif text-base text-ink-2">
+        {% if locked_count %}The matches below are in editions the free plan doesn&rsquo;t cover.{% else %}Try adjusting your keywords or as-of date.{% endif %}
+    </p>
 </div>
+{% endif %}
+
+{% comment %}
+Locked matches, collapsed. Sits *below* the accessible results by design: the
+list the searcher can actually read comes first, and the disclosure proves the
+rest exists rather than asserting a count they can't check. Rows carry
+identity only (provision id, title, edition) — the same fields the locked
+lineage rows and edition-nav teasers already show, no body text.
+{% endcomment %}
+{% if locked_edition_counts %}
+<details class="mt-6 border-t border-rule pt-4">
+    <summary class="ui-action cursor-pointer font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">
+        {% with noun=locked_noun|default:"result" suffix=locked_noun_suffix|default:"s" %}{{ locked_count }} more <span class="ui-note" title="{{ match_threshold_help }}">{{ noun }}{{ locked_count|pluralize:suffix }}</span> on Pro{% endwith %}
+    </summary>
+    <p class="mt-3 text-sm text-ink-2">
+        Matched in {% for entry in locked_edition_counts %}{{ entry.name }} ({{ entry.count }}){% if not forloop.last %}, {% endif %}{% endfor %} &mdash; outside the free plan&rsquo;s coverage.
+        <a href="{% url 'core:pricing' %}" class="ui-link font-semibold">See plans</a> to unlock every edition.
+    </p>
+    <ul class="mt-3 divide-y divide-rule border-t border-rule">
+        {% for row in locked_preview %}
+        <li class="flex flex-wrap items-baseline gap-x-3 py-2">
+            <span class="font-mono text-[12px] text-ink-3">{{ row.id }}</span>
+            <span class="font-serif text-[15px] text-ink-2">{{ row.title }}</span>
+            <span class="ml-auto font-mono text-[11px] tracking-[0.04em] text-ink-3">{{ row.edition_name }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% if locked_preview_remainder %}
+    <p class="mt-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">and {{ locked_preview_remainder }} more</p>
+    {% endif %}
+</details>
 {% endif %}
 {% endif %}{# date_out_of_range #}
 

@@ -12,6 +12,7 @@ from django.db.models import Count, Max, Min
 from django.utils import timezone
 from djstripe.models import Customer, Subscription
 
+from config.search_limits import CLOSE_MATCH_THRESHOLD
 from core.provision_notes import GroupedNotes, group_notes
 
 
@@ -80,6 +81,17 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     # Stripe customer ID (managed by dj-stripe, but useful for quick lookup)
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
+
+    # Relevance floor for a "close match". Everything a search reports —
+    # results, counts, the Pro teaser — is measured above this line.
+    # Continuous, not a set of named tiers: a fixed cutoff is not a fixed idea
+    # of closeness (0.8 returns 20 results on one query and 1 on another), so
+    # the control draws the query's score distribution and the reader puts the
+    # line where the tail starts. This just stores where they left it.
+    match_threshold = models.FloatField(
+        default=CLOSE_MATCH_THRESHOLD,
+        help_text="Minimum relevance score for a result to count as a close match.",
+    )
 
     # Explicit annotation so Pyright (no plugin) resolves UserManager methods
     # like create_user, rather than falling back to the base Manager.

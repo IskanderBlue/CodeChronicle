@@ -11,7 +11,7 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.test import Client
 
-from core.access import edition_allowed, partition_results, user_is_unrestricted
+from core.access import allowed_edition_names, edition_allowed, user_is_unrestricted
 from core.models import (
     Code,
     CodeEdition,
@@ -89,24 +89,17 @@ class TestAccessHelpers:
         assert user_is_unrestricted(pro_user)
         assert edition_allowed(pro_user, "OBC_2012")
 
-    def test_partition_results_counts_locked_per_edition(self, settings):
+    def test_allowed_edition_names_scoped_for_anonymous(self, settings):
         settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
-        results = [
-            {"code_edition": "OBC_2006", "id": "a"},
-            {"code_edition": "OBC_2012", "id": "b"},
-            {"code_edition": "OBC_2012", "id": "c"},
-        ]
-        kept, locked = partition_results(AnonymousUser(), results)
-        assert [r["id"] for r in kept] == ["a"]
-        assert locked == {"OBC_2012": 2}
+        assert allowed_edition_names(None) == frozenset({"OBC_2006"})
+        assert allowed_edition_names(AnonymousUser()) == frozenset({"OBC_2006"})
 
     @pytest.mark.django_db
-    def test_partition_results_unrestricted_passthrough(self, settings, pro_user):
+    def test_allowed_edition_names_none_for_pro(self, settings, pro_user):
+        # None, not "every loaded name": the orchestrator reads it as "skip the
+        # split entirely", so Pro pays nothing for the gate.
         settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
-        results = [{"code_edition": "OBC_2012", "id": "b"}]
-        kept, locked = partition_results(pro_user, results)
-        assert kept == results
-        assert locked == {}
+        assert allowed_edition_names(pro_user) is None
 
 
 @pytest.mark.django_db

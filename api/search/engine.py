@@ -14,20 +14,22 @@ from typing import Any
 
 from django.db.models import QuerySet
 
+from config.search_limits import SEARCH_RESULT_CAP
 from config.synonyms import SYNONYMS
 from core.models import CodeEditionProvisionVersion
 
-#: Cards shown to the user.  Applied by the orchestrator *after* grouping, so a
-#: transition pair costs one card rather than two — see
-#: ``orchestration._limit_with_pairs``.
-SEARCH_RESULT_LIMIT = 10
+# Re-exported: the orchestrator and its tests read the render cap from here
+# alongside SEARCH_CANDIDATE_LIMIT, but the constant itself lives outside this
+# module — config has no Django imports, and this module imports core.models.
+__all__ = ["SEARCH_CANDIDATE_LIMIT", "SEARCH_RESULT_CAP", "score_versions"]
 
-#: Ceiling on the scored candidate pool handed to the grouping stage.  Grouping
+#: Floor on the scored candidate pool handed to the grouping stage.  Grouping
 #: can only pair results it can see, and pair members score identically (same
-#: text), so they rank adjacent — a pool of just SEARCH_RESULT_LIMIT would drop
-#: both members of any pair sitting below the display cutoff and silently
-#: present a transition as a single version.  A pair below this pool boundary is
-#: still missed; raising it costs only scoring work, no extra queries.
+#: text), so they rank adjacent — a pool of just the display limit would drop
+#: both members of any pair sitting below the cutoff and silently present a
+#: transition as a single version.  The orchestrator raises this floor when the
+#: display limit is large; scoring is already done by then, so the pool costs
+#: nothing but the grouping stage's mapping lookups.
 SEARCH_CANDIDATE_LIMIT = 50
 
 
@@ -188,7 +190,7 @@ def score_versions(
     versions_qs: QuerySet[CodeEditionProvisionVersion],
     corpus_stats: CorpusStats,
     provision_references: list[str] | None = None,
-    limit: int = SEARCH_RESULT_LIMIT,
+    limit: int | None = SEARCH_RESULT_CAP,
     raw_query: str = "",
 ) -> list[dict[str, Any]]:
     """Score provision versions against a query using BM25 + fuzzy matching.
@@ -200,10 +202,14 @@ def score_versions(
         corpus_stats: Pre-computed IDF weights and average document length
             for the corpus.
         provision_references: Explicit provision ID references from the query.
-        limit: Max results to return, clamped to SEARCH_CANDIDATE_LIMIT.  This
-            is the candidate pool, not the display limit — the orchestrator
-            groups transition pairs over this list and then trims to
-            SEARCH_RESULT_LIMIT cards.
+        limit: Max results to return, or ``None`` for every match.  This is
+            never the display limit — the orchestrator splits by tier access,
+            groups transition pairs, and only then trims to the user's cards.
+            ``None`` is what the orchestrator passes: the loop below already
+            builds a dict for every match before sorting, so truncating here
+            saves no work and would hide (a) the true per-edition match counts
+            the free-tier notice quotes and (b) the lower-ranked accessible
+            results that fill a gated user's list.
         raw_query: The user's original typed text.  A keyword counts as a
             *direct* match only if it appears verbatim here; keywords the LLM
             added (morphological variants, related topics) and engine synonyms
@@ -213,7 +219,7 @@ def score_versions(
     Returns:
         Scored result dicts sorted by score descending.
     """
-    limit = max(1, min(limit, SEARCH_CANDIDATE_LIMIT))
+    limit = None if limit is None else max(1, limit)
 
     has_query = query and isinstance(query, str) and query.strip()
     has_refs = bool(provision_references)
@@ -389,4 +395,4 @@ def score_versions(
             })
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    return results[:limit]
+    return results if limit is None else results[:limit]

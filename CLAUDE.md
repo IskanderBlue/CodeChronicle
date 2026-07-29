@@ -86,9 +86,56 @@ Hand-written, non-utility CSS (component classes, `x-cloak`, htmx/diff helpers) 
 User query → RateLimitMiddleware → llm_parser.parse_user_query() (Claude API with tool_use)
 → QueryCache check/store → api/search.execute_search()
    → in-force version query (per-version window, all editions of the province's code)
-   → engine.score_versions() → orchestration._group_transitions()
+   → engine.score_versions() (scores every match, no truncation)
+   → _split_by_access() → relevance floor → _group_transitions()
+   → _limit_with_pairs(results_per_search)
 → api/formatters.format_search_results() → SearchHistory.create()
 ```
+
+That order is load-bearing. The tier split runs **before** the display limit,
+so a gated searcher's cards are filled from editions they can open rather than
+from whatever survived an ungated top-N; and because scoring truncates nothing,
+the free-tier teaser quotes exact per-edition match totals instead of the
+candidate-pool size.
+
+Two knobs shape the tail of that pipeline, both in `config/search_limits.py`:
+
+- **`SEARCH_RESULT_CAP`** (100) — a constant, deliberately *not* a preference.
+  A page-size control and a relevance floor both answer "how much do I see",
+  and two such controls disagree in public. The cap is a backstop only, and is
+  named in the UI **only when it binds** (`cap_binds`, computed where the
+  trimming happens — never by comparing rendered rows to the match count,
+  since grouping shortens the list for unrelated reasons and the header would
+  claim results were withheld that weren't).
+- **`match_threshold`** — the reader's stored floor (`User.match_threshold`,
+  session for anonymous, via `core/search_prefs.py`). The relevance floor a
+  result must clear to count as
+  a *close match*, default 0.8. **Continuous, not named tiers**: measured
+  against the real corpus a fixed 0.8 keeps 20 matches on one query, 90 on
+  another and 1 on a third, so no tier name can mean anything stable. The
+  control (`window.ccDatum`, `templates/search.html`) instead draws the
+  query's own score distribution — `score_buckets`, emitted by the
+  orchestrator over the accessible matches — and the reader drags a line
+  across it. Alpine redraws locally on drag; htmx re-runs the search once on
+  release (`change`, not `input`). It lives in a dialog opened by clicking the
+  "close matches" noun in the results header, and closes because the re-run
+  re-renders the whole partial — no close-on-success wiring to keep in sync.
+  Nobody arrives wanting to tune a relevance floor, so it stays out of the way
+  until asked for.
+  The floor applies to both sides of the tier split, so the shown count and
+  the locked teaser count are measured the same way — two differently-measured
+  counts of one corpus on one screen is the bug this prevents. If nothing
+  clears the floor, `weak_matches_only` is set and the nearest matches are
+  shown and labelled as such, rather than rendering an empty page. Note
+  `close_match_count` (above the line) is distinct from
+  `accessible_match_count` (what's shown, which under the fallback is the
+  whole weak list) — the control reports the former or it claims a full list
+  was kept while drawing every bar as dropped.
+
+Copy rule: the noun follows the measurement. Results are only called "close
+matches" where that's true — not at Everything, and not under the
+`weak_matches_only` fallback (`shown_noun` / `locked_noun`, resolved in the
+view).
 
 Search is DB-backed end to end. There is no edition-resolution step — the
 in-force filter runs at the **version** level (`effective_date <= d <

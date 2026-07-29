@@ -36,25 +36,15 @@ def edition_allowed(user: Any, code_name: str) -> bool:
     return user_is_unrestricted(user) or code_name in free_tier_code_names()
 
 
-def partition_results(
-    user: Any, results: list[dict[str, Any]]
-) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """Split search results into (allowed, locked-count-per-edition).
+def allowed_edition_names(user: Any) -> frozenset[str] | None:
+    """The editions ``user`` may open, or ``None`` when unrestricted.
 
-    Each result dict carries its edition under ``code_edition``.  The counts
-    let the UI say "N results in OBC 2012 — available on Pro" instead of
-    silently returning less.  Unrestricted users get everything back with no
-    counts, so callers can pass the counts straight to the template.
+    Handed to the search orchestrator so the tier split happens *before* the
+    display limit is applied — a gated searcher's cards then come from what
+    they can actually read.  ``None`` (rather than "every loaded name") keeps
+    the Pro path free of a set membership test per result, and keeps this
+    module the only thing that knows what a tier is.
     """
     if user_is_unrestricted(user):
-        return results, {}
-    allowed_names = free_tier_code_names()
-    kept: list[dict[str, Any]] = []
-    locked: dict[str, int] = {}
-    for result in results:
-        name = result.get("code_edition", "")
-        if name in allowed_names:
-            kept.append(result)
-        else:
-            locked[name] = locked.get(name, 0) + 1
-    return kept, locked
+        return None
+    return free_tier_code_names()

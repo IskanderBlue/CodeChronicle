@@ -242,6 +242,42 @@
             outline: 2px solid rgb(var(--secondary)); outline-offset: 2px; border-radius: 1px;
         }
         .ui-action .ui-hint { font-weight: 400; letter-spacing: .06em; color: rgb(var(--ink-3)); }
+        /* Explain-on-hover label: text whose meaning needs a sentence, not a
+           link. Same affordance the citation corrections already use
+           (.cross-ref-nolink) — dotted underline + cursor:help + a title —
+           promoted to the taxonomy because it isn't citation-specific. NOT
+           .ui-action: nothing happens on click, and conflating the two is the
+           confusion that class exists to prevent. */
+        .ui-note { border-bottom: 1px dotted rgb(var(--ink-3)); cursor: help; }
+        /* Relevance-datum instrument (results header -> "close matches").
+           Geometry lives here rather than in Tailwind utilities for the same
+           survive-the-purge reason as .font-legal / .paper-container, but with
+           a sharper failure mode: the bars are sized by inline percentage
+           heights, which need a DEFINITE parent height. If the utility
+           supplying that height is missing from a build, every bar silently
+           resolves to its min-height and the whole plot flattens to a row of
+           hairlines that still looks like a chart. Same for the overlay —
+           without a backdrop and a max width the dialog reads as a full-bleed
+           panel, not a dialog. */
+        .cc-modal {
+            position: fixed; inset: 0; z-index: 50; display: flex;
+            align-items: center; justify-content: center; padding: 16px;
+            background: rgb(var(--ink) / .45);
+        }
+        .cc-modal-panel {
+            width: 100%; max-width: 32rem;
+            background: rgb(var(--surface)); border: 1px solid rgb(var(--rule));
+            box-shadow: 0 10px 30px rgb(0 0 0 / .25);
+        }
+        .cc-datum-plot {
+            position: relative; display: flex; align-items: flex-end; gap: 1px;
+            height: 6rem; cursor: ew-resize;
+        }
+        .cc-datum-bar { flex: 1 1 0; min-height: 1px; transition: background-color .12s; }
+        .cc-datum-line {
+            position: absolute; top: -4px; bottom: 0; width: 1px;
+            background: rgb(var(--ink)); pointer-events: none;
+        }
         .ui-btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 6px;
             font-family: 'Inter Tight', system-ui, sans-serif; font-size: 13px; font-weight: 600;

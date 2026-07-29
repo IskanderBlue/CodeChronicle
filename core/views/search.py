@@ -10,7 +10,12 @@ from django.shortcuts import render
 from django.views.decorators.http import require_POST
 
 from api.formatters import _code_order_key, highlight_terms
-from config.code_metadata import get_code_display_name
+from config.code_metadata import edition_display_name, get_code_display_name
+from config.search_limits import (
+    CLOSE_MATCH_THRESHOLD,
+    SCORE_BUCKET_WIDTH,
+    SEARCH_RESULT_CAP,
+)
 from core.access import edition_allowed
 from core.events import record_event
 from core.ip_utils import extract_client_ip
@@ -21,6 +26,7 @@ from core.models import (
     EngagementEvent,
 )
 from core.provision_lineage import LineageDirection, annotate_lineage_locks, resolve_lineage
+from core.search_prefs import resolve_match_threshold
 from services.search_service import run_search
 
 logger = Logger(__name__)
@@ -489,6 +495,10 @@ def search_results(request):
     date_override = request.POST.get("date")
     province_override = request.POST.get("province")
 
+    # The relevance-floor control posts back through this same view, so moving
+    # the line re-runs the query rather than needing a second endpoint.
+    match_threshold = resolve_match_threshold(request)
+
     # Extract IP for anonymous tracking
     ip = extract_client_ip(request.META)
 
@@ -498,6 +508,7 @@ def search_results(request):
         ip_address=ip if not request.user.is_authenticated else None,
         date_override=date_override or None,
         province_override=province_override or None,
+        match_threshold=match_threshold,
     )
 
     if not result["success"]:
@@ -521,6 +532,29 @@ def search_results(request):
     # search, carrying the per-edition counts, attributed to the search itself
     # so a later report can join demand (query) to what was withheld.
     locked_editions = result.get("locked_editions") or {}
+
+    # What to call the things being counted.  Two nouns, not one, because the
+    # two counts can be measured differently in the same render: under the
+    # weak-match fallback the shown results are explicitly *not* close, while
+    # the locked count on the other side of the gate still cleared the floor.
+    # Calling both "close matches" there would contradict the fallback notice
+    # sitting between them.
+    floor_active = bool(result.get("match_threshold"))
+    shown_is_close = floor_active and not result.get("weak_matches_only")
+    shown_noun, shown_noun_suffix = (
+        ("close match", "es") if shown_is_close else ("result", "s")
+    )
+    locked_noun, locked_noun_suffix = (
+        ("close match", "es") if floor_active else ("result", "s")
+    )
+
+    # The header reads "N OF M" only when the render cap actually holds
+    # something back.  Below the cap nothing is hidden, so claiming "43 OF 85"
+    # would invite the reader to hunt for 42 results that were never withheld —
+    # that form used to mean page-size truncation, which no longer exists.
+    matched = result.get("accessible_match_count", 0)
+    cap_binds = bool(result.get("cap_binds"))
+
     if locked_editions:
         record_event(
             request,
@@ -542,6 +576,12 @@ def search_results(request):
             "success": True,
             "results": result["results"],
             "meta": {"applicable_codes": result["applicable_codes"]},
+            # Same editions as meta.applicable_codes, as prose. The meta key
+            # keeps the raw code_names because the JSON API publishes them;
+            # the page renders these.
+            "applicable_code_names": [
+                edition_display_name(code) for code in result["applicable_codes"]
+            ],
             "query_date": result.get("parsed_params", {}).get("date"),
             "keywords": result.get("parsed_params", {}).get("keywords", []),
             # Threaded into the viewer's section-content request so a
@@ -552,7 +592,67 @@ def search_results(request):
             # explicitly-named date outside coverage (no results — see partial).
             "not_covered_province": result.get("not_covered_province"),
             "date_out_of_range": result.get("date_out_of_range"),
-            # Free-tier teaser: {edition code_name: dropped result count}.
-            "locked_editions": result.get("locked_editions"),
+            # Free-tier teaser, resolved to prose here rather than in the
+            # template: the raw code_name ("OBC_2012") is an internal join key
+            # and must not reach the page.
+            "locked_edition_counts": [
+                {"name": edition_display_name(code), "count": count}
+                for code, count in sorted(locked_editions.items())
+            ],
+            "locked_count": sum(locked_editions.values()),
+            "locked_preview": [
+                {**row, "edition_name": edition_display_name(row["code_edition"])}
+                for row in result.get("locked_preview") or []
+            ],
+            # Drives the "and N more" tail under the preview list.
+            "locked_preview_remainder": max(
+                0, sum(locked_editions.values()) - len(result.get("locked_preview") or [])
+            ),
+            "accessible_match_count": matched,
+            # Only true when the render cap held something back; the header
+            # switches to "N OF M" and explains itself on hover just here.
+            "cap_binds": cap_binds,
+            # Deliberately does not call the left-hand number "the N strongest
+            # matches": it counts cards, and the formatter nests child
+            # provisions under a parent card, so cards and matches are not the
+            # same unit. Says what each number is instead of equating them.
+            "cap_help": (
+                f"This search matched {matched}, and one search renders at "
+                f"most {SEARCH_RESULT_CAP} cards — the weakest are left off. "
+                "Raise where close matches start, or narrow the search, to "
+                "get a list you can read all of."
+            ) if cap_binds else "",
+            # Relevance-floor control. The reader drags a line across the
+            # query's own score distribution rather than picking a named tier,
+            # because a fixed cutoff isn't a fixed idea of closeness — 0.8
+            # returns 20 results on one query and 1 on another. Everything the
+            # control needs to redraw itself locally rides in one JSON blob.
+            "match_threshold": result.get("match_threshold"),
+            "weak_matches_only": result.get("weak_matches_only", False),
+            "datum": {
+                "buckets": result.get("score_buckets") or [],
+                "width": result.get("score_bucket_width") or SCORE_BUCKET_WIDTH,
+                "threshold": result.get("match_threshold"),
+                "default": CLOSE_MATCH_THRESHOLD,
+                # The server's exact count above the line at the resting
+                # threshold. The control estimates from buckets while dragging,
+                # but at rest it must agree to the unit. Deliberately *not*
+                # accessible_match_count: when the weak-match fallback fires
+                # that number is the whole list, and the control would claim
+                # hundreds kept while drawing every bar as dropped.
+                "keptExact": result.get("close_match_count", 0),
+            },
+            "shown_noun": shown_noun,
+            "shown_noun_suffix": shown_noun_suffix,
+            "locked_noun": locked_noun,
+            "locked_noun_suffix": locked_noun_suffix,
+            # One sentence, defined once: it names the active floor, so it
+            # can't drift from the control beside it.
+            "match_threshold_help": (
+                f"Close matches score at least {result.get('match_threshold')}; "
+                "every result prints its own score. Everything counted here, "
+                "including the Pro total, is measured from that line. "
+                "Click to move it."
+            ),
         },
     )

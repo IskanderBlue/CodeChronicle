@@ -12,7 +12,8 @@ from coloured_logger import Logger
 from api.formatters import format_search_results
 from api.llm_parser import parse_user_query
 from api.search import execute_search
-from core.access import partition_results
+from config.search_limits import CLOSE_MATCH_THRESHOLD, coerce_match_threshold
+from core.access import allowed_edition_names
 from core.models import CorpusCurrency, SearchHistory
 
 logger = Logger(__name__)
@@ -48,6 +49,7 @@ def run_search(
     ip_address: str | None = None,
     date_override: str | None = None,
     province_override: str | None = None,
+    match_threshold: float = CLOSE_MATCH_THRESHOLD,
 ) -> dict[str, Any]:
     """
     Execute a full search pipeline: parse → search → format → save history.
@@ -58,12 +60,17 @@ def run_search(
         ip_address: Client IP for anonymous tracking.
         date_override: If provided, overrides the LLM-parsed date (YYYY-MM-DD).
         province_override: If provided, overrides the LLM-parsed province code.
+        match_threshold: Relevance floor for a close match; clamped to a
+            storable floor.
 
     Returns:
         A dict with keys: success, results, error, applicable_codes,
-        parsed_params, top_results_metadata, and locked_editions (the
-        free-tier gate's {edition: dropped count} teaser counts).
+        parsed_params, top_results_metadata, match_threshold,
+        weak_matches_only, accessible_match_count, close_match_count,
+        score_buckets, and the free-tier teaser's locked_editions
+        ({edition: match count}) / locked_preview (identity-only rows).
     """
+    match_threshold = coerce_match_threshold(match_threshold)
     try:
         # Step 1: Parse natural language with LLM
         params = parse_user_query(query)
@@ -136,8 +143,17 @@ def run_search(
         if province_override:
             params["province"] = province_override
 
-        # Step 2: Execute search
-        search_data = execute_search(params)
+        # Step 2: Execute search.  The free-tier scope goes *in* rather than
+        # being applied to the output: the orchestrator splits by access before
+        # trimming, so a gated searcher's cards are filled with editions they
+        # can open instead of being whatever survived someone else's top ten.
+        # It comes back already-scoped, with exact per-edition counts for the
+        # teaser.
+        search_data = execute_search(
+            params,
+            allowed_editions=allowed_edition_names(user),
+            match_threshold=match_threshold,
+        )
 
         if "error" in search_data:
             return {
@@ -146,22 +162,10 @@ def run_search(
                 "results": [],
             }
 
-        # Free-tier content gate: drop results from editions outside the
-        # user's scope BEFORE
-        # formatting, keeping per-edition counts so the UI renders a teaser
-        # ("N results in OBC 2012 — available on Pro") rather than silently
-        # returning less.  The formatter already renders a transition pair
-        # whose other member was dropped as a plain result, so cross-edition
-        # pairs degrade safely.
-        raw_results, locked_editions = partition_results(user, search_data["results"])
-        applicable_codes = [
-            c for c in search_data.get("applicable_codes", []) if c not in locked_editions
-        ]
-        top_results_metadata = [
-            m
-            for m in search_data.get("top_results_metadata", [])
-            if m.get("code") not in locked_editions
-        ]
+        raw_results = search_data["results"]
+        locked_editions = search_data.get("locked_editions") or {}
+        applicable_codes = search_data.get("applicable_codes", [])
+        top_results_metadata = search_data.get("top_results_metadata", [])
 
         # Step 3: Format results for display. The parsed/overridden query
         # date drives the IN FORCE band's query tick + coverage; the parsed
@@ -202,9 +206,28 @@ def run_search(
             # Non-blocking: the search ran against Ontario, but the user asked
             # about a jurisdiction we don't cover yet — tell them.
             "not_covered_province": not_covered_province,
-            # {edition code_name: dropped result count} for the free-tier
-            # teaser notice; empty for unrestricted users / gating off.
+            # {edition code_name: match count} for the free-tier teaser —
+            # exact totals over the whole scored corpus, not the display pool,
+            # so the notice can name a real number.  Empty for Pro.
             "locked_editions": locked_editions,
+            # Identity-only rows (id / division / title) behind the collapsed
+            # "more results on Pro" disclosure, capped upstream.
+            "locked_preview": search_data.get("locked_preview") or [],
+            # Accessible matches in total; > len(results) means the
+            # results-per-search control still has something to reveal.
+            "accessible_match_count": search_data.get("accessible_match_count", 0),
+            "match_threshold": match_threshold,
+            # Nothing cleared the floor, so the weak matches are shown anyway —
+            # the UI says so rather than passing them off as close.
+            "weak_matches_only": search_data.get("weak_matches_only", False),
+            # Score distribution the threshold control is drawn over.
+            "score_buckets": search_data.get("score_buckets") or [],
+            "score_bucket_width": search_data.get("score_bucket_width"),
+            # Matches above the line, before any weak-match fallback replaced
+            # the list — what the threshold control reports as kept.
+            "close_match_count": search_data.get("close_match_count", 0),
+            # True only when SEARCH_RESULT_CAP trimmed rows.
+            "cap_binds": search_data.get("cap_binds", False),
         }
 
     except (ValueError, anthropic.APIError) as e:

@@ -9,6 +9,11 @@ from typing import Any
 from django.db import models
 from django.db.models import Prefetch, Q
 
+from config.search_limits import (
+    CLOSE_MATCH_THRESHOLD,
+    SCORE_BUCKET_WIDTH,
+    score_buckets,
+)
 from core.models import (
     CodeEditionProvisionVersion,
     CodeEditionProvisionVersionClause,
@@ -19,7 +24,7 @@ from core.models import (
 
 from .engine import (
     SEARCH_CANDIDATE_LIMIT,
-    SEARCH_RESULT_LIMIT,
+    SEARCH_RESULT_CAP,
     compute_corpus_stats,
     score_versions,
 )
@@ -43,11 +48,39 @@ def _clause_through_prefetch() -> Prefetch:
     )
 
 
-def execute_search(params: dict[str, Any]) -> dict[str, Any]:
+#: How many locked titles the "more results on Pro" section lists before it
+#: falls back to a bare count.  A gated query can strand hundreds of matches;
+#: the point is to prove the content exists, not to ship the whole index.
+LOCKED_PREVIEW_LIMIT = 25
+
+
+def execute_search(
+    params: dict[str, Any],
+    *,
+    allowed_editions: frozenset[str] | None = None,
+    match_threshold: float = CLOSE_MATCH_THRESHOLD,
+    result_cap: int = SEARCH_RESULT_CAP,
+) -> dict[str, Any]:
     """Main search entry point.
 
     Queries all provision versions in force for a province at a date,
-    scores them against parsed keywords, and groups transitions.
+    scores them against parsed keywords, splits by tier access, and groups
+    transitions.
+
+    Args:
+        params: Parsed query params (date, province, keywords, references).
+        allowed_editions: ``CodeEdition.code_name`` values this searcher may
+            open, or ``None`` for unrestricted.  Resolved by ``core.access``
+            and passed in so this layer stays tier-agnostic.
+        match_threshold: Relevance floor for a *close* match.  Everything
+            reported — the shown results, the counts, the locked teaser — is
+            measured above this line, so the numbers on screen agree.  ``0.0``
+            reports every scored match.
+        result_cap: Hard ceiling on rendered cards.  Applied last, to the
+            *accessible* results, and only ever a backstop against a 400-match
+            query rendering 400 cards — the floor is what decides relevance.
+            ``result_count < accessible_match_count`` is how a caller knows it
+            bound and that the UI owes the reader an explanation.
     """
     search_date = date.fromisoformat(params["date"])
     province = params.get("province", "ON")
@@ -62,6 +95,15 @@ def execute_search(params: dict[str, Any]) -> dict[str, Any]:
             "result_count": 0,
             "search_params": params,
             "top_results_metadata": [],
+            "locked_editions": {},
+            "locked_preview": [],
+            "accessible_match_count": 0,
+            "match_threshold": match_threshold,
+            "weak_matches_only": False,
+            "score_buckets": [],
+            "score_bucket_width": SCORE_BUCKET_WIDTH,
+            "close_match_count": 0,
+            "cap_binds": False,
         }
 
     # All provision versions in force for this province at search_date
@@ -123,21 +165,65 @@ def execute_search(params: dict[str, Any]) -> dict[str, Any]:
 
     corpus_stats = compute_corpus_stats(in_force_qs)
 
-    # Score a candidate pool, group, *then* trim to the display limit.  The
-    # order matters: grouping can only pair results it can see, so trimming
-    # first would drop both members of any pair below the cutoff and render a
-    # transition as a lone version.
-    results = score_versions(
+    # Score every match, split by access, group, *then* trim to the display
+    # limit.  Every step of that order is load-bearing:
+    #
+    #  * Scoring is unlimited because the loop builds a dict per match before
+    #    sorting anyway — a slice here would save nothing and would cost us the
+    #    exact per-edition counts the free-tier notice quotes.
+    #  * The access split runs before the trim so a gated searcher's cards are
+    #    filled from what they can actually read.  Trimming first (the old
+    #    order) let a locked edition with more in-force provisions monopolise
+    #    every slot and hand the gate an all-locked list, so the UI reported
+    #    "nothing matched" about a corpus that had matched.
+    #  * Grouping runs before the trim because it can only pair results it can
+    #    see; trimming first would drop both members of a pair below the cutoff
+    #    and render a transition as a lone version.
+    scored = score_versions(
         query=" ".join(keywords),
         versions_qs=in_force_qs,
         corpus_stats=corpus_stats,
         provision_references=provision_references,
-        limit=SEARCH_CANDIDATE_LIMIT,
+        limit=None,
         raw_query=params.get("raw_query", ""),
     )
 
-    results = _group_transitions(results)
-    results = _limit_with_pairs(results, SEARCH_RESULT_LIMIT)
+    accessible_all, locked_all = _split_by_access(scored, allowed_editions)
+
+    # Relevance floor. Applied per side and *after* the access split so the two
+    # counts on screen are computed the same way — a floored locked count under
+    # an unfloored header count would be two answers to one question.
+    accessible = [r for r in accessible_all if r["score"] >= match_threshold]
+    locked = [r for r in locked_all if r["score"] >= match_threshold]
+
+    # How many actually cleared the line, captured before the fallback can
+    # replace the list. The threshold control reports this: if it reported the
+    # fallback's size it would claim hundreds of matches were kept while
+    # drawing every bar below the line as dropped.
+    close_match_count = len(accessible)
+
+    # Fallback: a floor that empties the list would recreate the exact failure
+    # the access split just fixed — "nothing matched" over a corpus that had.
+    # Show the weak matches instead and let the caller say so.
+    weak_matches_only = bool(accessible_all) and not accessible
+    if weak_matches_only:
+        accessible = accessible_all
+
+    # Grouping is the expensive stage (mapping lookups over the set), so it
+    # sees a pool rather than the whole accessible list — deep enough that a
+    # transition pair straddling the display cutoff still reunites.
+    pool = max(SEARCH_CANDIDATE_LIMIT, result_cap * 2)
+    grouped = _group_transitions(accessible[:pool])
+    results = _limit_with_pairs(grouped, result_cap)
+
+    # Whether the cap actually held anything back, decided where the trimming
+    # happens rather than by comparing the rendered rows against the match
+    # count.  Those two differ for reasons that have nothing to do with the cap
+    # — grouping keeps two sides of a transition and drops any third in-force
+    # version — and a header that reads "77 OF 78" invites the reader to hunt
+    # for a result nothing withheld.
+    cap_binds = len(results) < len(grouped)
+
     results = _add_source_date(results, search_date)
 
     applicable_codes = _unique_edition_names(results)
@@ -154,9 +240,80 @@ def execute_search(params: dict[str, Any]) -> dict[str, Any]:
                 "section_id": r.get("id"),
                 "title": r.get("title", ""),
             }
-            for r in results[:SEARCH_RESULT_LIMIT]
+            for r in results
         ],
+        # Exact counts, not pool-bounded: every match was scored, so the
+        # teaser can name a real number instead of implying the pool size was
+        # the whole story.
+        "locked_editions": _match_counts(locked),
+        "locked_preview": _locked_preview(locked),
+        # Accessible matches that exist beyond the display limit — what the
+        # results-per-search control can still reveal.
+        "accessible_match_count": len(accessible),
+        "match_threshold": match_threshold,
+        # True when nothing cleared the floor and the weak matches are being
+        # shown anyway; the UI says so rather than passing them off as close.
+        "weak_matches_only": weak_matches_only,
+        # The distribution the threshold control is drawn over: counts per
+        # score band across everything this searcher could see, floor ignored.
+        # Measured on the accessible side only — every number on the page is
+        # about the list they can read, and the locked side has its own count.
+        "score_buckets": score_buckets([r["score"] for r in accessible_all]),
+        "score_bucket_width": SCORE_BUCKET_WIDTH,
+        "close_match_count": close_match_count,
+        # True only when result_cap trimmed rows — the one case where the UI
+        # owes the reader an explanation for a shorter list than the count.
+        "cap_binds": cap_binds,
     }
+
+
+def _split_by_access(
+    results: list[dict[str, Any]], allowed_editions: frozenset[str] | None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Partition scored results into (accessible, locked), relevance order kept.
+
+    ``allowed_editions is None`` means unrestricted — the common Pro path, and
+    the one that must not pay for the split.
+    """
+    if allowed_editions is None:
+        return results, []
+    accessible: list[dict[str, Any]] = []
+    locked: list[dict[str, Any]] = []
+    for result in results:
+        target = (
+            accessible
+            if result.get("code_edition", "") in allowed_editions
+            else locked
+        )
+        target.append(result)
+    return accessible, locked
+
+
+def _match_counts(results: list[dict[str, Any]]) -> dict[str, int]:
+    """``{edition code_name: match count}`` over a scored result list."""
+    counts: dict[str, int] = {}
+    for result in results:
+        name = result.get("code_edition", "")
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def _locked_preview(locked: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Identity-only rows for the collapsed "more results on Pro" list.
+
+    Provision id, division and title — the same fields the locked lineage rows
+    and edition-nav teasers already show.  Deliberately no body text: the point
+    is to prove the match exists and is relevant, not to serve the content.
+    """
+    return [
+        {
+            "id": result.get("id", ""),
+            "division": result.get("division", ""),
+            "title": result.get("title", ""),
+            "code_edition": result.get("code_edition", ""),
+        }
+        for result in locked[:LOCKED_PREVIEW_LIMIT]
+    ]
 
 
 def deduplicate_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
