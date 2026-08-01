@@ -9,7 +9,13 @@ from . import views
 app_name = "core"
 
 urlpatterns = [
-    path("", views.home, name="home"),
+    # The front door is the landing page; ``redirect_signed_in`` sends an
+    # authenticated reader straight on to the tool.  ``/about/`` is the same
+    # page without that redirect, so the explanation stays linkable for
+    # everybody (see core.views.landing).
+    path("", views.landing, {"redirect_signed_in": True}, name="landing"),
+    path("about/", views.landing, name="about"),
+    path("search/", views.search_page, name="search"),
     path("pricing/", views.pricing, name="pricing"),
     path("terms/", views.terms_of_service, name="terms_of_service"),
     path("privacy/", views.privacy_policy, name="privacy_policy"),

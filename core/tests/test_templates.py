@@ -1,7 +1,9 @@
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import pytest
+from django.conf import settings
 from django.template import Context, Template
 from django.template.loader import render_to_string
 
@@ -1021,3 +1023,159 @@ def test_non_revoked_version_omits_tombstone_warning():
         {"result": {"version": SimpleNamespace(revoked=False), "clause": None}},
     )
     assert "has been revoked" not in live_html
+
+
+class TestBackdropKnockouts:
+    """A knockout mark must follow its container's fill, not assume one.
+
+    A few marks punch a hole in the line they sit on — the attestation rail's
+    reconstruction ring, the legend's ring swatch — by filling with the colour
+    behind them.  That fill was hard-coded to ``--surface``, which is a guess
+    about the container: on the search and permalink pages the rail sits inside
+    the IN FORCE band's ``bg-secondary-soft`` wrapper, so the ring punched a
+    page-coloured hole in a band-coloured field, and any new container repeated
+    the bug.
+
+    The contract is now: the mark fills with ``--backdrop``; any element that
+    paints a background and may contain such a mark re-declares ``--backdrop``
+    to the same token.  These tests pin both halves, because the failure is
+    invisible in review — the CSS is valid and the page still renders.
+    """
+
+    KNOCKOUT_RULES = (".vrail .mk-ring", ".rail-legend .sw-ring::before")
+
+    def _base_css(self) -> str:
+        return (settings.BASE_DIR / "templates" / "base.html").read_text(encoding="utf-8")
+
+    def test_the_backdrop_token_has_a_page_default(self) -> None:
+        """An undeclared container must still get the page background — that is
+        the common case and must not need an opt-in."""
+        assert "--backdrop: var(--surface);" in self._base_css()
+
+    @pytest.mark.parametrize("selector", KNOCKOUT_RULES)
+    def test_a_knockout_does_not_hard_code_the_page_background(self, selector: str) -> None:
+        css = self._base_css()
+        start = css.index(selector)
+        rule = css[start:css.index("}", start)]
+        assert "var(--backdrop)" in rule, f"{selector} stopped following its container"
+        assert "var(--surface)" not in rule, (
+            f"{selector} assumes the page background again"
+        )
+
+    def test_the_in_force_band_declares_the_backdrop_it_paints(self) -> None:
+        """The band paints ``bg-secondary-soft`` and contains the rail, so it
+        owes a declaration.  Both halves must move together or the ring is wrong
+        again."""
+        band = (
+            settings.BASE_DIR / "templates" / "partials" / "_provenance_band.html"
+        ).read_text(encoding="utf-8")
+        assert "bg-secondary-soft" in band
+        assert "[--backdrop:var(--secondary-soft)]" in band
+
+    def test_the_landing_specimen_box_paints_no_fill(self) -> None:
+        """Section III mounts the shipping partials.  A fill on the specimen box
+        would put them on a backdrop they were not built against — which is what
+        made them look wrong — without declaring ``--backdrop`` to match."""
+        landing = (settings.BASE_DIR / "templates" / "landing.html").read_text(
+            encoding="utf-8"
+        )
+        start = landing.index("\n.lp-spec {")
+        rule = landing[start:landing.index("}", start)]
+        assert "background" not in rule, (
+            ".lp-spec paints a fill again; either drop it or declare --backdrop"
+        )
+
+
+class TestOneOfEachComponent:
+    """A component has ONE implementation, and every surface renders that one.
+
+    Two copies had already drifted before these tests existed: the landing page
+    drew its own search bar (twice, both missing the Jurisdiction cell the real
+    form has), and it capped a specimen at a width transcribed out of another
+    page's grid — a width that was wrong on the first read, because the
+    subtraction spans four files.
+
+    A copy of a component, and a number copied out of a component's layout, are
+    the same defect: a claim about the product that nothing keeps true. These
+    tests read the template sources, because the failure is invisible in review
+    — every copy renders perfectly well on its own.
+    """
+
+    def _template(self, *parts: str) -> str:
+        return (settings.BASE_DIR / "templates" / Path(*parts)).read_text(encoding="utf-8")
+
+    SEARCH_FORM = "partials/_search_form.html"
+    #: Counted as an include, not as a filename — the filename also appears in
+    #: the prose comments that explain why there is only one of these.
+    INCLUDES_FORM = f'{{% include "{SEARCH_FORM}"'
+
+    def test_the_search_page_renders_the_shared_form(self) -> None:
+        assert self.INCLUDES_FORM in self._template("search.html")
+
+    def test_the_landing_page_renders_the_shared_form_twice(self) -> None:
+        """The hero and the section III row 01 specimen. Both used to be hand
+        drawn, and both had lost the Jurisdiction cell."""
+        assert self._template("landing.html").count(self.INCLUDES_FORM) == 2
+
+    def test_the_shared_form_keeps_the_ids_the_search_page_depends_on(self) -> None:
+        """``id="search-form"`` is what the relevance-floor control re-runs the
+        query through (``hx-include``), and the search page's script focuses
+        ``id="query"``. The partial must not prefix either in live mode."""
+        form = self._template(*self.SEARCH_FORM.split("/"))
+        assert 'id="search-form"' in form
+        assert 'id="{{ id_prefix }}query"' in form
+
+    def test_the_shared_form_shows_the_jurisdiction_cell_unconditionally(self) -> None:
+        """The cell says what the tool covers. Its absence is exactly what made
+        the landing copies read as a smaller, different control, so it must not
+        sit behind the mode flag."""
+        form = self._template(*self.SEARCH_FORM.split("/"))
+        cell = form.index('>Jurisdiction</span>')
+        opened = form.rindex("<div", 0, cell)
+        assert "{% if" not in form[opened:cell], (
+            "the Jurisdiction cell went behind the mode flag again"
+        )
+
+    WORKING_GRIDS = ("partials/search_results_partial.html", "regulation/provision_permalink.html")
+
+    @pytest.mark.parametrize("template", WORKING_GRIDS)
+    def test_the_working_surfaces_share_one_column_grid(self, template: str) -> None:
+        """Both spend the page on the same three tracks. The tracks live in
+        ``.ws-cols`` (base.html); a literal ``grid-cols-[…]`` here is a second
+        copy of them."""
+        source = self._template(*template.split("/"))
+        assert "ws-cols" in source
+        assert "grid-cols-[" not in source, f"{template} declares its own tracks again"
+
+    def test_the_column_tracks_are_declared_once(self) -> None:
+        base = self._template("base.html")
+        assert "grid-template-columns: var(--ws-nav) minmax(0, 1fr) var(--ws-rail);" in base
+        assert "--ws-centre: calc(" in base
+
+    @pytest.mark.parametrize("rule", (".lp-mount-centre", ".lp-mount-rail"))
+    def test_the_landing_specimens_read_the_grid_tokens(self, rule: str) -> None:
+        """Not a measured pixel value. ``.lp-mount-centre`` was 964px against a
+        real 933px, which put the attestation rail past the width at which it
+        collapses its labels — so the specimen showed a layout no reader can
+        reach."""
+        landing = self._template("landing.html")
+        start = landing.index(f"\n{rule} {{")
+        assert "var(--ws-" in landing[start:landing.index("}", start)], (
+            f"{rule} transcribes a width again"
+        )
+
+    def test_the_verification_guide_teaches_the_whole_band(self) -> None:
+        """The rail is never seen alone in the product — it is the band's body,
+        and the band paints the fill its marks are drawn against. The guide used
+        to render the bare rail, so it taught the object in a colour no reader
+        ever meets."""
+        guide = self._template("verification_guide.html")
+        assert "partials/_provenance_band.html" in guide
+        assert "partials/_attestation_rail.html" not in guide
+
+    def test_the_verification_guide_declares_the_backdrop_it_paints(self) -> None:
+        """Its panel paints ``--surface-2`` and holds the symbol key's ring
+        knockout — see ``TestBackdropKnockouts`` for the contract."""
+        guide = self._template("verification_guide.html")
+        assert "bg-surface-2" in guide
+        assert "[--backdrop:var(--surface-2)]" in guide

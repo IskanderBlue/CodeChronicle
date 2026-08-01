@@ -76,57 +76,14 @@
 
 {% block content %}
 <div class="px-4 sm:px-8 py-6">
-    <!-- ── Search bar ──────────────────────────────────────────────────
-         Cellular field: QUERY label · serif query input · JUR + AS-OF
-         cells, divided by 1px rules.  AS-OF uses the `highlight` role
-         (ink-in-a-ruled-box in light, amber in dark) to read as a user
-         input.  Single province/date inputs reused across breakpoints —
-         the cells stack below the query on < sm to avoid duplicate names. -->
-    <!-- id is load-bearing: the results-per-search control in the results
-         partial re-runs this same query via hx-include="#search-form". -->
-    <form id="search-form" hx-post="{% url 'core:search_results' %}" hx-target="#results-area"
-        hx-on::before-request="document.getElementById('results-area').innerHTML=document.getElementById('loading-tpl').innerHTML">
-        {% csrf_token %}
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-            <div class="flex flex-1 flex-col border border-ink-2 bg-panel sm:flex-row sm:items-stretch">
-                <div class="flex flex-1 items-stretch">
-                    <label for="query"
-                        class="flex items-center border-r border-rule px-[14px] font-mono text-[11px] tracking-[0.06em] text-ink-3">QUERY</label>
-                    <input type="text" name="query" id="query" required value="{{ initial_query }}"
-                        placeholder="fire-resistance rating between dwelling units, Ontario, 2016"
-                        class="w-full min-w-0 flex-1 border-0 bg-transparent px-4 py-[14px] font-serif text-[17px] text-ink placeholder:text-ink-3/60 focus:outline-none focus:ring-0">
-                </div>
-                <!-- Jurisdiction cell — locked to Ontario (the only jurisdiction
-                     we cover).  Label spelled out in full (room on the row); the
-                     visible value is "Ontario" while a hidden input still posts
-                     the "ON" code. -->
-                <div class="flex items-center gap-1 border-t border-rule px-3 py-2 font-mono text-[11px] text-ink-3 sm:border-l sm:border-t-0 sm:py-0">
-                    <span class="tracking-[0.06em]">Jurisdiction</span>
-                    <span class="text-rule">&middot;</span>
-                    <span class="font-semibold text-ink" title="Only Ontario is currently covered">Ontario</span>
-                    <input type="hidden" name="province" value="ON">
-                </div>
-                <!-- AS-OF cell (user-input role: ink → amber).  Defaults to the
-                     corpus's last covered date — the same end date the masthead
-                     shows ("Consolidation current to") — via CorpusCurrency. -->
-                <label class="flex items-center gap-2 border-t border-rule px-3 py-2 sm:border-l sm:border-t-0 sm:py-0">
-                    <span class="font-mono text-[11px] tracking-[0.06em] text-ink-3">AS-OF</span>
-                    <input type="date" name="date" value="{{ coverage_end|date:'Y-m-d' }}"
-                        {% if coverage_start %}min="{{ coverage_start|date:'Y-m-d' }}"{% endif %}
-                        {% if coverage_end %}max="{{ coverage_end|date:'Y-m-d' }}"{% endif %}
-                        class="border border-ink-2 bg-panel px-2 py-1 font-mono text-[11px] font-semibold tracking-[0.04em] text-highlight focus:outline-none focus:ring-0 dark:[color-scheme:dark]">
-                </label>
-            </div>
-            <button type="submit"
-                class="ui-btn px-7 py-[14px] uppercase tracking-[0.1em]">
-                Search <span aria-hidden="true">&crarr;</span>
-            </button>
-        </div>
-        <!-- Meta strip beneath the bar -->
-        <p class="mt-[10px] font-mono text-[11px] tracking-[0.04em] text-ink-3">
-            Natural-language query &rarr; parsed jurisdiction, date &amp; keywords, searched against in-force editions
-        </p>
-    </form>
+    {% comment %} The search bar. The markup lives in
+       `partials/_search_form.html`, which the landing page also renders — one
+       form, so the front page cannot advertise a control the product does not
+       have. `mode="live"` is the htmx behaviour: it keeps `id="search-form"`
+       (the relevance-floor control re-runs this query with
+       hx-include="#search-form") and the bare `id="query"` this page's script
+       focuses, and it posts `query` / `date` / `province`. {% endcomment %}
+    {% include "partials/_search_form.html" with mode="live" meta_note="Natural-language query → parsed jurisdiction, date & keywords, searched against in-force editions" %}
 
     <!-- ── "How it works" — persistent, dismissible inline explainer ──────
          Not a forced modal: it's an inline panel that auto-opens on a first

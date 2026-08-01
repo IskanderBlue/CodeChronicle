@@ -63,6 +63,45 @@
            §"Two new functional-color tokens". */
         --strike: 154 40 32;                /* deletions / revoke — deep red */
         --insert: 47 109 79;                /* additions — forest green */
+        /* What is CURRENTLY behind a component — not a palette entry.
+           A few marks are knockouts: a shape whose fill must equal the backdrop
+           to punch a hole in the line it sits on (the rail's `.mk-ring`, the
+           legend's `.sw-ring`). They used to fill with `--surface`, which is a
+           guess about the container and was already wrong on the search and
+           permalink pages, where the rail sits inside the IN FORCE band's
+           `bg-secondary-soft` wrapper rather than on the page.
+           The rule: ANY element that paints a background and may contain such a
+           component re-declares `--backdrop` to the same token, once. The
+           knockout then follows it everywhere, including in containers written
+           later, with no edit to the component. Declared here so an undeclared
+           container still gets the page background, which is the common case. */
+        --backdrop: var(--surface);
+        /* ── The working measure ──
+           The search results and the provision permalink are the two WORKING
+           surfaces. Both cap the page at --ws-max and spend it on the same
+           three-column grid — navigation · provision · provenance rail. The
+           track sizes are declared here ONCE, and `.ws-cols` (in the component
+           block below) builds the grid from them.
+
+           --ws-centre is how wide the middle column comes out. Anything that
+           has to know how wide a provision reads asks for this variable. Do not
+           measure a rendered page and write the number down instead: the
+           subtraction spans four files, and the first hand-computed value was
+           63px wrong — wrong enough to push the attestation rail past the width
+           at which it collapses its labels, so the specimen showed a layout no
+           reader could reach.
+
+           --ws-pad is the page shell's lg:px-8 (4rem) plus each working page's
+           own sm:px-8 (4rem). --ws-nav defaults to the WIDER of the two
+           navigation tracks, which makes --ws-centre the NARROWER of the two
+           centre columns — so a specimen is never wider than a real result. */
+        --ws-max: 1700px;
+        --ws-pad: 8rem;
+        --ws-nav: 20rem;
+        --ws-rail: 19rem;
+        --ws-gap: 1.5rem;
+        --ws-centre: calc(min(100vw, var(--ws-max)) - var(--ws-pad)
+                          - var(--ws-nav) - var(--ws-rail) - 2 * var(--ws-gap));
       }
       .dark {
         --ink: 230 232 236;
@@ -109,6 +148,22 @@
        tailwind.config.js — single source of truth for the v4 CLI build. {% endcomment %}
     <style>
         [x-cloak] { display: none !important; }
+        /* The three-column working grid — navigation · provision · provenance
+           rail — shared by the search results and the provision permalink so
+           the two cannot drift apart. Built from the --ws-* tokens above.
+           Override --ws-nav on the element for a different first track.
+
+           It sets ONLY the grid properties. `display` stays with each call
+           site's own utility (`lg:grid`, or `hidden lg:grid`), because this
+           style block is loaded BEFORE tailwind.css and therefore loses every
+           specificity tie to a utility class. */
+        @media (min-width: 1024px) {
+            .ws-cols {
+                grid-template-columns: var(--ws-nav) minmax(0, 1fr) var(--ws-rail);
+                gap: var(--ws-gap);
+                align-items: start;
+            }
+        }
         .htmx-indicator { display: none; }
         .htmx-request .htmx-indicator { display: inline; }
         .diff-old-unchanged, .diff-new-unchanged { opacity: 0.7; }
@@ -368,7 +423,7 @@
         }
         .vrail .mk-ring {
             position: absolute; top: var(--mid); transform: translate(-50%, -50%); z-index: 6; width: 12px; height: 12px;
-            border: 2px solid rgb(var(--secondary)); background: rgb(var(--surface)); border-radius: 50%;
+            border: 2px solid rgb(var(--secondary)); background: rgb(var(--backdrop)); border-radius: 50%;
         }
         .vrail .qmark {
             position: absolute; top: calc(var(--mid) - 7px); height: 14px; width: 2px; background: rgb(var(--highlight));
@@ -447,7 +502,7 @@
         .rail-legend .sw-ring::before {
             content: ""; position: absolute; left: 50%; top: 50%; width: 11px; height: 11px;
             transform: translate(-50%, -50%); border: 2px solid rgb(var(--secondary));
-            border-radius: 50%; background: rgb(var(--surface));
+            border-radius: 50%; background: rgb(var(--backdrop));
         }
         .rail-legend .sw-query::before {
             content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 15px;
@@ -539,7 +594,11 @@
         <!-- Nameplate + navigation -->
         <div class="flex items-baseline justify-between gap-4 px-4 sm:px-8 pt-4 pb-3">
             <div class="flex items-baseline gap-[18px] min-w-0">
-                <a href="{% url 'core:home' %}"
+                {% comment %} Nameplate points at the front door, not the tool:
+                   `/` renders the landing page for a visitor and redirects a
+                   signed-in reader on to the search page, so one link is right
+                   for both. {% endcomment %}
+                <a href="{% url 'core:landing' %}"
                     class="font-serif text-3xl sm:text-[44px] font-bold tracking-[-0.02em] leading-none text-ink whitespace-nowrap">Code<span
                         class="italic font-medium">Chronicle</span></a>
                 <span class="hidden lg:block border-l border-rule pl-[18px] font-serif italic text-sm text-ink-2">
@@ -549,8 +608,8 @@
 
             <!-- Desktop nav -->
             <nav class="hidden md:flex items-center gap-6 font-sans text-[13px] font-medium uppercase tracking-[0.08em]">
-                <a href="{% url 'core:home' %}"
-                    class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'home' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Search</a>
+                <a href="{% url 'core:search' %}"
+                    class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'search' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Search</a>
                 {% if not user.is_authenticated or not user.has_active_subscription %}
                 <a href="{% url 'core:pricing' %}"
                     class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'pricing' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Pricing</a>
@@ -617,8 +676,8 @@
         <!-- Mobile menu -->
         <div x-show="open" x-cloak class="md:hidden border-t border-rule-2 font-sans">
             <div class="py-2">
-                <a href="{% url 'core:home' %}"
-                    class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium {% if request.resolver_match.url_name == 'home' %}border-secondary text-ink bg-surface{% else %}border-transparent text-ink-3 hover:text-ink hover:bg-surface{% endif %}">Search</a>
+                <a href="{% url 'core:search' %}"
+                    class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium {% if request.resolver_match.url_name == 'search' %}border-secondary text-ink bg-surface{% else %}border-transparent text-ink-3 hover:text-ink hover:bg-surface{% endif %}">Search</a>
                 {% if not user.is_authenticated or not user.has_active_subscription %}
                 <a href="{% url 'core:pricing' %}"
                     class="block pl-3 pr-4 py-2 border-l-4 text-base font-medium {% if request.resolver_match.url_name == 'pricing' %}border-secondary text-ink bg-surface{% else %}border-transparent text-ink-3 hover:text-ink hover:bg-surface{% endif %}">Pricing</a>
@@ -676,6 +735,11 @@
             <span>CodeChronicle &middot; Established MMXXVI</span>
             <span class="sm:text-center">Not legal advice &middot; Citation-grade reference &middot; Verify against official consolidation</span>
             <span class="flex items-center gap-3">
+                {% comment %} `about` is the landing page without the
+                   redirect-when-signed-in, so this link works for every
+                   reader (see core.views.landing). {% endcomment %}
+                <a href="{% url 'core:about' %}" class="underline decoration-1 underline-offset-2 hover:text-ink">How it's built</a>
+                <span class="text-rule">&middot;</span>
                 <a href="{% url 'core:data_sources' %}" class="underline decoration-1 underline-offset-2 hover:text-ink">Sources</a>
                 <span class="text-rule">&middot;</span>
                 <a href="{% url 'core:terms_of_service' %}" class="underline decoration-1 underline-offset-2 hover:text-ink">Terms</a>

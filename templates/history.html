@@ -20,7 +20,7 @@
 
     <div class="space-y-4">
         {% for item in history %}
-        <a href="{% url 'core:home' %}?q={{ item.query|urlencode }}"
+        <a href="{% url 'core:search' %}?q={{ item.query|urlencode }}"
             class="block bg-surface-2 border border-rule p-6 hover:border-secondary transition-colors cursor-pointer no-underline"
             x-show="!query || '{{ item.query|escapejs }}'.toLowerCase().includes(query.toLowerCase())" x-transition>
             <div class="flex justify-between items-start">

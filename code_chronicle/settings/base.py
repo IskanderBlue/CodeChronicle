@@ -32,6 +32,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sites",
     "django.contrib.postgres",
+    # `intcomma`, for the corpus figures on the landing page — a five-digit
+    # count set at display size is unreadable without a thousands separator.
+    "django.contrib.humanize",
     # Third-party apps
     "allauth",
     "allauth.account",

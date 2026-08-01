@@ -4,11 +4,19 @@
 {% block title %}Reading the verification rail - CodeChronicle{% endblock %}
 
 {% comment %} How-to-read reference for the attestation rail. The examples render
-   through the SAME _attestation_rail.html partial the search results use, fed by
-   core.rail_examples (precomputed geometry) via the rail_legend tag — so the guide
-   can't drift from the rail that ships. Opened in a new tab from each rail's "How
-   to read this" link. The .rail-legend wrapper force-shows the graphic (the live
-   rail hides it below @xl) and styles the symbol-key swatches; see base.html. {% endcomment %}
+   through the SAME _provenance_band.html the search results and the permalink page
+   use, fed by core.rail_examples (precomputed geometry) via the rail_legend tag —
+   so the guide can't drift from the object that ships. Opened in a new tab from
+   each rail's "How to read this" link. The .rail-legend wrapper force-shows the
+   graphic (the live rail hides it below @xl) and styles the symbol-key swatches;
+   see base.html.
+
+   The band, not the rail alone: in the product the rail is NEVER seen by itself —
+   it is the band's body, and the band paints `bg-secondary-soft` and declares the
+   matching `--backdrop`. Rendering the bare rail here taught it in a colour no
+   reader ever meets, and filled its ◯ knockouts against the wrong backdrop. The
+   band needs nothing from a result but `rail`; `in_legend` drops the copy button,
+   because an illustrative date has no reference to copy. {% endcomment %}
 {% block content %}
 <div class="rail-legend mx-auto max-w-4xl px-4 py-8">
     <div class="mb-10 text-center">
@@ -18,7 +26,12 @@
 
     {% rail_legend as legend %}
 
-    <div class="space-y-8 border border-rule bg-surface-2 p-6 sm:p-8">
+    {% comment %} This panel paints `--surface-2`, so it re-declares `--backdrop`
+       to match: the symbol key's ◯ swatch is a knockout, and it filled with the
+       page background while sitting on a panel one shade darker. Any element
+       that paints a background and may contain such a mark declares this once —
+       see the note on `--backdrop` in base.html. {% endcomment %}
+    <div class="space-y-8 border border-rule bg-surface-2 p-6 sm:p-8 [--backdrop:var(--surface-2)]">
         <p class="text-ink-2">
             Every search result carries an <strong class="text-ink">in-force band</strong> whose body is the
             verification rail: it times the provision you are reading against the e-Laws consolidations that can
@@ -45,7 +58,7 @@
                 <div class="py-4">
                     {% if ex.note %}<p class="legend-note">{{ ex.note }}</p>{% endif %}
                     <div class="legend-rail">
-                        {% include "partials/_attestation_rail.html" with result=ex.result in_legend=True %}
+                        {% include "partials/_provenance_band.html" with result=ex.result in_legend=True %}
                     </div>
                 </div>
                 {% endfor %}

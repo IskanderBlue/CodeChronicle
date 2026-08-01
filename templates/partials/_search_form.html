@@ -1,0 +1,93 @@
+{% comment %} ── The search form ──
+   ONE implementation, three call sites: the search page (templates/search.html),
+   the landing hero, and the landing's section III row 01. It used to be three
+   separate forms, and the two copies had already drifted — both had lost the
+   Jurisdiction cell, so the front page advertised a different instrument from
+   the one it hands the reader.
+
+   `mode` is the only fork, and it forks BEHAVIOUR, not markup:
+
+     live      the search page. htmx posts the query and swaps the results area
+               in place. `id="search-form"` is load-bearing (the relevance-floor
+               control re-runs this same query with hx-include="#search-form"),
+               and so is `id="query"`, which the search page's own script
+               focuses.
+     handoff   a plain GET to the search page, which reads `?q=` and `?d=`. A
+               visitor arrives at the tool holding their own question, so the
+               form on the front page is the product rather than a picture of it.
+
+   The field names follow the mode: live posts `query` / `date` / `province`;
+   handoff uses `q` / `d`, the public link contract the "try this" links share.
+   Do not change either set — both are referenced outside this file.
+
+   `id_prefix` namespaces the ids, because two of these forms appear on one page
+   (the landing hero and row 01) and a duplicate id is invalid — that was a live
+   bug here. The search page passes no prefix and keeps the bare ids its script
+   and its hx-include depend on. The AS-OF input needs no id at all: its label
+   wraps it.
+
+   Callers may set: mode, id_prefix, initial_query, initial_date, placeholder,
+   meta_note. `coverage_start` / `coverage_end` arrive from the context
+   processor, so the date bounds are the corpus bounds on every surface.
+
+   NB: multi-line {# #} comments leak as literal text (the tokenizer is not
+   re.DOTALL) — use {% comment %} for anything spanning lines.
+{% endcomment %}
+<form {% if mode == 'live' %}id="search-form" hx-post="{% url 'core:search_results' %}" hx-target="#results-area" hx-on::before-request="document.getElementById('results-area').innerHTML=document.getElementById('loading-tpl').innerHTML"{% else %}method="get" action="{% url 'core:search' %}"{% endif %}>
+    {% if mode == 'live' %}{% csrf_token %}{% endif %}
+    {% comment %} Cellular field: QUERY label · serif query input · Jurisdiction
+       and AS-OF cells, divided by 1px rules. AS-OF uses the `highlight` role
+       (ink-in-a-ruled-box in light, amber in dark) so it reads as a reader
+       input. One province/date input reused across breakpoints — the cells
+       stack below the query under sm, which avoids duplicate names. {% endcomment %}
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+        <div class="flex flex-1 flex-col border border-ink-2 bg-panel sm:flex-row sm:items-stretch">
+            <div class="flex flex-1 items-stretch">
+                <label for="{{ id_prefix }}query"
+                    class="flex items-center border-r border-rule px-[14px] font-mono text-[11px] tracking-[0.06em] text-ink-3">QUERY</label>
+                <input type="text" name="{% if mode == 'live' %}query{% else %}q{% endif %}" id="{{ id_prefix }}query" required
+                    value="{{ initial_query }}"
+                    placeholder="{{ placeholder|default:'fire-resistance rating between dwelling units, Ontario, 2016' }}"
+                    class="w-full min-w-0 flex-1 border-0 bg-transparent px-4 py-[14px] font-serif text-[17px] text-ink placeholder:text-ink-3/60 focus:outline-none focus:ring-0">
+            </div>
+            {% comment %} Jurisdiction cell — locked to Ontario (the only
+               jurisdiction we cover). The label is spelled out in full (there is
+               room on the row); the visible value is "Ontario" while a hidden
+               input posts the "ON" code. The cell shows in every mode: it says
+               what the tool covers, and its absence is what made the landing
+               bars read as a smaller, different control. The hidden input is
+               live-only — the handoff GET carries `q` and `d`, and the search
+               page picks the province itself. {% endcomment %}
+            <div class="flex items-center gap-1 border-t border-rule px-3 py-2 font-mono text-[11px] text-ink-3 sm:border-l sm:border-t-0 sm:py-0">
+                <span class="tracking-[0.06em]">Jurisdiction</span>
+                <span class="text-rule">&middot;</span>
+                <span class="font-semibold text-ink" title="Only Ontario is currently covered">Ontario</span>
+                {% if mode == 'live' %}<input type="hidden" name="province" value="ON">{% endif %}
+            </div>
+            {% comment %} AS-OF cell (reader-input role: ink → amber). The search
+               runs at this date, and it OVERRIDES any year the parser reads out
+               of the query text — so a form without it sends "…, 2003" to the
+               corpus default date and answers with the wrong edition. It
+               defaults to `coverage_end`, the same end date the masthead shows
+               ("Consolidation current to"), from CorpusCurrency.
+
+               `initial_date` comes from `?d=` (a "try this" link, or a shared
+               URL) or from the caller; it must win over the corpus default or
+               the linked query runs at the wrong date. {% endcomment %}
+            <label class="flex items-center gap-2 border-t border-rule px-3 py-2 sm:border-l sm:border-t-0 sm:py-0">
+                <span class="font-mono text-[11px] tracking-[0.06em] text-ink-3">AS-OF</span>
+                <input type="date" name="{% if mode == 'live' %}date{% else %}d{% endif %}"
+                    value="{% if initial_date %}{{ initial_date|date:'Y-m-d' }}{% else %}{{ coverage_end|date:'Y-m-d' }}{% endif %}"
+                    {% if coverage_start %}min="{{ coverage_start|date:'Y-m-d' }}"{% endif %}
+                    {% if coverage_end %}max="{{ coverage_end|date:'Y-m-d' }}"{% endif %}
+                    class="border border-ink-2 bg-panel px-2 py-1 font-mono text-[11px] font-semibold tracking-[0.04em] text-highlight focus:outline-none focus:ring-0 dark:[color-scheme:dark]">
+            </label>
+        </div>
+        <button type="submit" class="ui-btn px-7 py-[14px] uppercase tracking-[0.1em]">
+            Search <span aria-hidden="true">&crarr;</span>
+        </button>
+    </div>
+    {% if meta_note %}
+    <p class="mt-[10px] font-mono text-[11px] tracking-[0.04em] text-ink-3">{{ meta_note }}</p>
+    {% endif %}
+</form>

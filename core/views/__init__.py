@@ -9,6 +9,7 @@ from .billing import (
     stripe_success,
 )
 from .history import history
+from .landing import landing
 from .pages import (
     data_sources,
     list_punctuation,
@@ -20,7 +21,7 @@ from .pages import (
 )
 from .regulation import edition_chain, provision_permalink, regulation_detail
 from .search import (
-    home,
+    search_page,
     search_results,
     viewer_edition_dates,
     viewer_edition_nav,
@@ -33,12 +34,13 @@ __all__ = [
     "data_sources",
     "edition_chain",
     "history",
-    "home",
+    "landing",
     "list_punctuation",
     "pricing",
     "privacy_policy",
     "provision_permalink",
     "regulation_detail",
+    "search_page",
     "search_results",
     "stripe_cancel",
     "stripe_success",

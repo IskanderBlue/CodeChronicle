@@ -409,7 +409,8 @@ class TestSourceLinkBeaconWiring:
     """
 
     def test_handler_ships_on_the_capture_phase(self, client: Client):
-        body = client.get("/").content.decode()
+        # The search page moved to /search/ when / became the landing page.
+        body = client.get(reverse("core:search")).content.decode()
         start = body.find("Source-link beacon for the results list")
         assert start != -1, "results-list source-link beacon handler is missing"
         handler = body[start:start + 2000]

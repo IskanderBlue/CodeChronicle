@@ -25,7 +25,10 @@
        matching the search master-detail. On mobile the container is a flex column:
        the provision leads and the nav (order-last) drops to the bottom; the lg-only
        metadata rail is hidden, its content folded into the stacked banner. {% endcomment %}
-    <div class="flex flex-col lg:grid lg:grid-cols-[18rem_minmax(0,1fr)_19rem] lg:gap-6 lg:items-start">
+    {% comment %} `ws-cols` is the shared working grid (base.html); the tracks
+       live there, not here. This page's navigation column is the narrower of
+       the two, so it overrides --ws-nav. {% endcomment %}
+    <div class="flex flex-col ws-cols lg:grid [--ws-nav:18rem]">
 
         {# Col 1 — hierarchy navigation: prev/next pager, Within (parent), Subprovisions (children) #}
         <nav class="order-last mt-8 space-y-5 lg:order-none lg:mt-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">

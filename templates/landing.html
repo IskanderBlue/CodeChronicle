@@ -1,0 +1,1045 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}CodeChronicle &mdash; the Ontario Building Code, as it read on any day{% endblock %}
+
+{% comment %} Public front page (core.views.landing), served at `/` for a visitor
+   and at `/about/` for everybody.
+
+   Styling splits on one line: stock layout is a Tailwind utility on the
+   element (`grid md:grid-cols-2`, `overflow-x-auto`, `flex flex-wrap`);
+   anything named or computed is a hand-authored `lp-` rule in the block below.
+   That is the same split `.vrail`, `.rail-legend` and `.punct-guide` use.
+   Most of this page falls on the second side — clamp()-based type scales, a
+   masked ruled ground, a clip-path reveal, counter-incremented step lists —
+   and those want a name (`.lp-converge`, `.lp-seal`) and a comment saying why,
+   neither of which a class attribute can hold. Every colour is a role token
+   from base.html, so light and dark both resolve with no second palette.
+
+   The one rule that governs the copy: no number here is typed by hand. The
+   figures come from the view, which reads the same tables the search reads. {% endcomment %}
+
+{% block content_width %}max-w-none lp-bleed{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Cancel base.html's reading measure and gutters — this page is full-bleed and
+   sets its own rhythm. A rule rather than `!max-w-none !p-0` on the wrapper
+   because it has to beat three responsive padding utilities at once, and one
+   named class is easier to find than four important-flagged ones. */
+.lp-bleed { max-width: none !important; padding: 0 !important; }
+
+.lp {
+    --lp-measure: 1180px;
+    --lp-gutter: clamp(20px, 5vw, 64px);
+    color: rgb(var(--ink));
+}
+.lp-wrap { max-width: var(--lp-measure); margin-inline: auto; padding-inline: var(--lp-gutter); }
+
+/* ── Section apparatus ────────────────────────────────────────────────────
+   Every section is numbered in the masthead's mono voice. The numeral is a
+   piece of typography, not decoration: it tells a reader scanning the page
+   that this is a document with an argument, in order. */
+.lp-sec { border-top: 1px solid rgb(var(--rule)); padding-block: clamp(56px, 9vw, 108px); }
+.lp-sec-num {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 26px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase;
+    color: rgb(var(--ink-3));
+}
+.lp-sec-num::after { content: ""; flex: 1; height: 1px; background: rgb(var(--rule-2)); }
+.lp-h2 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: clamp(30px, 4.6vw, 52px); font-weight: 700; line-height: 1.06;
+    letter-spacing: -.02em; margin: 0 0 18px; max-width: 20ch;
+}
+.lp-h2 em { font-style: italic; font-weight: 500; color: rgb(var(--secondary)); }
+.lp-lede {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: clamp(17px, 1.7vw, 20px); line-height: 1.6; color: rgb(var(--ink-2));
+    max-width: 62ch; margin: 0;
+}
+/* Quiet prose. Set in the serif, not the mono: mono is the house voice for
+   metadata — a citation, a date, a label — and a four-line paragraph of it is
+   a wall. The mono voice is kept for `.lp-figline`, which is metadata. */
+.lp-note {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 14px; line-height: 1.62; color: rgb(var(--ink-3));
+    max-width: 72ch;
+}
+.lp-figline {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px; line-height: 1.7; letter-spacing: .04em; color: rgb(var(--ink-3));
+    font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────────
+   No section rule above it (it sits directly under the real masthead), and a
+   faint ruled ground so the page opens on paper rather than on a colour. */
+.lp-hero {
+    position: relative; overflow: hidden;
+    padding-block: clamp(52px, 8vw, 104px) clamp(44px, 6vw, 84px);
+}
+/* Ruled ground: a ledger, drawn once at very low contrast. Sits behind the
+   type and fades out at the foot so nothing has a hard edge. */
+.lp-hero::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: repeating-linear-gradient(
+        to bottom, rgb(var(--rule) / .5) 0 1px, transparent 1px 34px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 22%, #000 55%, transparent 96%);
+    mask-image: linear-gradient(to bottom, transparent, #000 22%, #000 55%, transparent 96%);
+    opacity: .34;
+}
+.lp-hero > * { position: relative; }
+.lp-dateline {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 26px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase;
+    color: rgb(var(--ink-3));
+}
+.lp-dateline .sep { color: rgb(var(--rule)); }
+.lp-dateline .live { display: inline-flex; align-items: center; gap: 7px; color: rgb(var(--secondary)); }
+.lp-dateline .live::before {
+    content: ""; width: 6px; height: 6px; background: rgb(var(--secondary)); transform: rotate(45deg);
+}
+.lp-h1 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: clamp(40px, 7.4vw, 88px); font-weight: 700; line-height: 1.03;
+    letter-spacing: -.033em; margin: 0; max-width: 15ch;
+    text-wrap: balance;
+}
+.lp-h1 em { font-style: italic; font-weight: 400; }
+/* The pivot word carries the whole promise, so it gets the one piece of
+   colour in the headline — the `highlight` role: what the READER brings to
+   the query (a date), which is exactly what this word is.
+   Marked the same way `mark.match-highlight` marks a matched term, and for
+   the same reason: in LIGHT the role token is plain ink, so colour alone
+   would be no mark at all — the paper-yellow underlay is what carries it.
+   In dark the token is amber and the underlay goes translucent.
+   A gradient swipe over the lower half of the line box, NOT a full-height
+   block: at display size with a tight line-height a full block overlaps the
+   descenders of the line above, which is exactly what it did when the
+   headline wrapped to three lines on a narrow screen. */
+.lp-h1 .day {
+    color: rgb(var(--highlight)); font-style: italic; font-weight: 500;
+    background-image: linear-gradient(to top, var(--highlight-soft) 0 46%, transparent 46%);
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+.dark .lp-h1 .day { box-shadow: inset 0 -.08em 0 rgb(var(--highlight) / .5); }
+.lp-sub {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: clamp(17px, 2vw, 22px); line-height: 1.5; color: rgb(var(--ink-2));
+    max-width: 56ch; margin: 26px 0 0;
+}
+
+/* Hero query field — the real thing, not a picture of one, and now literally
+   the same markup: `partials/_search_form.html` in `handoff` mode, which GETs
+   the search page (it already reads `?q=` and `?d=`). This rule contributes
+   spacing only. Everything the field LOOKS like belongs to the partial, so the
+   hero cannot drift from the product the way its predecessor did — that copy
+   had lost the Jurisdiction cell and read as a smaller, different instrument. */
+.lp-field { margin-top: 34px; }
+.lp-examples {
+    display: flex; flex-wrap: wrap; gap: 8px 10px; margin-top: 16px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px;
+}
+.lp-examples span { color: rgb(var(--ink-3)); letter-spacing: .06em; text-transform: uppercase; }
+.lp-examples a {
+    color: rgb(var(--ink-2)); text-decoration: underline;
+    text-decoration-color: rgb(var(--rule)); text-underline-offset: 3px;
+}
+.lp-examples a:hover { color: rgb(var(--secondary)); text-decoration-color: currentColor; }
+
+/* ── Figures strip — the colophon. Read as a set, one rule between each. ── */
+.lp-figures {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    margin-top: clamp(44px, 6vw, 76px);
+    border-top: 1px solid rgb(var(--rule)); border-bottom: 1px solid rgb(var(--rule));
+}
+.lp-fig { padding: 20px 22px; border-left: 1px solid rgb(var(--rule-2)); }
+.lp-fig:first-child { border-left: 0; padding-left: 0; }
+.lp-fig .n {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: clamp(28px, 3.4vw, 40px);
+    font-weight: 700; line-height: 1; letter-spacing: -.02em; color: rgb(var(--ink));
+    font-variant-numeric: lining-nums tabular-nums;
+}
+.lp-fig .k {
+    margin-top: 9px; font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
+    color: rgb(var(--ink-3)); line-height: 1.5;
+}
+
+/* ── The coverage band ────────────────────────────────────────────────────
+   The same in-force band a search result draws, scaled to the whole corpus.
+   Deliberate: a reader who meets this shape on the front page recognises it
+   the first time they open a result. */
+.lp-band { position: relative; margin-top: 40px; }
+.lp-band .track {
+    position: relative; height: 78px;
+    border: 1px solid rgb(var(--rule)); background: rgb(var(--surface-2));
+}
+.lp-seg {
+    position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column;
+    justify-content: center; gap: 4px; padding-inline: clamp(8px, 1.4vw, 18px);
+    border-left: 1px solid rgb(var(--secondary) / .55);
+    background: rgb(var(--secondary-soft));
+    overflow: hidden; white-space: nowrap;
+    /* Drawn on reveal: each segment wipes in from its own left edge, in
+       chronological order (`--d` is set per segment below). */
+    clip-path: inset(0 100% 0 0);
+    transition: clip-path .85s cubic-bezier(.22,.75,.2,1);
+    transition-delay: var(--d, 0ms);
+}
+.is-in .lp-seg { clip-path: inset(0 0 0 0); }
+.lp-seg:last-child { border-right: 1px solid rgb(var(--secondary) / .55); }
+.lp-seg .name {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: clamp(13px, 1.5vw, 17px);
+    font-weight: 600; color: rgb(var(--ink)); overflow: hidden; text-overflow: ellipsis;
+}
+.lp-seg .yrs {
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px;
+    letter-spacing: .06em; color: rgb(var(--ink-3));
+}
+.lp-seg .regs {
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px;
+    letter-spacing: .04em; color: rgb(var(--secondary));
+}
+.lp-band .scale {
+    display: flex; justify-content: space-between; margin-top: 9px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px;
+    letter-spacing: .08em; color: rgb(var(--ink-3));
+}
+/* Below ~640px the segment labels cannot fit; the band becomes a pure bar and
+   the editions are read from the table further down. */
+@media (max-width: 640px) {
+    .lp-band .track { height: 34px; }
+    .lp-seg .name, .lp-seg .yrs, .lp-seg .regs { display: none; }
+}
+
+/* ── Built twice: the two paths ───────────────────────────────────────────
+   The centrepiece. Two independent reconstructions, drawn as two columns that
+   converge on one mark. The convergence IS the argument, so it gets the only
+   large graphic on the page. */
+/* Layout comes from Tailwind on the element (grid / md:grid-cols-2 / gap-*);
+   only what has no utility stays here. Same split throughout this file: stock
+   layout is a utility, anything named or computed is a rule. */
+.lp-paths { margin-top: 44px; }
+.lp-path {
+    border: 1px solid rgb(var(--rule)); background: rgb(var(--panel));
+    padding: clamp(20px, 2.6vw, 30px);
+}
+.lp-path .tag {
+    display: inline-block; margin-bottom: 14px; padding: 3px 9px;
+    border: 1px solid rgb(var(--ink-2));
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    color: rgb(var(--ink-2));
+}
+.lp-path h3 {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: clamp(19px, 2.1vw, 25px);
+    font-weight: 700; line-height: 1.18; margin: 0 0 10px; letter-spacing: -.015em;
+}
+.lp-path p {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: 15.5px; line-height: 1.58;
+    color: rgb(var(--ink-2)); margin: 0 0 16px;
+}
+.lp-path ol {
+    margin: 0; padding: 0; list-style: none; border-top: 1px solid rgb(var(--rule-2));
+    counter-reset: step;
+}
+.lp-path li {
+    display: grid; grid-template-columns: 26px 1fr; gap: 12px; align-items: baseline;
+    padding: 11px 0; border-bottom: 1px solid rgb(var(--rule-2));
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px;
+    line-height: 1.55; letter-spacing: .01em; color: rgb(var(--ink-2));
+    counter-increment: step;
+}
+.lp-path li::before {
+    content: counter(step, decimal-leading-zero);
+    font-size: 9.5px; font-weight: 600; letter-spacing: .1em; color: rgb(var(--ink-3));
+}
+
+/* The convergence: two rules that lean in and meet at a seal. Drawn in SVG so
+   the angles are exact at every width; the seal is real type on top of it. */
+.lp-converge { position: relative; margin-top: -1px; }
+/* The connector is wiped in top-down (a clip on the whole drawing) rather than
+   drawn with a dash offset.  `preserveAspectRatio="none"` scales the viewBox
+   unevenly so the shape spans any width, and `non-scaling-stroke` keeps the
+   line weight even under that scaling — but the same uneven scale mangles a
+   dash pattern, which is what made the strokes render as broken segments. A
+   clip has no such interaction, and the downward wipe is the better motion
+   anyway: both paths converge as it passes. */
+.lp-converge svg {
+    display: block; width: 100%; height: clamp(58px, 7vw, 92px); overflow: visible;
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path .8s cubic-bezier(.3,.7,.3,1) .15s;
+}
+.lp-converge svg path {
+    fill: none; stroke: rgb(var(--secondary)); stroke-width: 1.25;
+    stroke-linecap: square; stroke-linejoin: miter;
+}
+/* `.is-in` lands on `.lp-converge` itself (it carries `.lp-rise`), so these
+   are compound selectors, not descendant ones. */
+.lp-converge.is-in svg { clip-path: inset(0 0 0 0); }
+.lp-seal {
+    margin: 0 auto; max-width: 640px; text-align: center;
+    border: 1px solid rgb(var(--secondary)); background: rgb(var(--secondary-soft));
+    padding: clamp(20px, 2.6vw, 30px) clamp(18px, 3vw, 40px);
+    opacity: 0; transform: scale(.97);
+    transition: opacity .6s ease 1.05s, transform .6s cubic-bezier(.2,.8,.2,1) 1.05s;
+}
+.lp-converge.is-in .lp-seal { opacity: 1; transform: none; }
+.lp-seal .mark {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: clamp(34px, 4.6vw, 54px);
+    line-height: 1; color: rgb(var(--secondary));
+}
+.lp-seal .say {
+    margin: 12px 0 0; font-family: 'Source Serif 4', Georgia, serif;
+    font-size: clamp(16px, 1.8vw, 20px); line-height: 1.45; color: rgb(var(--ink));
+    font-weight: 600;
+}
+.lp-seal .fine {
+    margin: 10px 0 0; font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; line-height: 1.6; letter-spacing: .04em; color: rgb(var(--ink-3));
+}
+@media (max-width: 720px) { .lp-converge svg { height: 40px; } }
+
+/* ── Named differences ───────────────────────────────────────────────────
+   The residue after the diff, as a closed vocabulary. Each chip is a real
+   class name from the parity report; the gloss is what it means in English. */
+.lp-classes {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 0 clamp(18px, 3vw, 44px); margin-top: 34px;
+    border-top: 1px solid rgb(var(--rule));
+}
+.lp-class { padding: 14px 0; border-bottom: 1px solid rgb(var(--rule-2)); }
+.lp-class code {
+    display: inline-block; font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: .01em;
+    color: rgb(var(--secondary)); background: rgb(var(--secondary-soft));
+    padding: 2px 7px;
+}
+/* Child combinator, deliberately: as a descendant selector this also caught the
+   spans INSIDE the example link, and pushed the edition label 7px down from the
+   provision number it sits beside — the two ended up on different lines of the
+   same line. */
+.lp-class > span {
+    display: block; margin-top: 7px; font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 14.5px; line-height: 1.5; color: rgb(var(--ink-2));
+}
+/* The worked example. Quiet at rest (the gloss is the thing being read), but a
+   real link — the section's claim is that every class has a provision behind
+   it, and an unclickable citation would be the claim without the evidence. */
+/* Baseline, not centre: the citation and the edition label are separate flex
+   items in different faces, and centring them aligned their BOXES — which sat
+   the provision number high on the line and dropped the edition below it. The
+   Pro chip is bordered, so it re-centres itself rather than hanging its border
+   off the shared baseline. */
+.lp-class .ex {
+    display: inline-flex; align-items: baseline; gap: 7px; margin-top: 8px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px;
+    letter-spacing: .04em; color: rgb(var(--secondary)); text-decoration: underline;
+    text-decoration-color: rgb(var(--secondary) / .35); text-underline-offset: 3px;
+    transition: text-decoration-color .12s, color .12s;
+}
+.lp-class .ex:hover { color: rgb(var(--secondary-2)); text-decoration-color: currentColor; }
+.lp-class .ex .ed { color: rgb(var(--ink-3)); text-decoration: none; }
+/* Says up front that this example is outside the free tier, so the locked
+   teaser it opens is expected rather than a surprise. */
+.lp-class .ex .pro {
+    align-self: center;
+    padding: 1px 5px; border: 1px solid rgb(var(--ink-3) / .5); border-radius: 2px;
+    font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+    color: rgb(var(--ink-3)); text-decoration: none;
+}
+/* Which editions raised the class at all. Present only where OBC 2006 is not
+   among them — that is exactly when the reader would otherwise read the
+   exemplar's edition as an arbitrary choice rather than the only one on offer. */
+.lp-class .seen {
+    display: block; margin-top: 5px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px;
+    letter-spacing: .04em; color: rgb(var(--ink-3));
+}
+
+/* ── Section III specimens ───────────────────────────────────────────────
+   A small worked example beside each claim, rendered by the shipping partials.
+
+   THE SPECIMEN BOX PAINTS NO FILL, deliberately. It used to set
+   `background: rgb(var(--panel))`, which is WHITE in light mode against paper
+   `--surface`, so every imported component read as a raised card here and as
+   page there — and the components' knockouts (the rail's `.mk-ring`, whose hole
+   must equal whatever is behind it) were filled for a backdrop that was no
+   longer underneath. Border and padding only: the real provision page frames
+   its body the same way (`border border-rule`, no fill), so a specimen now sits
+   on exactly the backdrop its component was built against. If a fill is ever
+   wanted here, set `--backdrop` to the same token in the same rule — see the
+   note on `--backdrop` in base.html. */
+.lp-spec {
+    margin-top: 14px; border: 1px solid rgb(var(--rule));
+    padding: 12px 14px;
+}
+/* Sentence case, not uppercase: these captions carry provision titles and link
+   text ("Application of Part 9"), and uppercasing flattens the quotation marks
+   and the citation into shouting. The mono face at 10px in ink-3 already reads
+   as a caption without it. */
+.lp-spec-cap {
+    margin: 8px 0 0; font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; letter-spacing: .04em; line-height: 1.55; color: rgb(var(--ink-3));
+}
+/* 01 — the query bar. Nothing to style: it is `partials/_search_form.html`, the
+   same form the search page renders, and it brings its own cells, type and
+   responsive stacking. The rules that used to live here drew a MINIATURE of
+   that form, and the miniature had drifted — it had no Jurisdiction cell. */
+.lp-spec del { color: rgb(var(--strike)); text-decoration: line-through; }
+.lp-spec ins { color: rgb(var(--insert)); text-decoration: none; }
+/* A shipping component, mounted whole. It brings its own border and its own
+   type, so the mount contributes spacing and a WIDTH — and the width matters as
+   much as the colour did.
+
+   These components reflow. The attestation rail collapses its staggered labels
+   to one row once its own container clears 46rem, and the status line is a
+   wrapping flex. Give a component more room than the product ever gives it and
+   the specimen shows a layout no reader can reach.
+
+   So both caps read the SAME tokens the working grid is built from
+   (`--ws-centre` and `--ws-rail`, base.html): the centre column a provision
+   body reads in, and the right-hand column the provenance rail lives in. They
+   track the viewport exactly as the real columns do, and they follow any change
+   to the grid without an edit here.
+
+   These were two hand-set pixel values, and one of them was wrong — 964 against
+   a real 933, because the subtraction spans four files and one padding rule was
+   missed. A transcribed width is the same defect as a transcribed colour: a
+   claim about the product that nothing keeps true. */
+.lp-mount { margin-top: 14px; }
+.lp-mount-centre { max-width: var(--ws-centre); }
+.lp-mount-rail { max-width: var(--ws-rail); }
+/* 04 — real provision html. Nothing to style: elaws.css supplies the provision
+   classes and base.html already styles `.cross-ref` and `.cross-ref-chip`. A
+   local copy of those rules here would be the imitation this row exists to
+   avoid, and would drift from the real one the first time either changed. */
+/* 05 — outward source chips */
+.lp-spec .srcs { display: flex; flex-wrap: wrap; gap: 7px; }
+.lp-spec .srcs .chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
+    border: 1px solid rgb(var(--rule)); font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; letter-spacing: .04em; color: rgb(var(--ink-2));
+    text-decoration: none; transition: border-color .12s, color .12s;
+}
+.lp-spec .srcs .chip:hover { border-color: rgb(var(--secondary)); color: rgb(var(--ink)); }
+.lp-spec .srcs .chip .ext {
+    padding: 0 4px; background: rgb(var(--secondary-soft)); color: rgb(var(--secondary));
+    font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+}
+
+/* ── What you get: ruled rows, not cards ─────────────────────────────── */
+.lp-rows { margin-top: 40px; border-top: 1px solid rgb(var(--rule)); }
+/* Two columns via utilities (grid md:grid-cols-[5fr_7fr]); the padding clamp
+   and the hairline stay here. */
+.lp-row {
+    padding: clamp(22px, 2.6vw, 32px) 0;
+    border-bottom: 1px solid rgb(var(--rule-2));
+}
+.lp-row h3 {
+    font-family: 'Source Serif 4', Georgia, serif; font-size: clamp(19px, 2.2vw, 26px);
+    font-weight: 700; line-height: 1.14; letter-spacing: -.018em; margin: 0;
+}
+.lp-row h3 .no {
+    display: block; margin-bottom: 8px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px;
+    font-weight: 600; letter-spacing: .16em; color: rgb(var(--ink-3));
+}
+.lp-row p {
+    margin: 0; font-family: 'Source Serif 4', Georgia, serif; font-size: 16px;
+    line-height: 1.62; color: rgb(var(--ink-2));
+}
+.lp-row p + p { margin-top: 12px; }
+
+/* ── Coverage table ─────────────────────────────────────────────────────── */
+.lp-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+.lp-table th {
+    text-align: left; padding: 9px 16px 9px 0; border-bottom: 1px solid rgb(var(--rule));
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px;
+    font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--ink-3));
+}
+.lp-table td {
+    padding: 11px 16px 11px 0; border-bottom: 1px solid rgb(var(--rule-2));
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px;
+    color: rgb(var(--ink-2)); white-space: nowrap;
+}
+.lp-table td:first-child { color: rgb(var(--ink)); font-weight: 500; }
+.lp-table .num, .lp-table th.num { text-align: right; padding-right: 0; }
+
+/* ── Close ──────────────────────────────────────────────────────────────── */
+.lp-close { text-align: center; padding-block: clamp(64px, 9vw, 120px); }
+.lp-close .lp-h2 { max-width: none; margin-inline: auto; }
+/* Flex row via utilities; the two button styles stay named. */
+.lp-cta .go {
+    display: inline-flex; align-items: center; gap: 10px; padding: 15px 30px;
+    background: rgb(var(--secondary)); color: rgb(var(--secondary-contrast));
+    font-family: 'Inter Tight', system-ui, sans-serif; font-size: 13px; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase; text-decoration: none;
+    transition: background .15s;
+}
+.lp-cta .go:hover { background: rgb(var(--secondary-2)); }
+.lp-cta .alt {
+    display: inline-flex; align-items: center; padding: 15px 26px;
+    border: 1px solid rgb(var(--ink-2)); color: rgb(var(--ink));
+    font-family: 'Inter Tight', system-ui, sans-serif; font-size: 13px; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase; text-decoration: none;
+    transition: border-color .15s, color .15s;
+}
+.lp-cta .alt:hover { border-color: rgb(var(--secondary)); color: rgb(var(--secondary)); }
+.lp-disclaim {
+    margin-top: 30px; font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; line-height: 1.7; letter-spacing: .04em; color: rgb(var(--ink-3));
+}
+
+/* ── Reveal ───────────────────────────────────────────────────────────────
+   One observer, added by the script at the foot. Elements start hidden ONLY
+   when the script is running (it sets `data-lp-reveal` on the root first), so
+   the page is fully readable with JavaScript off or blocked. */
+[data-lp-reveal] .lp-rise { opacity: 0; transform: translateY(16px); }
+[data-lp-reveal] .lp-rise.is-in {
+    opacity: 1; transform: none;
+    transition: opacity .7s ease var(--d, 0ms), transform .7s cubic-bezier(.2,.75,.2,1) var(--d, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+    [data-lp-reveal] .lp-rise, [data-lp-reveal] .lp-rise.is-in { opacity: 1; transform: none; transition: none; }
+    .lp-seg { clip-path: none !important; transition: none; }
+    .lp-seal { opacity: 1 !important; transform: none !important; transition: none; }
+    .lp-converge svg { clip-path: none !important; transition: none; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lp">
+
+    {# ══ Hero ══════════════════════════════════════════════════════════ #}
+    <header class="lp-hero">
+        <div class="lp-wrap">
+            <p class="lp-dateline lp-rise">
+                <span>Ontario</span>
+                <span class="sep">&middot;</span>
+                <span>Building Code</span>
+                {% if span_start and span_end %}
+                <span class="sep">&middot;</span>
+                <span>{{ span_start|date:"Y" }}&ndash;{{ span_end|date:"Y" }}</span>
+                {% endif %}
+                {% if data_current_to %}
+                <span class="sep">&middot;</span>
+                <span class="live">Current to {{ data_current_to|date:"Y-m-d" }}</span>
+                {% endif %}
+            </p>
+
+            <h1 class="lp-h1 lp-rise" style="--d:70ms">
+                What did the Code say <em>on</em> <span class="day">the day</span> it mattered?
+            </h1>
+
+            {% comment %} Do NOT claim e-Laws only shows the current text — it
+               publishes period-in-time consolidations too, and a landing page for
+               a citation tool cannot afford a wrong sentence about the official
+               source. The two real differences are reach (the online consolidation
+               record starts years after our coverage does) and provenance (a
+               consolidation gives you the words, not the regulation and clause
+               behind them, and its citations are not live links). {% endcomment %}
+            <p class="lp-sub lp-rise" style="--d:140ms">
+                Search by date, not by edition &mdash; back to
+                {% if span_start %}{{ span_start|date:"F Y" }}{% endif %}, years before the
+                online consolidation record begins. Every provision comes back with the
+                regulation and the clause that made it read that way.
+            </p>
+
+            {% comment %} A real query field, not a picture of one: a plain GET to the
+               search page, which already reads `?q=` and `?d=`. A visitor arrives at
+               the tool holding their own question.
+
+               The AS-OF cell is not decoration. The search runs at the picker's date,
+               and the picker OVERRIDES any year the parser reads out of the query
+               text — so a hero field with no date would send "…, 2003" to the corpus
+               default date and answer with the wrong edition. That is the exact
+               failure this page spends a whole section explaining, committed on its
+               own front door. It defaults to `coverage_end`, as the search page's own
+               picker does. {% endcomment %}
+            <div class="lp-field lp-rise" style="--d:210ms">
+                {% include "partials/_search_form.html" with mode="handoff" id_prefix="lp-hero-" %}
+            </div>
+
+            {% comment %} Each link carries its own date as `?d=` — the AS-OF picker
+               is the date the search really uses, so a link with only `?q=` would run
+               at the corpus default and answer a 1999 question with 2012 text. The
+               view offers only examples dated inside a free-tier edition, because an
+               anonymous visitor gets one search a day and must not spend it on a
+               locked page. {% endcomment %}
+            {% if try_examples %}
+            <p class="lp-examples lp-rise" style="--d:260ms">
+                <span>Try</span>
+                {% for ex in try_examples %}
+                <a href="{% url 'core:search' %}?q={{ ex.query|urlencode }}&amp;d={{ ex.date }}">{{ ex.query }}</a>
+                {% endfor %}
+            </p>
+            {% endif %}
+
+            {% comment %} The colophon. Every figure is counted by the view from the
+               live tables — see core.views.landing. {% endcomment %}
+            <div class="lp-figures lp-rise" style="--d:320ms">
+                <div class="lp-fig">
+                    <div class="n">{{ edition_count }}</div>
+                    <div class="k">Code editions<br>reconstructed</div>
+                </div>
+                <div class="lp-fig">
+                    <div class="n">{{ amending_regs|intcomma }}</div>
+                    <div class="k">Amending regulations<br>traced and applied</div>
+                </div>
+                <div class="lp-fig">
+                    <div class="n">{{ version_count|intcomma }}</div>
+                    <div class="k">Provision versions<br>with dates and sources</div>
+                </div>
+                <div class="lp-fig">
+                    <div class="n">{{ consolidation_count|intcomma }}</div>
+                    <div class="k">e-Laws consolidations<br>checked against</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    {# ══ I · Coverage ══════════════════════════════════════════════════ #}
+    <section class="lp-sec">
+        <div class="lp-wrap">
+            <p class="lp-sec-num lp-rise">I &middot; Coverage</p>
+            <h2 class="lp-h2 lp-rise" style="--d:60ms">
+                {% if span_start and span_end %}
+                Continuous from {{ span_start|date:"Y" }} to {{ span_end|date:"Y" }}.
+                {% else %}Continuous, edition to edition.{% endif %}
+                <em>No gaps between editions.</em>
+            </h2>
+            <p class="lp-lede lp-rise" style="--d:110ms">
+                One edition ends the day the next begins, and the changeover is covered from both
+                sides &mdash; because during a transition two editions&rsquo; versions genuinely
+                co-exist, and a search dated inside that window returns both.
+            </p>
+
+            {% if band %}
+            <div class="lp-band lp-rise" style="--d:160ms">
+                <div class="track">
+                    {% for s in band %}
+                    <div class="lp-seg" style="left:{{ s.left }}%; width:{{ s.width }}%; --d:{{ forloop.counter0 }}00ms">
+                        <div class="name">{{ s.edition.code.display_name|default:s.edition.code.code }} {{ s.edition.year }}</div>
+                        <div class="yrs">{{ s.start|date:"Y-m-d" }} &rarr; {{ s.last_day|date:"Y-m-d" }}</div>
+                        <div class="regs">{{ s.edition.amendment_count }} amending reg{{ s.edition.amendment_count|pluralize }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="scale">
+                    <span>{{ span_start|date:"Y-m-d" }}</span>
+                    <span>{{ span_end|date:"Y-m-d" }}</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <p class="lp-note lp-rise" style="--d:220ms; margin-top:22px">
+                {% if elaws_pit_start %}
+                The earliest e-Laws consolidation of the Code we can check against is
+                {{ elaws_pit_start|date:"F j, Y" }}. Everything before that date is
+                reconstructed from the amending regulations as filed in The Ontario Gazette,
+                and is the part of this corpus that exists nowhere else online.
+                {% endif %}
+                Ontario only, for now. An edition is listed here only once every regulation that
+                amended it has been parsed and applied &mdash; the same gate the
+                <a href="{% url 'core:data_sources' %}" class="ui-link">Sources</a> page reports.
+            </p>
+        </div>
+    </section>
+
+    {# ══ II · Built twice — the centrepiece ════════════════════════════ #}
+    <section class="lp-sec">
+        <div class="lp-wrap">
+            <p class="lp-sec-num lp-rise">II &middot; How we know it is right</p>
+            <h2 class="lp-h2 lp-rise" style="--d:60ms">
+                We build every edition <em>twice</em>, two different ways, and diff them.
+            </h2>
+            <p class="lp-lede lp-rise" style="--d:110ms">
+                A reconstruction you cannot check is only an assertion. So the Code is rebuilt
+                from the regulations &mdash; and then rebuilt a second time by a completely
+                different method. The two results are compared provision by provision,
+                version by version, before anything is published.
+            </p>
+
+            {% comment %} Regulation-parsing comes FIRST: it is the route the published
+               corpus is actually built from, and version-comparison is the independent
+               check on it rather than an equal sibling. "Path A / Path B" told a reader
+               nothing about which was which. {% endcomment %}
+            <div class="lp-paths lp-rise grid gap-4 sm:gap-6 md:grid-cols-2 md:gap-10" style="--d:160ms">
+                <article class="lp-path">
+                    <span class="tag">What we publish</span>
+                    <h3>Regulation&#8209;parsing</h3>
+                    <p>
+                        Start at the base regulation that enacts the edition, then apply what each
+                        amending regulation actually instructs &mdash; revoke this, substitute that,
+                        add these words here &mdash; in filing order. This is the corpus you search.
+                    </p>
+                    <ol>
+                        <li>Parse the base regulation into provisions</li>
+                        <li>Parse each amending regulation into directives</li>
+                        <li>Apply the directives in filing order</li>
+                        <li>Date each change from its own commencement</li>
+                    </ol>
+                </article>
+
+                <article class="lp-path">
+                    <span class="tag">The independent check</span>
+                    <h3>Historical&#8209;version comparison</h3>
+                    <p>
+                        Ontario republishes the consolidated Code every time an amendment takes
+                        effect. Read those snapshots in order and the differences between them
+                        <em>are</em> the amendment history &mdash; recovered without reading a
+                        single directive.
+                    </p>
+                    <ol>
+                        <li>Fetch every e-Laws consolidation of the edition</li>
+                        <li>Align them provision by provision</li>
+                        <li>Diff each consecutive pair</li>
+                        <li>Date each change from the period it appears in</li>
+                    </ol>
+                </article>
+            </div>
+
+            {% comment %} Two rules leaning in to a single point, drawn in SVG so the
+               angles stay exact at any width. The reveal is a top-down clip on the
+               whole drawing — see the note on `.lp-converge svg`. {% endcomment %}
+            <div class="lp-converge lp-rise" style="--d:200ms">
+                <svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+                    <path d="M 25 0 L 25 12 L 50 26" vector-effect="non-scaling-stroke"></path>
+                    <path d="M 75 0 L 75 12 L 50 26" vector-effect="non-scaling-stroke"></path>
+                </svg>
+                <div class="lp-seal">
+                    <div class="mark" aria-hidden="true">&equiv;</div>
+                    <p class="say">The two reconstructions agree.</p>
+                    <p class="fine">
+                        Every provision. Every version. Every date in the edition&rsquo;s life.
+                    </p>
+                </div>
+            </div>
+
+            <h2 class="lp-h2 lp-rise" style="--d:60ms; margin-top: clamp(56px, 7vw, 92px)">
+                And where they differ, the difference has <em>a name</em>.
+            </h2>
+            <p class="lp-lede lp-rise" style="--d:110ms">
+                Not every difference is an error. Ontario sometimes restyles text no regulation
+                touched, or prints a change before the day it commences. Each of those is
+                classified, named and reviewed by hand &mdash; never averaged into a margin of
+                error, never quietly patched. This is the whole vocabulary &mdash; and which
+                entries can arise at all depends on the era, since the table and OCR classes
+                belong to the years that survive only as scanned paper:
+            </p>
+            {% comment %} Each class links to a provision the parity report actually
+               closed on it (core.views.landing.DIFFERENCE_CLASSES). Exemplars are
+               OBC 2006 wherever possible, because that edition opens for everyone —
+               but OBC 2006 only ever raised THREE of the eleven, so the other eight
+               have to come from 1997 or 2012 and land on the locked-edition teaser.
+               The `seen in` note carries that, so the edition reads as forced rather
+               than chosen; the Pro chip says the link is gated rather than springing
+               it. Neither is a count — see the note on `occurs_in` in the view. {% endcomment %}
+            <div class="lp-classes lp-rise" style="--d:160ms">
+                {% for c in difference_classes %}
+                <div class="lp-class">
+                    <code>{{ c.name }}</code>
+                    <span>{{ c.gloss }}</span>
+                    {% if c.url %}
+                    <a class="ex" href="{{ c.url }}">
+                        See {{ c.cite }} <span class="ed">{{ c.edition_label }}</span>
+                        {% if c.locked %}<span class="pro" title="Outside the free tier — this link shows what the edition covers">Pro</span>{% endif %}
+                    </a>
+                    {% endif %}
+                    {% if c.absent_from_free_tier %}<span class="seen" title="Editions whose parity review raised this class at all">Never arose in OBC 2006 &middot; seen in {% for ed in c.occurs_in %}{{ ed }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <p class="lp-note lp-rise" style="--d:220ms; margin-top:22px">
+                An edition is published only after that review closes. Where the record itself is
+                genuinely silent &mdash; most often the punctuation joining a phrase an amendment
+                inserts into a list &mdash; we say so on the provision and state the convention we
+                used: <a href="{% url 'core:list_punctuation' %}" class="ui-link">how inserted
+                phrases are punctuated</a>.
+            </p>
+        </div>
+    </section>
+
+    {# ══ III · What you get ════════════════════════════════════════════ #}
+    <section class="lp-sec">
+        <div class="lp-wrap">
+            <p class="lp-sec-num lp-rise">III &middot; What that buys you</p>
+            <h2 class="lp-h2 lp-rise" style="--d:60ms">
+                A citation you can hand to <em>someone who will check it</em>.
+            </h2>
+
+            <div class="lp-rows">
+                <div class="lp-row lp-rise grid gap-3 sm:gap-6 md:grid-cols-[5fr_7fr] md:gap-12">
+                    <h3><span class="no">01</span>Ask in English, dated</h3>
+                    <div>
+                        <p>
+                            Type the question the way you would ask a colleague &mdash;
+                            &ldquo;fire separation between a garage and a house, 2009&rdquo;. The
+                            date is not a filter applied afterwards; it selects the versions that
+                            were actually in force that day, across every edition then live.
+                        </p>
+                    </div>
+                    {% comment %} Full row width (`md:col-span-2`), because that is the
+                       width the real control has: the search field spans the page, and a
+                       column-width copy of it reads as a different, smaller control. The
+                       rule for a specimen's WIDTH is the same as for its colour — match
+                       the space the component occupies in the product. {% endcomment %}
+                    <div class="md:col-span-2">
+                        {% comment %} The real search form, from the same partial the
+                           search page renders — not a miniature of it. The two used to be
+                           separate markup, and the copy had already lost the Jurisdiction
+                           cell, so the front page showed a control the product does not
+                           have. `mode="handoff"` is a plain GET to the search page, which
+                           auto-runs a query arriving in `?q=` and seeds the AS-OF picker
+                           from `?d=`; prefilled rather than empty, so it doubles as the
+                           specimen and a reader who presses Enter gets the real answer
+                           instead of a screenshot of one. No JavaScript, so it works while
+                           the reveal script is still loading. {% endcomment %}
+                        <div class="lp-mount">
+                            {% include "partials/_search_form.html" with mode="handoff" id_prefix="lp-spec-" initial_query=specimen_query initial_date=specimen_query_date %}
+                        </div>
+                    </div>
+                </div>
+                <div class="lp-row lp-rise grid gap-3 sm:gap-6 md:grid-cols-[5fr_7fr] md:gap-12">
+                    <h3><span class="no">02</span>The chain, down to the clause</h3>
+                    <div>
+                        <p>
+                            Every provision carries its own history: what it said, over which
+                            dates, and the exact regulation &mdash; down to the clause &mdash;
+                            that made each change. Amendments are shown as redlines, so you can
+                            see precisely which words moved.
+                        </p>
+                        {% comment %} The REAL rail, not a drawing of one: the same
+                           partial a search result and the permalink page render, fed by
+                           the same builder (core.views.regulation._provenance_result)
+                           against Article 1.1.2.4. of Division A in OBC 2006. So this
+                           shows the actual lineage rows, the actual clause citations
+                           and the actual outward `ext` links, and it cannot promise a
+                           surface the product has stopped having. Falls back to nothing
+                           when the specimen provision is not loaded. {% endcomment %}
+                        {% if specimen.provenance %}
+                        {% comment %} `lp-mount-rail` caps this at `--ws-rail`, the
+                           right-hand metadata track it occupies on both working surfaces —
+                           the same token the grid itself is built from. Stretched across
+                           the landing column its rows justified far apart and it read as a
+                           table; at its own width it reads as the rail it is. {% endcomment %}
+                        <p class="lp-spec-cap">
+                            <a class="ui-link" href="{{ specimen.url }}">Article
+                            {{ specimen.cite }}, &ldquo;{{ specimen.title }}&rdquo;</a>
+                        </p>
+
+                        <div class="lp-mount lp-mount-rail">
+                            {% comment %} compare_enabled on purpose: the copy beside this
+                               promises redlines, and the compare control IS that
+                               affordance. It resolves to the permalink page with
+                               ?compare=, which is in the free tier here, so the promise
+                               is one click from the claim. {% endcomment %}
+                            {% include "partials/_provenance_rail.html" with result=specimen.provenance compare_enabled=True %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="lp-row lp-rise grid gap-3 sm:gap-6 md:grid-cols-[5fr_7fr] md:gap-12">
+                    <h3><span class="no">03</span>Proof on the face of it</h3>
+                    <div>
+                        <p>
+                            Each result carries a verification rail: a band running the length of
+                            the version&rsquo;s life, marked with the consolidations that
+                            independently vouch for it and where your date falls among them. You
+                            can see how directly the text is confirmed, not just that we say it is.
+                        </p>
+                    </div>
+                    {% comment %} Full row width (`md:col-span-2`) so the mount can reach
+                       the width `--ws-centre` allows; `.lp-mount-centre` then holds it
+                       there. Matching the component's width is the same rule as matching
+                       its colour: give it the space it has in the product, and take that
+                       space from the product's own tokens rather than from a ruler. The
+                       rail lays its labels along a timeline and collapses the stagger once
+                       its own container clears 46rem (the @container rule in base.html),
+                       so a specimen at the wrong width shows the wrong layout — too narrow
+                       and the status badge crowds the consolidation dates, too wide and it
+                       collapses where a real result does not. {% endcomment %}
+                    <div class="md:col-span-2">
+                        {% comment %} The whole IN FORCE band, not the rail alone. The
+                           rail never appears on its own in the product — it is the band's
+                           body, and the band paints `bg-secondary-soft`, so a rail shown
+                           on the page background is the wrong colour and the wrong
+                           object. Rendering the band also brings the label cell, the
+                           copy control and (through the band's own `--backdrop`
+                           declaration) the correctly filled ring.
+
+                           Same provision as rows 02 and 04, from the same result mapping,
+                           so all three are facets of one record rather than three
+                           unrelated illustrations.
+
+                           `.rail-legend` force-shows the graphic, which the live rail
+                           gates behind @xl — the same wrapper the verification guide uses,
+                           for the same reason. It still earns its place at the full
+                           measure: the gate is on the RAIL's own container, which the
+                           band's label cell and copy button shrink below @xl on a narrow
+                           viewport. `.legend-rail` scrolls rather than crushes. {% endcomment %}
+                        {% if specimen.provenance.rail %}
+                        <div class="lp-mount lp-mount-centre rail-legend">
+                            <div class="legend-rail">
+                                {% include "partials/_provenance_band.html" with result=specimen.provenance %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                    </div>
+                </div>
+                <div class="lp-row lp-rise grid gap-3 sm:gap-6 md:grid-cols-[5fr_7fr] md:gap-12">
+                    <h3><span class="no">04</span>Citations that resolve</h3>
+                    <div>
+                        <p>
+                            &ldquo;Subject to Article 1.3.1.2.&rdquo; is a dead reference on
+                            a printed consolidation &mdash; you go and look it up, and you
+                            look up whichever version is on the page you land on. Here it
+                            is a link, to the version in force on <em>your</em> date. Where
+                            the cited provision changed while the citing one stood still,
+                            you get each version it could mean, rather than a silent guess.
+                        </p>
+                        {% comment %} Real text, real links: the same provision as row 02,
+                           run through core.cross_refs.annotate_versions with fan_out on —
+                           which is the code path the provision page itself uses. The `v2`
+                           chip after 1.3.1.2. is not drawn; that citation genuinely
+                           resolves to two candidate versions on this date. The e-Laws
+                           provision classes (`subsection-e` and friends) are styled by
+                           the global elaws.css, so the excerpt picks up the same
+                           typography here as on the provision page, with no wrapper. {% endcomment %}
+                        {% if specimen.lead_html %}
+                        <div class="lp-spec">
+                            {{ specimen.lead_html|safe }}
+                        </div>
+                        <p class="lp-spec-cap">
+                            Two links, one chip: 1.3.1.2. changed while
+                            {{ specimen.cite }} stood still, so both readings are offered
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="lp-row lp-rise grid gap-3 sm:gap-6 md:grid-cols-[5fr_7fr] md:gap-12">
+                    <h3><span class="no">05</span>Links back to the source</h3>
+                    <div>
+                        <p>
+                            Every version is a stable permalink, and every regulation links out to
+                            where it was published &mdash; e-Laws for the modern record, scans of
+                            The Ontario Gazette for the years before e-Laws went online. Nothing
+                            here asks to be taken on trust.
+                        </p>
+                        {% comment %} Real regulations, and real outward links — one per
+                           publication source in the corpus, oldest first, chosen by the
+                           view from the rows themselves. A hand-typed pair would go on
+                           claiming both sources are in use after one stopped being. The
+                           `ext` chip is the same affordance the provenance rail shows.
+                           These leave the site, hence target=_blank + rel=noopener. {% endcomment %}
+                        {% if source_chips %}
+                        <div class="lp-spec">
+                            <div class="srcs">
+                                {% for reg in source_chips %}
+                                <a class="chip" href="{{ reg.source_url }}" target="_blank" rel="noopener" title="{{ reg.source_link_label }}">O.
+                                Reg. {{ reg.reg_id }} <span class="ext">{{ reg.get_source_kind_display }}</span></a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <p class="lp-spec-cap">Every regulation says where it was published, and links there</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    {# ══ IV · The corpus, in full ══════════════════════════════════════ #}
+    {% if editions %}
+    <section class="lp-sec">
+        <div class="lp-wrap">
+            <p class="lp-sec-num lp-rise">IV &middot; The corpus</p>
+            <h2 class="lp-h2 lp-rise" style="--d:60ms">Everything that is loaded, right now.</h2>
+            <p class="lp-lede lp-rise" style="--d:110ms">
+                Read from the same database the search runs against, on every page load. If it is
+                in this table, you can search it.
+            </p>
+            <div class="lp-table-scroll lp-rise overflow-x-auto" style="--d:160ms">
+                <table class="lp-table">
+                    <thead>
+                        <tr>
+                            <th>Edition</th>
+                            <th>In force from</th>
+                            <th>Until</th>
+                            <th class="num">Amending regs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for edition in editions %}
+                        <tr>
+                            <td>{{ edition.code.display_name|default:edition.code.code }} {{ edition.year }}</td>
+                            <td>{{ edition.effective_date|date:"M j, Y" }}</td>
+                            {% comment %} `last_day`, not `ineffective_date`: the stored
+                               date is exclusive, so printing it raw shows the NEXT
+                               edition's first day and the rows read as overlapping. {% endcomment %}
+                            <td>{% if edition.last_day %}{{ edition.last_day|date:"M j, Y" }}{% else %}in force{% endif %}</td>
+                            <td class="num">{{ edition.amendment_count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="lp-figline lp-rise" style="--d:220ms; margin-top:20px">
+                {{ provision_count|intcomma }} provisions &middot;
+                {{ version_count|intcomma }} versions &middot;
+                {{ amending_regs|intcomma }} amending regulations &middot;
+                <a href="{% url 'core:data_sources' %}" class="ui-link">where the data comes from</a>
+            </p>
+        </div>
+    </section>
+    {% endif %}
+
+    {# ══ Close ═════════════════════════════════════════════════════════ #}
+    <section class="lp-sec lp-close">
+        <div class="lp-wrap">
+            <h2 class="lp-h2 lp-rise">Start with the day, <em>not the edition</em>.</h2>
+            <p class="lp-lede lp-rise" style="--d:70ms; margin-inline:auto; text-align:center">
+                One free search without an account. Unlimited with one.
+            </p>
+            <div class="lp-cta lp-rise mt-8 flex flex-wrap justify-center gap-3.5" style="--d:130ms">
+                <a class="go" href="{% url 'core:search' %}">Search the Code <span aria-hidden="true">&rarr;</span></a>
+                <a class="alt" href="{% url 'core:pricing' %}">See pricing</a>
+            </div>
+            <p class="lp-disclaim lp-rise" style="--d:190ms">
+                Not legal advice. Legislative text &copy; King&rsquo;s Printer for Ontario,
+                reproduced from the published record. CodeChronicle is not affiliated with or
+                endorsed by the Province of Ontario &mdash;
+                <a href="{% url 'core:terms_of_service' %}" class="ui-link">terms</a>.
+            </p>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Progressive enhancement only: the reveal styles are scoped to
+    // [data-lp-reveal], which is set HERE. With JavaScript off the page renders
+    // fully visible instead of a column of blank space.
+    (function () {
+        var root = document.documentElement;
+        if (!('IntersectionObserver' in window)) { return; }
+        root.setAttribute('data-lp-reveal', '');
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) { return; }
+                entry.target.classList.add('is-in');
+                io.unobserve(entry.target);
+            });
+        }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
+        document.querySelectorAll('.lp-rise').forEach(function (el) { io.observe(el); });
+    })();
+</script>
+{% endblock %}

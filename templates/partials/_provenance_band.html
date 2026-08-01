@@ -10,7 +10,12 @@
    NB: multi-line {# #} comments leak as literal text (tokenizer isn't
    re.DOTALL) — use {% comment %} for anything spanning lines.
 {% endcomment %}
-<div class="@container border border-secondary bg-secondary-soft" x-data="{ copied: false, cmOpen: false, cmOpenUntil: false }">
+{% comment %} `--backdrop` follows the fill: this wrapper paints
+   `bg-secondary-soft`, and the attestation rail nested below knocks its ring
+   out against whatever is behind it. Without this the ring punched a
+   page-coloured hole in a band-coloured field. Any element that paints a
+   background and may contain a rail declares this once — see base.html. {% endcomment %}
+<div class="@container border border-secondary bg-secondary-soft [--backdrop:var(--secondary-soft)]" x-data="{ copied: false, cmOpen: false, cmOpenUntil: false }">
     <div class="flex flex-wrap items-stretch">
         {# Label cell — solid accent fill #}
         {% comment %} compare_pane: the side-by-side transition panes drop the
@@ -72,7 +77,13 @@
 
         {% comment %} Copy reference button — copy_text is built server-side in the
            formatter (api.formatters._build_copy_text) so JS doesn't need
-           to know the provenance shape. {% endcomment %}
+           to know the provenance shape.
+
+           in_legend drops it, the same guard the rail uses: the verification
+           guide's examples are illustrative dates with no provision behind
+           them, so there is no reference to copy. Everything else in the band
+           renders from the rail geometry alone. {% endcomment %}
+        {% if not in_legend %}
         <button type="button" title="Copy structured reference"
             class="relative flex shrink-0 items-center border-l border-secondary/40 px-3 text-ink-3 hover:text-secondary"
             data-copy-text="{{ result.copy_text }}"
@@ -84,6 +95,7 @@
             <svg x-show="!copied" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
             <svg x-show="copied" x-cloak class="h-4 w-4 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
         </button>
+        {% endif %}
     </div>
     {% if result.from_commencement %}
     {% include "partials/_commencement_modal.html" with commencement=result.from_commencement effective_date=result.version.effective_date %}

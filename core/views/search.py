@@ -112,13 +112,37 @@ EXAMPLE_QUERIES = [
 ]
 
 
-def home(request):
-    """Main search page."""
+def search_page(request):
+    """Main search page — the product surface, at ``/search/``.
+
+    ``/`` is the public landing page (``core.views.landing``); it redirects a
+    signed-in reader here, so this stays one click from the masthead.
+    """
     initial_query = request.GET.get("q", "")
+    # ``?d=`` seeds the AS-OF picker.  The picker is the date the search
+    # actually uses (it overrides whatever the parser reads out of the query
+    # text), so a link that carries only ``?q=`` runs a query saying "1999" at
+    # the default AS-OF date and returns a later edition.  Validated here, and
+    # ignored when malformed, so a hand-edited URL cannot put junk in the
+    # field.
+    # Kept as a ``date``, not the raw string: the template runs it through the
+    # ``date`` filter alongside the corpus default, and that filter returns an
+    # empty string for a str input — which would silently blank the field.
+    initial_date: date | None = None
+    raw_date = request.GET.get("d", "")
+    if raw_date:
+        try:
+            initial_date = date.fromisoformat(raw_date)
+        except ValueError:
+            initial_date = None
     return render(
         request,
         "search.html",
-        {"initial_query": initial_query, "example_queries": EXAMPLE_QUERIES},
+        {
+            "initial_query": initial_query,
+            "initial_date": initial_date,
+            "example_queries": EXAMPLE_QUERIES,
+        },
     )
 
 
