@@ -246,7 +246,7 @@ def execute_search(
         # teaser can name a real number instead of implying the pool size was
         # the whole story.
         "locked_editions": _match_counts(locked),
-        "locked_preview": _locked_preview(locked),
+        "locked_preview": identity_preview(locked),
         # Accessible matches that exist beyond the display limit — what the
         # results-per-search control can still reveal.
         "accessible_match_count": len(accessible),
@@ -298,12 +298,21 @@ def _match_counts(results: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
-def _locked_preview(locked: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Identity-only rows for the collapsed "more results on Pro" list.
+def identity_preview(
+    results: list[dict[str, Any]], limit: int = LOCKED_PREVIEW_LIMIT
+) -> list[dict[str, Any]]:
+    """Identity-only rows: provision id, division, title, edition.
 
-    Provision id, division and title — the same fields the locked lineage rows
-    and edition-nav teasers already show.  Deliberately no body text: the point
-    is to prove the match exists and is relevant, not to serve the content.
+    The same fields the locked lineage rows and edition-nav teasers show, and
+    deliberately no body text — the point is to prove the match exists and is
+    relevant, not to serve the content.
+
+    Two callers now.  The free-tier teaser passes the *locked* results (the
+    reader's plan does not cover them); the rate-limit teaser passes the
+    *accessible* results (the reader's plan covers them, but they have spent
+    the day's allowance).  One function because the two lists must look
+    identical on screen: they are the same promise, made for different
+    reasons, and a reader who learns to read one has learned to read both.
     """
     return [
         {
@@ -312,7 +321,7 @@ def _locked_preview(locked: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "title": result.get("title", ""),
             "code_edition": result.get("code_edition", ""),
         }
-        for result in locked[:LOCKED_PREVIEW_LIMIT]
+        for result in results[:limit]
     ]
 
 

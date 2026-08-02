@@ -8,6 +8,7 @@ from .billing import (
     stripe_cancel,
     stripe_success,
 )
+from .demand import edition_request
 from .history import history
 from .landing import landing
 from .pages import (
@@ -33,6 +34,7 @@ __all__ = [
     "create_customer_portal_session",
     "data_sources",
     "edition_chain",
+    "edition_request",
     "history",
     "landing",
     "list_punctuation",

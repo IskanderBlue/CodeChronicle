@@ -174,10 +174,21 @@ ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 ACCOUNT_ADAPTER = "core.adapters.AccountAdapter"
 # Mix a required Terms of Service / Privacy Policy acceptance checkbox into the
-# signup form (clickwrap) and stamp the accepted version onto the user.  Bump
-# TERMS_VERSION to match the Terms' "Last updated" date whenever they change.
+# signup form (clickwrap) and stamp the accepted versions onto the user.
+#
+# TWO versions, not one.  The checkbox covers both documents, but the two
+# documents change independently, so a single stamp forced a choice with no
+# right answer whenever only one of them changed: bump it and the acceptance
+# record dates the *unchanged* document falsely, or leave it and the record
+# points at text that has since been rewritten.  Both failures corrupt the
+# evidence the record exists to be.
+#
+# Each value matches its own document's "Last updated" line.  Bump the one
+# that changed, and only when the change is substantive — a typo fix is not a
+# new agreement.
 ACCOUNT_SIGNUP_FORM_CLASS = "core.forms.CustomSignupForm"
 TERMS_VERSION = "2026-06-17"
+PRIVACY_VERSION = "2026-08-01"
 
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
@@ -205,8 +216,18 @@ DJSTRIPE_SUBSCRIBER_MODEL = "core.User"
 # ===================
 # Rate Limiting
 # ===================
-RATE_LIMIT_ANONYMOUS = 1  # searches per day for anonymous users (per IP)
+RATE_LIMIT_ANONYMOUS = 1  # full-result searches per day for anonymous users (per IP)
 RATE_LIMIT_AUTHENTICATED = 3  # searches per day for logged-in free users
+
+# Above RATE_LIMIT_ANONYMOUS and up to this count, an anonymous search still
+# *runs* — the visitor gets provision ids, titles and editions, but no text.
+# Two reasons, one for the reader and one for us.  The reader learns that the
+# corpus holds an answer to their actual question, which no generic "limit
+# reached" page can tell them.  And the run populates QueryCache and the
+# scoring path, so the parse a subscriber needs later is already paid for.
+# Above this second count the search does not run at all: the teaser costs an
+# LLM parse per request, so it needs its own ceiling or it is an open tap.
+RATE_LIMIT_ANONYMOUS_TEASER = 10
 
 
 # ===================

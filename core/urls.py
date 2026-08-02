@@ -25,6 +25,8 @@ urlpatterns = [
     path("history/", views.history, name="history"),
     path("settings/", views.user_settings, name="user_settings"),
     path("search-results/", views.search_results, name="search_results"),
+    # Demand capture — which code/edition a visitor came looking for.
+    path("edition-request/", views.edition_request, name="edition_request"),
     path("viewer/edition-nav/", views.viewer_edition_nav, name="viewer_edition_nav"),
     path("viewer/edition-dates/", views.viewer_edition_dates, name="viewer_edition_dates"),
     path("viewer/section-content/", views.viewer_section_content, name="viewer_section_content"),

@@ -1,0 +1,54 @@
+{% comment %}
+Demand capture: "which edition do you need?".
+
+Asks for a NEED first and an email second. The need is the valuable field —
+a visitor who types "Alberta 2014" and leaves has told us the useful thing —
+so the email is optional and labelled optional. Requiring it would lose the
+visitor who will not give one, and with them the only signal that the edition
+matters.
+
+Not a signup, and it must never look like one: no "join", no account language,
+no competing with the free-account call to action beside it.
+
+The whole band replaces itself on submit (hx-swap outerHTML on the form's
+wrapper), so this one file renders all three states — ask, thanks, error.
+{% endcomment %}
+<div id="edition-request" class="border border-rule bg-surface-2 p-5">
+  {% if submitted %}
+  <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Recorded</h3>
+  <p class="mt-2 max-w-2xl font-serif text-base text-ink-2">
+    We have your request for <span class="font-mono text-[13px] text-ink">{{ code_text }}</span>.
+    Requests decide what we load next, so this genuinely counts.
+  </p>
+  {% else %}
+  <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Which edition do you need?</h3>
+  <p class="mt-2 max-w-2xl font-serif text-base text-ink-2">
+    CodeChronicle covers the Ontario Building Code from 1997. Tell us the code
+    and the year you work with, and we will tell you when it lands.
+  </p>
+  {% if error %}
+  <p class="mt-2 font-mono text-[11px] tracking-[0.04em] text-secondary">{{ error }}</p>
+  {% endif %}
+  <form hx-post="{% url 'core:edition_request' %}"
+        hx-target="#edition-request"
+        hx-swap="outerHTML"
+        class="mt-4 flex flex-wrap items-end gap-3">
+    {% csrf_token %}
+    <input type="hidden" name="surface" value="{{ surface|default:'landing' }}">
+    {% if search_id %}<input type="hidden" name="search_id" value="{{ search_id }}">{% endif %}
+    <label class="flex-1 min-w-[16rem]">
+      <span class="block font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">Code and year</span>
+      <input type="text" name="code_text" required maxlength="200"
+             placeholder="e.g. NBC 2015, or BC Building Code 2018"
+             class="mt-1 w-full border border-rule bg-panel px-3 py-2 font-serif text-base text-ink placeholder:text-ink-3 focus:border-secondary focus:outline-none">
+    </label>
+    <label class="flex-1 min-w-[14rem]">
+      <span class="block font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">Email &mdash; optional</span>
+      <input type="email" name="email" maxlength="254"
+             placeholder="only if you want to be told"
+             class="mt-1 w-full border border-rule bg-panel px-3 py-2 font-serif text-base text-ink placeholder:text-ink-3 focus:border-secondary focus:outline-none">
+    </label>
+    <button type="submit" class="ui-btn px-4 py-2 tracking-[0.1em]">Tell us</button>
+  </form>
+  {% endif %}
+</div>

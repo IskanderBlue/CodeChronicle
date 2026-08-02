@@ -1,4 +1,67 @@
 {% if success %}
+{% if teaser_only %}
+{% comment %}
+Rate-limit teaser: the search ran, the text is withheld.
+
+Shows the shape of the answer — how many provisions matched, in which
+editions, and what they are called — so the visitor learns the corpus holds
+their answer. That is the whole argument for making an account, and a generic
+"limit reached" page cannot make it.
+
+Rows carry identity only and come from the same identity_preview() the
+free-tier locked list uses, so the two teasers read identically. Never add
+body text, an excerpt, or a score here: the day's allowance is spent, and a
+partial quote would make the wall look arbitrary rather than principled.
+{% endcomment %}
+<div class="border border-rule bg-surface-2">
+    <div class="border-l-[3px] border-secondary p-5">
+        <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">
+            {% comment %}
+            The verb pluralizes the other way round from the noun: one
+            provision match*es*, several provisions match. Hence the
+            singular,plural form of the second filter with an empty plural.
+            {% endcomment %}
+            {{ teaser_match_count }} provision{{ teaser_match_count|pluralize }} match{{ teaser_match_count|pluralize:"es," }} &mdash; text withheld
+        </h3>
+        <p class="mt-2 max-w-2xl text-sm text-ink-2">
+            You have used today&rsquo;s free search. This one still ran, so here is what it found
+            {% if query_date %}in force on {{ query_date }}{% endif %}.
+            <a href="{{ signup_url }}" class="ui-link font-semibold">Create a free account</a>
+            to read the text, or
+            <a href="{{ login_url }}" class="ui-link font-semibold">log in</a>.
+        </p>
+        {% if teaser_edition_counts %}
+        <p class="mt-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+            Matched in {% for entry in teaser_edition_counts %}{{ entry.name }} ({{ entry.count }}){% if not forloop.last %}, {% endif %}{% endfor %}
+        </p>
+        {% endif %}
+        {% if teaser_rows %}
+        <ul class="mt-4 divide-y divide-rule border-t border-rule">
+            {% for row in teaser_rows %}
+            <li class="flex flex-wrap items-baseline gap-x-3 py-2">
+                <span class="font-mono text-[12px] text-ink-3">{{ row.id }}</span>
+                <span class="font-serif text-[15px] text-ink-2">{{ row.title }}</span>
+                <span class="ml-auto font-mono text-[11px] tracking-[0.04em] text-ink-3">{{ row.edition_name }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if teaser_row_remainder %}
+        <p class="mt-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">and {{ teaser_row_remainder }} more</p>
+        {% endif %}
+        {% else %}
+        <p class="mt-4 font-mono text-[11px] tracking-[0.04em] text-ink-3">Nothing matched this query.</p>
+        {% endif %}
+    </div>
+</div>
+{% comment %}
+The visitor searched, and we withheld the answer. If the reason is that we do
+not carry their code at all, this is the moment they will say so — the ask
+costs nothing here and would cost a navigation anywhere else.
+{% endcomment %}
+<div class="mt-6">
+    {% include "partials/_edition_request.html" with surface="rate_limit" search_id=search_id %}
+</div>
+{% else %}
 {% comment %}
 Limitation notices the LLM detected in the query. The province notice is
 non-blocking (Ontario results still follow); an explicitly-named out-of-coverage
@@ -306,6 +369,7 @@ lineage rows and edition-nav teasers already show, no body text.
 </details>
 {% endif %}
 {% endif %}{# date_out_of_range #}
+{% endif %}{# teaser_only #}
 
 {% else %}
 {% if rate_limited %}
@@ -330,6 +394,13 @@ lineage rows and edition-nav teasers already show, no body text.
             {% endif %}
         </div>
     </div>
+</div>
+{% comment %}
+Same reasoning as the teaser band above: this is the moment a visitor whose
+code we do not carry will tell us so.
+{% endcomment %}
+<div class="mt-6">
+    {% include "partials/_edition_request.html" with surface="rate_limit" %}
 </div>
 {% elif invalid_date %}
 {# -- Invalid date input: name the bad value, point back at the date selector -- #}

@@ -1001,6 +1001,18 @@
     </section>
     {% endif %}
 
+    {% comment %}
+    Demand capture. Sits above the close, not below it: a visitor whose code
+    we do not carry has already decided by this point, and the band is the one
+    thing on the page that is useful to them. It is also the only section that
+    asks the visitor a question rather than telling them something.
+    {% endcomment %}
+    <section class="lp-sec">
+        <div class="lp-wrap lp-rise" style="max-width:52rem">
+            {% include "partials/_edition_request.html" with surface="landing" %}
+        </div>
+    </section>
+
     {# ══ Close ═════════════════════════════════════════════════════════ #}
     <section class="lp-sec lp-close">
         <div class="lp-wrap">

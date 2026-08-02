@@ -142,8 +142,17 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.terms_acceptances.order_by("-accepted_at").first()
 
     def has_accepted_terms(self, version: str) -> bool:
-        """Whether this user has a recorded acceptance of ``version``."""
+        """Whether this user has a recorded acceptance of Terms ``version``."""
         return self.terms_acceptances.filter(terms_version=version).exists()
+
+    def has_accepted_privacy(self, version: str) -> bool:
+        """Whether this user has a recorded acceptance of Privacy ``version``.
+
+        Separate from :meth:`has_accepted_terms` because the two documents are
+        versioned separately — a user can be current on one and not the other,
+        which is the whole reason the stamps were split.
+        """
+        return self.terms_acceptances.filter(privacy_version=version).exists()
 
 
 class TermsAcceptance(models.Model):
@@ -172,6 +181,18 @@ class TermsAcceptance(models.Model):
     # after the user is deleted (``user`` goes NULL).
     email = models.CharField(max_length=254, blank=True, default="")
     terms_version = models.CharField(max_length=20)
+    #: The Privacy Policy version accepted in the same act.
+    #:
+    #: Recorded separately because the two documents change independently.
+    #: One stamp for both forced a choice with no right answer whenever only
+    #: one changed: bump it and the record dates the *other* document falsely,
+    #: or leave it and the record points at text that has since changed.  Two
+    #: stamps make the record say exactly what the reader saw.
+    #:
+    #: Blank only on rows written before the split (migration 0047 backfills
+    #: them with "2026-06-17", the Privacy Policy version those users actually
+    #: accepted).
+    privacy_version = models.CharField(max_length=20, blank=True, default="")
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=500, blank=True, default="")
     accepted_at = models.DateTimeField(auto_now_add=True)
@@ -184,11 +205,15 @@ class TermsAcceptance(models.Model):
         indexes = [
             models.Index(fields=["user", "accepted_at"]),
             models.Index(fields=["terms_version"]),
+            models.Index(fields=["privacy_version"]),
         ]
 
     def __str__(self) -> str:
         who = self.email or (self.user.email if self.user else "?")
-        return f"{who} accepted Terms {self.terms_version}"
+        return (
+            f"{who} accepted Terms {self.terms_version} / "
+            f"Privacy {self.privacy_version or '?'}"
+        )
 
 
 class QueryPrompt(models.Model):
@@ -299,6 +324,13 @@ class EngagementEvent(models.Model):
         # / edition_chain / search_viewer) from an impression (search_results,
         # where the user only saw a locked count).
         LOCKED_CONTENT_VIEW = "locked_content_view", "Locked content view"
+        # An anonymous visitor asked for a search after spending the day's
+        # allowance.  The other gate event (LOCKED_CONTENT_VIEW) records
+        # content withheld; this one records the *search* withheld, and it is
+        # the only record that the block happened at all — the middleware
+        # returns 429 before any SearchHistory row is written, so without this
+        # row a blocked visitor is indistinguishable from one who left.
+        RATE_LIMIT_BLOCK = "rate_limit_block", "Rate limit block"
 
     user = models.ForeignKey(
         User,
@@ -342,6 +374,75 @@ class EngagementEvent(models.Model):
     def __str__(self):
         who = self.user or self.ip_address or "anon"
         return f"{who}: {self.event_type} {self.object_type}#{self.object_id}"
+
+
+class EditionRequest(models.Model):
+    """A visitor telling us which code or edition they need.
+
+    The demand log.  Every other table here records what the corpus *has*;
+    this one records what a real reader came looking for and did not find,
+    which is the only evidence we have for what to ingest next.
+
+    ``code_text`` is deliberately free text, not a choice list.  A visitor who
+    types "Alberta 2014" or "the 1990 OBC" has told us the useful thing, and a
+    dropdown of what we already carry cannot capture a request for what we do
+    not.  Normalising it is a reporting problem, not an input problem — see
+    [[feedback_clean_data]] for why we still do not transform it on the way in.
+
+    ``email`` is optional on purpose.  The need is the valuable field; the
+    address is a bonus.  Requiring it would lose the visitor who will not give
+    one, and with them the only signal that the edition matters at all.
+    """
+
+    # Auto pk + FK id-shadow, plugin-only — declared for Pyright.
+    id: int
+    search_id: int | None
+
+    class Surface(models.TextChoices):
+        LANDING = "landing", "Landing page"
+        RATE_LIMIT = "rate_limit", "Rate-limit teaser"
+        SEARCH = "search", "Search page"
+
+    #: What they asked for, in their own words.
+    code_text = models.CharField(max_length=200)
+    email = models.EmailField(blank=True, default="")
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="edition_requests",
+        null=True,
+        blank=True,
+    )
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    #: Which page the ask came from — a request typed after a search was
+    #: withheld means something different from one typed on the front page.
+    surface = models.CharField(
+        max_length=20, choices=Surface.choices, default=Surface.LANDING
+    )
+    #: The search that preceded the ask, when there was one.  SET_NULL so
+    #: pruning history never drops the demand record.
+    search = models.ForeignKey(
+        SearchHistory,
+        on_delete=models.SET_NULL,
+        related_name="edition_requests",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "edition_requests"
+        verbose_name = "Edition Request"
+        verbose_name_plural = "Edition Requests"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["surface", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        who = self.email or (self.user.email if self.user else self.ip_address or "anon")
+        return f"{who} wants {self.code_text}"
 
 
 class AuthEvent(models.Model):

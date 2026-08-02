@@ -10,6 +10,7 @@ from django.shortcuts import render
 from django.views.decorators.http import require_POST
 
 from api.formatters import _code_order_key, highlight_terms
+from api.search.orchestration import identity_preview
 from config.code_metadata import edition_display_name, get_code_display_name
 from config.search_limits import (
     CLOSE_MATCH_THRESHOLD,
@@ -512,6 +513,68 @@ def viewer_section_content(request: HttpRequest):
     )
 
 
+def _teaser_context(result: dict[str, Any]) -> dict[str, Any]:
+    """Context for a search that ran but whose text is withheld.
+
+    The visitor has spent the day's full-result allowance.  Rather than a page
+    that says only "limit reached", they get the shape of the answer: how many
+    provisions matched, in which editions, and what those provisions are
+    called.  That is enough to tell them the corpus holds their answer, which
+    is the one thing a generic wall can never say — and it is the honest basis
+    for asking them to make an account.
+
+    Identity rows come from ``identity_preview``, the same function that builds
+    the free-tier locked list, so the two teasers cannot drift apart on screen.
+    """
+    results = result.get("results") or []
+    locked_editions = result.get("locked_editions") or {}
+    accessible = result.get("accessible_match_count", 0)
+    return {
+        "success": True,
+        "teaser_only": True,
+        "results": [],
+        "teaser_rows": [
+            {**row, "edition_name": edition_display_name(row["code_edition"])}
+            for row in identity_preview(results)
+        ],
+        # Counts the whole match set, not the previewed slice — the preview is
+        # capped and the count is not, so they are different numbers and the
+        # template says so with the "and N more" tail.
+        "teaser_match_count": accessible + sum(locked_editions.values()),
+        "teaser_row_remainder": max(0, accessible - len(identity_preview(results))),
+        "teaser_edition_counts": [
+            {"name": edition_display_name(code), "count": count}
+            for code, count in sorted(_teaser_edition_counts(results, locked_editions).items())
+        ],
+        "query_date": result.get("parsed_params", {}).get("date"),
+        "keywords": result.get("parsed_params", {}).get("keywords", []),
+        # Lets an edition request filed from this page join back to the query
+        # that prompted it — "they asked for X after searching Y" is a stronger
+        # signal than either fact alone.
+        "search_id": result.get("search_history_id"),
+        "signup_url": "/accounts/signup/",
+        "login_url": "/accounts/login/",
+    }
+
+
+def _teaser_edition_counts(
+    results: list[dict[str, Any]], locked_editions: dict[str, int]
+) -> dict[str, int]:
+    """Per-edition match counts across both sides of the tier split.
+
+    The rate-limit teaser is not a tier teaser: the visitor is blocked by the
+    day's allowance, not by their plan, so an edition they *could* have read
+    and one they could not are withheld for the same reason right now and
+    belong in one list.
+    """
+    counts: dict[str, int] = dict(locked_editions)
+    for row in results:
+        name = row.get("code_edition", "")
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
 @require_POST
 def search_results(request):
     """HTMX search results view."""
@@ -546,6 +609,18 @@ def search_results(request):
                 # echo the bad value back to the user (see the partial).
                 "invalid_date": result.get("invalid_date"),
             },
+        )
+
+    # Band 2 of the anonymous allowance (core.middleware): the search ran, but
+    # the text is withheld.  Returns before the full context is built — the
+    # teaser needs six values, and threading a "hide everything" flag through
+    # the ninety-line context below would put the withholding decision in the
+    # template, where every future key would have to remember it.
+    if getattr(request, "search_teaser_only", False):
+        return render(
+            request,
+            "partials/search_results_partial.html",
+            _teaser_context(result),
         )
 
     # The search turned up results this user's tier can't open.  Recorded as an
