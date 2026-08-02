@@ -24,6 +24,7 @@ from core.models import (
     ProvisionCrossReferenceAlternate,
     ProvisionDisposition,
     ProvisionMapping,
+    ProvisionVersionAsset,
     ProvisionVersionTable,
     Regulation,
     RegulationAsset,
@@ -44,6 +45,26 @@ def _require_date(value: str | None, field: str) -> date:
     if not value:
         raise ValueError(f"Missing required date field: {field}")
     return date.fromisoformat(value)
+
+
+def _asset_fields(asset_data: dict[str, Any]) -> dict[str, Any] | None:
+    """Read the five manifest keys both asset scopes share.
+
+    CCM emits the same shape under ``regulations[]`` and under
+    ``provisions[].versions[]`` (contract §``provisions[].versions[].assets[]``),
+    so one reader serves both and the two cannot drift.  Returns ``None`` for
+    an entry with no ``path``: without it there is nothing to publish or check.
+    """
+    path = asset_data.get("path")
+    if not path:
+        return None
+    return {
+        "path": path,
+        "original_url": asset_data.get("original_url", ""),
+        "sha256": asset_data.get("sha256", ""),
+        "byte_size": asset_data.get("bytes"),
+        "content_type": asset_data.get("content_type", ""),
+    }
 
 
 def _max_concurrent_in_force(intervals: list[tuple[date, date | None]]) -> int:
@@ -197,6 +218,9 @@ class Command(BaseCommand):
                 version_lookup, clause_lookup, reg_lookup, data.get("provisions", []),
             )
             table_count = self._load_tables(version_lookup, data.get("provisions", []))
+            version_asset_count = self._load_version_assets(
+                version_lookup, data.get("provisions", []),
+            )
             self._resolve_transition_provisions(
                 version_lookup, prov_lookup, data.get("provisions", []),
             )
@@ -224,8 +248,9 @@ class Command(BaseCommand):
         currency = CorpusCurrency.refresh()
 
         logger.info(
-            "Loaded %s %s: %d regulations, %d clauses, %d assets, %d provisions, "
-            "%d versions, %d version-clause links, %d tables, %d mappings, "
+            "Loaded %s %s: %d regulations, %d clauses, %d filing assets, "
+            "%d provisions, %d versions, %d version-clause links, %d tables, "
+            "%d version assets, %d mappings, "
             "%d dispositions, %d covered transitions, %d cross-references "
             "(%d unanchored); corpus current to %s",
             code_str,
@@ -237,6 +262,7 @@ class Command(BaseCommand):
             len(version_lookup),
             clause_link_count,
             table_count,
+            version_asset_count,
             mapping_count,
             disposition_count,
             coverage_count,
@@ -468,6 +494,9 @@ class Command(BaseCommand):
         only writes the manifest so the FK ``regulation.assets`` is
         populated for ingest-time verification and for later
         serving/auditing.
+
+        This is the *source-filing* set.  It is not what a reader needs; see
+        :meth:`_load_version_assets` for the set the served HTML names.
         """
         assets_to_create: list[RegulationAsset] = []
         for reg_data in regulations:
@@ -476,20 +505,57 @@ class Command(BaseCommand):
             if regulation is None:
                 continue
             for asset_data in reg_data.get("assets", []) or []:
-                path = asset_data.get("path")
-                if not path:
+                fields = _asset_fields(asset_data)
+                if fields is None:
                     continue
-                assets_to_create.append(RegulationAsset(
-                    regulation=regulation,
-                    path=path,
-                    original_url=asset_data.get("original_url", ""),
-                    sha256=asset_data.get("sha256", ""),
-                    byte_size=asset_data.get("bytes"),
-                    content_type=asset_data.get("content_type", ""),
-                ))
+                assets_to_create.append(
+                    RegulationAsset(regulation=regulation, **fields)
+                )
 
         if assets_to_create:
             RegulationAsset.objects.bulk_create(assets_to_create)
+
+        return len(assets_to_create)
+
+    def _load_version_assets(
+        self,
+        version_lookup: dict[tuple[str, str, int], CodeEditionProvisionVersion],
+        provisions: list[dict[str, Any]],
+    ) -> int:
+        """Persist ``provisions[].versions[].assets[]`` manifest entries.
+
+        This is the manifest that describes what a reader's browser asks for:
+        CCM derives it from the HTML it writes, so every ``<img src>`` in a
+        stored body has a row here.  ``regulations[].assets[]`` cannot serve
+        that purpose — e-Laws names an asset per consolidation version, so one
+        figure has a different path in each version and a regulation-scoped
+        union cannot say which version needs which.
+
+        Only the manifest is written; ``sync_images`` publishes the bytes.
+        The value of the row is the *check*: an asset the HTML names and no
+        manifest records is a 404 nobody can detect, which is how 115 broken
+        images reached production (``tasks/a-missing-elaws-inline-assets.md``).
+        """
+        assets_to_create: list[ProvisionVersionAsset] = []
+        for prov_data in provisions:
+            provision_id = prov_data["provision_id"]
+            division = prov_data.get("division", "")
+            for ver_data in prov_data.get("versions", []):
+                version = version_lookup.get(
+                    (provision_id, division, ver_data["version"])
+                )
+                if version is None:
+                    continue
+                for asset_data in ver_data.get("assets", []) or []:
+                    fields = _asset_fields(asset_data)
+                    if fields is None:
+                        continue
+                    assets_to_create.append(
+                        ProvisionVersionAsset(version=version, **fields)
+                    )
+
+        if assets_to_create:
+            ProvisionVersionAsset.objects.bulk_create(assets_to_create)
 
         return len(assets_to_create)
 

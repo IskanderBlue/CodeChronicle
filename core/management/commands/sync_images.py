@@ -1,16 +1,24 @@
 """Mirror CCM-produced image/asset trees into ASSET_ROOT or Cloudflare R2.
 
-Three trees are mirrored, all path-verbatim so that the URL paths
+Four trees are mirrored, all path-verbatim so that the URL paths
 referenced from ``versions[].html``, ``versions[].page_images[].image``,
 and ``tables[].images[].image`` resolve without rewriting:
 
 * ``documents/{pdf_name}/{page}.webp`` — full page images shared across
   provisions on the same page.
+* ``elaws/{reg}/{table_id}.jpg`` — pre-composited e-Laws table images.
 * ``amended/{code}/{edition}/{table_id}/{version}/{num}.webp`` —
   pre-composited table images for amended versions.
 * ``laws/images/...`` — e-Laws inline asset bytes (equations, scanned
-  figures).  Verified against ``RegulationAsset.sha256`` when a manifest
-  entry exists for the path.
+  figures).  Verified against the sha256 of ``RegulationAsset`` and
+  ``ProvisionVersionAsset`` when a manifest entry exists for the path.
+
+CCM does not put those four trees under one root: ``laws/`` is a build
+*output*, while ``documents/`` and ``elaws/`` are *intermediates*.  So
+``--source`` is repeatable and each prefix is taken from the first root
+that holds it.  A single root silently published ``laws/`` alone and
+called it a success, which is how production ran with 96 of the 532
+objects it needed.
 
 Sync is content-addressed and idempotent: a file is only re-written when
 the destination is absent, the destination size differs, or (for
@@ -32,6 +40,7 @@ Two destination backends share that decision logic:
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,11 +50,11 @@ from coloured_logger import Logger
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from core.models import RegulationAsset
+from config.assets import DEFAULT_ASSET_SOURCES, MIRRORED_PREFIXES
+from core.models import ProvisionVersionAsset, RegulationAsset
 
 logger = Logger(__name__)
 
-MIRRORED_PREFIXES = ("documents", "amended", "laws")
 LOG_FILENAME = "image_sync_log.jsonl"
 SHA_METADATA_KEY = "sha256"
 
@@ -150,16 +159,19 @@ class Command(BaseCommand):
     help = (
         "Mirror CCM-produced image/asset trees into ASSET_ROOT or R2.  "
         "Idempotent and content-addressed for laws/images/ paths "
-        "registered in RegulationAsset; size-checked elsewhere."
+        "in the asset manifest; size-checked elsewhere."
     )
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
             "--source",
-            default=str(Path("..") / "CodeChronicleMapping" / "data" / "outputs"),
+            action="append",
+            default=None,
             help=(
-                "CCM build artifact root containing documents/, amended/, "
-                "and laws/ subdirectories."
+                "CCM artifact root holding one or more mirrored prefixes.  "
+                "Repeatable; each prefix is taken from the first root that "
+                "holds it.  Default: the outputs root then the "
+                "intermediates/images root, which together cover all four."
             ),
         )
         parser.add_argument(
@@ -178,15 +190,14 @@ class Command(BaseCommand):
             choices=MIRRORED_PREFIXES,
             default=None,
             help=(
-                "Restrict to a single prefix (documents/amended/laws).  "
-                "Default: all three."
+                "Restrict to a single mirrored prefix.  Default: all of them."
             ),
         )
         parser.add_argument(
             "--strict-manifest",
             action="store_true",
             help=(
-                "For laws/images/ paths registered in RegulationAsset, "
+                "For laws/images/ paths in the asset manifest, "
                 "require sha256 verification to pass.  Fails the command "
                 "if any registered asset is missing or hash-mismatched.  "
                 "Off by default during development."
@@ -194,12 +205,25 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        source_root = Path(options["source"]).expanduser().resolve()
+        source_roots = [
+            Path(s).expanduser().resolve()
+            for s in (options["source"] or DEFAULT_ASSET_SOURCES)
+        ]
         prefix = options["prefix"]
         strict = options["strict_manifest"]
 
-        if not source_root.exists() or not source_root.is_dir():
-            raise CommandError(f"Source root not found: {source_root}")
+        # An explicit --source that does not exist is an operator mistake and
+        # must fail loudly.  A missing *default* root is not: a checkout that
+        # holds only the outputs tree is a legitimate partial sync.
+        for root in source_roots:
+            if root.exists() and root.is_dir():
+                continue
+            if options["source"]:
+                raise CommandError(f"Source root not found: {root}")
+            logger.info("Default source root %s not present; skipping it", root)
+        source_roots = [r for r in source_roots if r.exists() and r.is_dir()]
+        if not source_roots:
+            raise CommandError("No source root exists; nothing to mirror.")
 
         # The decision log always lives on disk next to the local root, even
         # for R2 runs, so reruns stay auditable without a bucket read.
@@ -223,10 +247,31 @@ class Command(BaseCommand):
 
         # Build manifest of registered assets (sha256 by path) for the
         # laws/ tree so we can verify byte-for-byte.
+        #
+        # Both asset scopes feed it.  The regulation scope alone describes the
+        # source filings, which is a smaller set than the served HTML names —
+        # so a body-only reference was verified by nothing and reported by
+        # nothing, and 115 of them 404'd in production.  The version scope is
+        # the set a reader actually asks for.
         manifest: dict[str, str] = {}
         if "laws" in prefixes:
-            for row in RegulationAsset.objects.exclude(sha256="").values("path", "sha256"):
-                manifest[row["path"]] = row["sha256"]
+            rows = itertools.chain(
+                RegulationAsset.objects.exclude(sha256="").values("path", "sha256"),
+                ProvisionVersionAsset.objects.exclude(sha256="").values("path", "sha256"),
+            )
+            for row in rows:
+                path, sha = row["path"], row["sha256"]
+                previous = manifest.get(path)
+                if previous is not None and previous != sha:
+                    # One path, two hashes: the corpus disagrees with itself
+                    # about what these bytes are, and only one of the two can
+                    # be published.  Never silent.
+                    logger.warning(
+                        "manifest disagrees on %s: %s vs %s; keeping the first",
+                        path, previous, sha,
+                    )
+                    continue
+                manifest[path] = sha
 
         copied = 0
         skipped = 0
@@ -237,13 +282,32 @@ class Command(BaseCommand):
         seen: set[str] = set()
         missing: list[str] = []
 
+        # Resolve each prefix to the first root that holds it, before copying
+        # anything, so the run can report up front which prefixes it found
+        # nowhere.  That report is the whole point: the previous single-root
+        # version could not tell "this tree is absent" from "there is no such
+        # tree", and published a quarter of the corpus without complaint.
+        resolved: dict[str, Path] = {}
+        unresolved: list[str] = []
+        for p in prefixes:
+            for root in source_roots:
+                if (root / p).is_dir():
+                    resolved[p] = root
+                    break
+            else:
+                unresolved.append(p)
+
+        for p, root in resolved.items():
+            logger.info("Mirroring %s/ from %s", p, root)
+        if unresolved:
+            logger.warning(
+                "no source root holds these prefixes, so nothing is published "
+                "for them: %s", ", ".join(unresolved),
+            )
+
         with log_path.open("a", encoding="utf-8") as log_f:
-            for p in prefixes:
-                src_dir = source_root / p
-                if not src_dir.exists():
-                    logger.info("Source subtree %s not present at %s; skipping", p, src_dir)
-                    continue
-                for src in src_dir.rglob("*"):
+            for p, source_root in resolved.items():
+                for src in (source_root / p).rglob("*"):
                     if not src.is_file():
                         continue
                     key = src.relative_to(source_root).as_posix()

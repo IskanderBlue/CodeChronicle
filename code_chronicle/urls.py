@@ -11,6 +11,7 @@ from django.views.generic.base import RedirectView, TemplateView
 from django.views.static import serve
 
 from api.views import api
+from config.assets import MIRRORED_PREFIXES
 from core.sitemaps import SITEMAPS
 
 
@@ -86,11 +87,16 @@ urlpatterns: list[URLResolver | URLPattern] = [
 # elaws/, amended/, laws/) live under settings.ASSET_ROOT with paths
 # verbatim, so both page/table ``image`` keys (e.g. "documents/…webp",
 # "elaws/…jpg") and inline ``<img src="/laws/images/...">`` references in
-# version HTML resolve through these patterns.  In production these
-# prefixes are served by nginx aliasing to ASSET_ROOT — Django stays out
-# of the path.
+# version HTML resolve through these patterns.
+#
+# In production a Cloudflare Worker answers these same paths from R2 at the
+# edge, so neither nginx nor Django is in the path and the URLs need no
+# rewrite.  The prefix list below must therefore stay in step with
+# MIRRORED_PREFIXES in core/management/commands/sync_images.py and with
+# asset_path_prefixes in the Terraform Cloudflare module.  A prefix that is
+# missing from the Terraform list works in dev and 404s in production.
 if settings.DEBUG:
-    for _prefix in ("documents", "elaws", "amended", "laws"):
+    for _prefix in MIRRORED_PREFIXES:
         urlpatterns.append(path(
             f"{_prefix}/<path:path>",
             serve,

@@ -1015,26 +1015,43 @@ class RegulationClause(models.Model):
         return f"{self.regulation.reg_id} cl. {self.clause_id}"
 
 
-class RegulationAsset(models.Model):
-    """An inline-image asset referenced from a regulation's clause HTML.
+class AssetManifestEntry(models.Model):
+    """One mirrored binary that an e-Laws-derived HTML body references.
 
-    Mirrors the ``regulations[].assets[]`` registry CCM emits for
-    e-Laws-derived editions.  Stored as a manifest only — the bytes live
-    under the asset root at ``path`` (e.g.
-    ``laws/images/en/R19088_e_files/image007.gif``).  The same relative
-    path is the URL path served at host root, so the inline
-    ``<img src="/laws/images/...">`` references in ``versions[].html``
-    resolve without HTML rewriting.
+    Stored as a manifest only — the bytes live under the asset root at
+    ``path`` (e.g. ``laws/images/en/R19088_e_files/image007.gif``), which
+    ``sync_images`` publishes.  The same relative path is the URL path served
+    at host root, so the inline ``<img src="/laws/images/...">`` references in
+    ``versions[].html`` resolve without HTML rewriting.
+
+    CCM emits the same five keys at two scopes, so this base holds them once
+    and the two concrete models add only their owner.  See
+    :class:`RegulationAsset` and :class:`ProvisionVersionAsset` for which
+    scope answers which question.
     """
 
-    regulation = models.ForeignKey(
-        Regulation, on_delete=models.CASCADE, related_name="assets",
-    )
     path = models.CharField(max_length=500)
     original_url = models.CharField(max_length=500, blank=True, default="")
     sha256 = models.CharField(max_length=64, blank=True, default="")
     byte_size = models.BigIntegerField(null=True, blank=True)
     content_type = models.CharField(max_length=100, blank=True, default="")
+
+    class Meta:
+        abstract = True
+
+
+class RegulationAsset(AssetManifestEntry):
+    """An inline asset a regulation's own filing carried.
+
+    Mirrors ``regulations[].assets[]``.  This is the *source-filing* set: what
+    the amending regulation shipped.  It is not the set a reader needs — the
+    consolidated HTML a version stores names assets no single filing carried
+    (:class:`ProvisionVersionAsset`).
+    """
+
+    regulation = models.ForeignKey(
+        Regulation, on_delete=models.CASCADE, related_name="assets",
+    )
 
     class Meta:
         db_table = "regulation_assets"
@@ -1159,6 +1176,7 @@ class CodeEditionProvisionVersion(models.Model):
 
     # Reverse relations (see note on CodeEdition).
     tables: "models.Manager[ProvisionVersionTable]"
+    assets: "models.Manager[ProvisionVersionAsset]"
     cross_references: "models.Manager[ProvisionCrossReference]"
     # Render-time annotations, not DB fields: the body with within-edition
     # citations linked, and the list form of the same records
@@ -1439,6 +1457,45 @@ class ProvisionVersionTable(models.Model):
 
     def __str__(self):
         return f"{self.version} — {self.table_id}"
+
+
+class ProvisionVersionAsset(AssetManifestEntry):
+    """An inline asset that one provision version's HTML names.
+
+    Mirrors ``provisions[].versions[].assets[]``.  The scope is the version,
+    not the regulation, because e-Laws names an asset per consolidation
+    version: OBC 2012 puts the version in the directory
+    (``120332_eV020_files/image001.gif``) and OBC 2006 puts it in the filename
+    (``elaws_regs_060350_ev003-14.gif``).  The same figure is a different path
+    in every version, so a regulation-scoped union can hold the paths but
+    cannot say which version needs which.
+
+    CCM derives this array from the HTML it writes, so an asset the HTML names
+    cannot be absent from the manifest.  That closes the hole this model
+    exists for: the three OBC editions declared 45 regulation-scoped entries
+    while their HTML named 157 images, and nothing could see the difference
+    because no manifest described it.
+    """
+
+    version = models.ForeignKey(
+        CodeEditionProvisionVersion, on_delete=models.CASCADE,
+        related_name="assets",
+    )
+
+    class Meta:
+        db_table = "provision_version_assets"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["version", "path"],
+                name="provision_version_asset_path_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["path"]),
+        ]
+
+    def __str__(self):
+        return f"{self.version} :: {self.path}"
 
 
 class ProvisionCrossReference(models.Model):

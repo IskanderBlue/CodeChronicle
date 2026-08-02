@@ -107,10 +107,11 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # ===================
 # Asset root — CCM-mirrored images
 # ===================
-# Page images (``documents/...``), composited amended-table images
-# (``amended/...``), and e-Laws inline asset bytes (``laws/images/...``)
-# live under this root with paths verbatim matching the URL paths in the
-# CCM output JSON.  Inline ``<img src="/laws/images/...">`` references
+# Page images (``documents/...``), composited e-Laws table images
+# (``elaws/...``), composited amended-table images (``amended/...``), and
+# e-Laws inline asset bytes (``laws/images/...``) live under this root with
+# paths verbatim matching the URL paths in the CCM output JSON.  The list of
+# prefixes itself lives in ``config/assets.py``.  Inline ``<img src="/laws/images/...">`` references
 # in version HTML resolve here without rewriting.
 #
 # Development: served by Django via ``core.urls`` under ``/`` (see url conf).
@@ -130,7 +131,7 @@ ASSET_ROOT = Path(os.environ.get("ASSET_ROOT", BASE_DIR / "assets"))
 # Cloudflare R2 — asset object storage (upload/sync side only)
 # ===================
 # Used by ``manage.py sync_images --backend r2`` to publish the mirrored
-# asset trees (documents/, amended/, laws/) to R2.  Serving is handled at
+# asset trees (see ``config/assets.py``) to R2.  Serving is handled at
 # the Cloudflare edge by a Worker with an R2 binding (see the Terraform
 # ``modules/cloudflare`` asset-proxy), so the running app needs NO R2
 # credentials — only whoever runs the sync does.  S3-compatible: keys are

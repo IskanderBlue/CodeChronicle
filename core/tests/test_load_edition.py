@@ -560,6 +560,42 @@ class TestLoadEdition:
         assert a.byte_size == 1234
         assert a.content_type == "image/gif"
 
+    def test_loads_version_assets(self, edition_json: Path, tmp_path: Path) -> None:
+        """The version scope is the set the served HTML names.
+
+        A body-only reference has no row under ``regulations[].assets[]``, so
+        before this the corpus could not tell a published asset from a 404.
+        """
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        version = data["provisions"][0]["versions"][0]
+        version["assets"] = [
+            {
+                "path": "laws/images/en/120332_eV005_files/image001.gif",
+                "original_url": (
+                    "https://www.ontario.ca/laws/images/en/"
+                    "120332_eV005_files/image001.gif"
+                ),
+                "sha256": "b" * 64,
+                "bytes": 1387,
+                "content_type": "image/gif",
+            },
+            {"original_url": "no path, so nothing to publish or check"},
+        ]
+        with_assets = tmp_path / "OBC_1997_version_assets.json"
+        with_assets.write_text(json.dumps(data), encoding="utf-8")
+        call_command("load_edition", "--source", str(with_assets))
+
+        loaded = CodeEditionProvisionVersion.objects.get(
+            provision__provision_id=data["provisions"][0]["provision_id"],
+            version=version["version"],
+        )
+        assets = list(loaded.assets.all())
+        assert len(assets) == 1
+        assert assets[0].path == "laws/images/en/120332_eV005_files/image001.gif"
+        assert assets[0].sha256 == "b" * 64
+        assert assets[0].byte_size == 1387
+        assert assets[0].content_type == "image/gif"
+
     def test_merges_meta_amendment_stub_with_full_clause(
         self, edition_json: Path, tmp_path: Path,
     ) -> None:
