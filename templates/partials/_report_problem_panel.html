@@ -8,8 +8,10 @@ The queue joins them (ProvisionFeedback.target_ref); if this template joined
 them too, the two strings would be free to disagree about a text whose whole
 value is being exact.
 
-The hidden fields carry the target. version can legitimately be 0, so it is
-tested against None and never for truthiness.
+The hidden fields carry the target, split by shape rather than merged: a
+regulation report renders no provision fields at all. That split is also what
+keeps version safe — v0 is the commonest version and is falsy, so it must
+never sit behind a truthiness test.
 {% endcomment %}
 <div class="report-panel">
   {% if submitted %}
@@ -22,8 +24,7 @@ tested against None and never for truthiness.
   {% else %}
   <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">This looks wrong</h3>
   <p class="mt-2 font-serif text-base text-ink-2">
-    Tell us what is wrong and we will check it against the source. Reports are
-    free for everyone, and correcting the record is the point of the site.
+    Tell us what is wrong and we will verify &amp; correct our mapping.
   </p>
 
   <dl class="mt-4 border border-rule-2 bg-surface-2 px-3 py-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
