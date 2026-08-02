@@ -2,25 +2,37 @@
 Stripe billing views: checkout, portal, success/cancel callbacks.
 """
 
+import stripe
 from coloured_logger import Logger
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
+from djstripe.models import Customer, Subscription
 
 logger = Logger(__name__)
+
+
+def _use_stripe_key() -> None:
+    """Point the stripe client at the key for this environment.
+
+    Called at the top of every view that talks to Stripe.  The key is set per
+    call rather than once at import because ``settings.DEBUG`` is what selects
+    between the test and live key, and a test that flips it with
+    ``override_settings`` must change which account is charged.
+    """
+    stripe.api_key = (
+        settings.STRIPE_TEST_SECRET_KEY if settings.DEBUG else settings.STRIPE_LIVE_SECRET_KEY
+    )
 
 
 @login_required
 @require_POST
 def create_checkout_session(request):
     """Create a Stripe Checkout session for the Pro plan."""
-    import stripe
-
-    stripe.api_key = (
-        settings.STRIPE_TEST_SECRET_KEY if settings.DEBUG else settings.STRIPE_LIVE_SECRET_KEY
-    )
+    _use_stripe_key()
 
     price_id = settings.STRIPE_PRO_PRICE_ID
     if not price_id:
@@ -53,8 +65,6 @@ def create_checkout_session(request):
         return redirect(checkout_session.url, code=303)
     except Exception as e:
         logger.error("Stripe checkout error: %s", e)
-        from django.contrib import messages
-
         messages.error(request, f"Checkout failed: {e}")
         return redirect(reverse("core:pricing"))
 
@@ -62,11 +72,7 @@ def create_checkout_session(request):
 @login_required
 def stripe_success(request):
     """Post-checkout success page — sync dj-stripe data."""
-    import stripe
-
-    stripe.api_key = (
-        settings.STRIPE_TEST_SECRET_KEY if settings.DEBUG else settings.STRIPE_LIVE_SECRET_KEY
-    )
+    _use_stripe_key()
 
     session_id = request.GET.get("session_id")
     verified = False
@@ -87,8 +93,6 @@ def stripe_success(request):
 
 def _sync_customer_after_checkout(user, stripe_customer_id: str):
     """Sync the dj-stripe Customer and its Subscriptions from Stripe."""
-    from djstripe.models import Customer
-
     try:
         customer, _ = Customer.objects.get_or_create(
             id=stripe_customer_id,
@@ -97,8 +101,6 @@ def _sync_customer_after_checkout(user, stripe_customer_id: str):
         if not customer.subscriber:
             customer.subscriber = user
             customer.save(update_fields=["subscriber"])
-
-        import stripe
 
         stripe_customer = stripe.Customer.retrieve(stripe_customer_id)
         Customer.sync_from_stripe_data(stripe_customer)
@@ -109,8 +111,6 @@ def _sync_customer_after_checkout(user, stripe_customer_id: str):
             customer.save(update_fields=["subscriber"])
 
         subs = stripe.Subscription.list(customer=stripe_customer_id, status="all", limit=10)
-        from djstripe.models import Subscription
-
         for sub_data in subs.auto_paging_iter():
             Subscription.sync_from_stripe_data(sub_data)
     except Exception as e:
@@ -119,8 +119,6 @@ def _sync_customer_after_checkout(user, stripe_customer_id: str):
 
 def stripe_cancel(request):
     """Checkout cancelled — redirect to pricing with banner."""
-    from django.contrib import messages
-
     messages.info(request, "Checkout cancelled. You can upgrade anytime.")
     return redirect(reverse("core:pricing"))
 
@@ -129,11 +127,7 @@ def stripe_cancel(request):
 @require_POST
 def create_customer_portal_session(request):
     """Create a Stripe Customer Portal session."""
-    import stripe
-
-    stripe.api_key = (
-        settings.STRIPE_TEST_SECRET_KEY if settings.DEBUG else settings.STRIPE_LIVE_SECRET_KEY
-    )
+    _use_stripe_key()
 
     customer_id = request.user.stripe_customer_id
     if not customer_id:
@@ -148,15 +142,9 @@ def create_customer_portal_session(request):
 
 def _sync_subscription_status(user):
     """Re-sync dj-stripe Subscription records from Stripe for this user."""
-    import stripe
-
-    stripe.api_key = (
-        settings.STRIPE_TEST_SECRET_KEY if settings.DEBUG else settings.STRIPE_LIVE_SECRET_KEY
-    )
+    _use_stripe_key()
 
     try:
-        from djstripe.models import Customer, Subscription
-
         stripe_customer = stripe.Customer.retrieve(user.stripe_customer_id)
         customer = Customer.sync_from_stripe_data(stripe_customer)
 
