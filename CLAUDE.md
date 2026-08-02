@@ -37,6 +37,11 @@ python manage.py makemigrations
 # Load a CCM consolidated edition (provenance models) into the DB
 python manage.py load_edition --source ../CodeChronicleMapping/data/outputs
 
+# Point django.contrib.sites at this deployment's domain. The sitemap's <loc>
+# URLs and allauth's email links both read that row, and Django ships it as
+# "example.com". Production is already set to www.codechronicle.ca; dev is not.
+python manage.py set_site_domain --domain localhost
+
 # Start PostgreSQL
 docker-compose up -d
 ```
@@ -179,7 +184,61 @@ Split settings in `code_chronicle/settings/`: `base.py`, `development.py`, `prod
 
 ### Rate Limiting & Subscriptions
 
-Anonymous: 1 search/day (per IP), enforced by `core.middleware.RateLimitMiddleware`. Authenticated users (free and Pro): unlimited searches. Content gating lives in `core/access.py` (unconditional): anonymous and non-Pro users are scoped to the editions in `FREE_TIER_CODE_NAMES` (OBC 2006); Pro (Stripe/dj-stripe or `pro_courtesy` flag) is unrestricted. History: `tasks/complete/free-tier-obc2006-scope.md`.
+The anonymous allowance runs in **three bands**, decided by
+`core.middleware.RateLimitMiddleware`:
+
+| Searches today | Band | Behaviour |
+|---|---|---|
+| `< RATE_LIMIT_ANONYMOUS` (1) | full | Results as normal |
+| `< RATE_LIMIT_ANONYMOUS_TEASER` (10) | teaser | The search **runs**; the text is withheld |
+| above that | hard | 429, and the search does not run |
+
+The middleware never runs a search itself. In the teaser band it sets
+`request.search_teaser_only` and returns `None`; `core.views.search` then calls
+`_teaser_context()`, which returns provision ids, titles, editions and counts —
+identity only, via the same `api.search.orchestration.identity_preview()` the
+free-tier locked list uses, so the two teasers cannot drift apart on screen.
+
+Both the teaser band and the hard band record an
+`EngagementEvent.EventType.RATE_LIMIT_BLOCK` with `context.band`, because the
+conversion denominator counts *intent* — the reader asked and we withheld —
+not which wall the intent met. The hard band exists because the teaser costs
+an LLM parse per request; without a ceiling it is an open tap.
+
+Authenticated users (free and Pro): unlimited searches. Content gating lives in
+`core/access.py` (unconditional): anonymous and non-Pro users are scoped to the
+editions in `FREE_TIER_CODE_NAMES` (OBC 2006); Pro (Stripe/dj-stripe or
+`pro_courtesy` flag) is unrestricted. History:
+`tasks/complete/free-tier-obc2006-scope.md`.
+
+The Pro **price** is never a literal: `core/pricing.py` reads the mirrored
+dj-stripe `Price` row keyed by the same `STRIPE_PRO_PRICE_ID` that checkout
+uses, so the page and the charge cannot disagree, and a change in the Stripe
+dashboard needs no deploy. It always returns a number — three logged fallback
+paths — because a pricing page that 500s is worse than a stale figure.
+
+### Clickwrap versions
+
+The signup checkbox covers both documents, but they are stamped **separately**:
+`TERMS_VERSION` and `PRIVACY_VERSION`, recorded on `TermsAcceptance`. One shared
+stamp forced a false choice whenever only one document changed. Bump only the
+document that changed. Full reasoning:
+`tasks/complete/privacy-copy-for-collected-email.md`.
+
+## Marketing & discovery surfaces
+
+- `core/sitemaps.py` — `/sitemap.xml` (index) plus `pages` and `provisions`
+  sections. Free-tier scope only, and **one URL per provision** at its highest
+  version, not one per version.
+- `core/seo.py` — per-page title, meta description and canonical URL. It owns
+  the **canonical-version rule** (highest version wins); `core/sitemaps.py`
+  implements the same rule set-based. Change one and you must change the other.
+- `templates/robots.txt` — served by `RobotsView`, with a request-derived
+  absolute sitemap link.
+- `/insights/` (`core/insights.py`, staff only) — traction totals, per-day and
+  cumulative charts, most-repeated queries, and the edition-request queue.
+- `EditionRequest` (`core/views/demand.py`) — "which edition do you need?"
+  demand capture. The need is required; the email is optional.
 
 ## Temporary Files
 
