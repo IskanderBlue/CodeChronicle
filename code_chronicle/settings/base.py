@@ -74,6 +74,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.masthead_currency",
+                "core.context_processors.page_metadata",
             ],
         },
     },

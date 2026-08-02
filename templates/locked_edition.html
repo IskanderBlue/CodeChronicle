@@ -2,6 +2,11 @@
 
 {% block title %}{{ edition_display_name }} — Pro content - CodeChronicle{% endblock %}
 
+{% comment %} No social card on a locked page. A forwarded link must not
+   promise a provision and then deliver an upsell, so this page tells a
+   crawler nothing rather than something it cannot honour. {% endcomment %}
+{% block social %}{% endblock %}
+
 {% block content %}
 <div class="max-w-2xl mx-auto px-4 py-16">
     <div class="border border-rule bg-surface-2">

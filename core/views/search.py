@@ -28,6 +28,7 @@ from core.models import (
 )
 from core.provision_lineage import LineageDirection, annotate_lineage_locks, resolve_lineage
 from core.search_prefs import resolve_match_threshold
+from core.seo import TITLE_SUFFIX
 from services.search_service import run_search
 
 logger = Logger(__name__)
@@ -140,6 +141,16 @@ def search_page(request):
         request,
         "search.html",
         {
+            # The tab label and the social card, from one pair of strings.
+            # The tab wants the short form; a forwarded link wants a sentence
+            # that says what the page does, so the two differ on purpose and
+            # each is written once.
+            "meta_title": f"Search{TITLE_SUFFIX}",
+            "social_title": "Search the Ontario Building Code by date",
+            "meta_description": (
+                "Ask a question in plain language, pick a date, and read the "
+                "provisions that were in force on that date."
+            ),
             "initial_query": initial_query,
             "initial_date": initial_date,
             "example_queries": EXAMPLE_QUERIES,

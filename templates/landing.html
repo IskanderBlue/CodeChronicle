@@ -1,7 +1,9 @@
 {% extends 'base.html' %}
 {% load humanize %}
 
-{% block title %}CodeChronicle &mdash; the Ontario Building Code, as it read on any day{% endblock %}
+{% comment %} No title block: this page IS the site, so it carries the site
+   default from core.seo. Restating the same sentence here is how the page
+   and its social card drift apart. {% endcomment %}
 
 {% comment %} Public front page (core.views.landing), served at `/` for a visitor
    and at `/about/` for everybody.

@@ -39,12 +39,35 @@ from core.permalinks import provision_permalink_url
 #: characters; a sentence cut mid-word in the results page reads as neglect.
 MAX_DESCRIPTION = 155
 
+#: The name of this site, as a social card prints it.
+SITE_NAME = "CodeChronicle"
+
+#: What every page title ends with. Stripped from the social title, because a
+#: card already prints the site name on its own line and a headline that
+#: repeats it wastes the only line a reader skims.
+TITLE_SUFFIX = f" | {SITE_NAME}"
+
+#: The title and description a page carries when it says nothing of its own.
+#: Both the ``<title>`` and the social card read them, so a page cannot
+#: describe itself one way to a reader and another way to a crawler.
+DEFAULT_TITLE = "CodeChronicle — the Ontario Building Code, dated, sourced, and searchable"
+DEFAULT_DESCRIPTION = (
+    "Search the Ontario Building Code as it read in the past, with "
+    "the amendment history and the regulation behind every change."
+)
+
+#: The static social card, 1200x630. A path, never a resolved URL: the
+#: manifest does not exist during CI ``check`` or the entrypoint ``migrate``,
+#: so ``{% static %}`` must run at request time (``project_static_url_import_time``).
+SOCIAL_IMAGE_PATH = "images/social-card.png"
+SOCIAL_IMAGE_ALT = DEFAULT_TITLE
+
 
 def canonical_version_number(provision: CodeEditionProvision) -> int | None:
     """The version this provision's pages should point at. See module docstring."""
-    return CodeEditionProvisionVersion.objects.filter(
-        provision=provision
-    ).aggregate(top=Max("version"))["top"]
+    return CodeEditionProvisionVersion.objects.filter(provision=provision).aggregate(
+        top=Max("version")
+    )["top"]
 
 
 def _date_phrase(effective: date | None, ineffective: date | None) -> str:
@@ -116,7 +139,14 @@ def provision_page_meta(
     )
 
     return {
-        "meta_title": f"{title} | CodeChronicle",
+        "meta_title": f"{title}{TITLE_SUFFIX}",
+        # The same title without the site-name tail.  A card prints the site
+        # name on its own line already, so the tail would say it twice and
+        # eat the headline.  Derived from one string, not written again.
+        "social_title": title,
         "meta_description": description,
         "canonical_path": canonical_path,
+        # A provision page is a document with a subject and a date, not a
+        # site section, so a card should announce it as one.
+        "og_type": "article",
     }

@@ -11,6 +11,7 @@ from django.shortcuts import render
 
 from core.models import CodeEdition
 from core.pricing import get_pro_price
+from core.seo import TITLE_SUFFIX
 
 from .billing import _sync_subscription_status
 
@@ -185,6 +186,17 @@ def pricing(request):
         request,
         "pricing.html",
         {
+            # Page title, description and social card, from one source each.
+            # The description names no figure: the price comes from the
+            # mirrored Stripe row (core.pricing), and a number written here
+            # would outlive the next change in the dashboard.
+            "meta_title": f"Pricing{TITLE_SUFFIX}",
+            "social_title": "Pricing",
+            "meta_description": (
+                "What a CodeChronicle subscription unlocks: every edition in "
+                "the corpus, not only the free one, with the amendment history "
+                "behind each provision."
+            ),
             "plans": plans,
             # Per-column accent flags for the row cells (the boxes carry
             # the border, but rows live outside the plans loop).

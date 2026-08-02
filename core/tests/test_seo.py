@@ -16,7 +16,12 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
 )
-from core.seo import canonical_version_number, provision_page_meta
+from core.seo import (
+    DEFAULT_DESCRIPTION,
+    DEFAULT_TITLE,
+    canonical_version_number,
+    provision_page_meta,
+)
 from core.sitemaps import ProvisionSitemap
 
 
@@ -109,5 +114,69 @@ class TestPermalinkPage:
         assert "/provision/OBC_2006/B/3.2.5.7./v2/" in body
 
     def test_other_pages_keep_the_default_description(self, client):
-        body = client.get("/pricing/").content.decode()
-        assert '<meta name="description" content="Search the Ontario Building Code' in body
+        body = client.get("/terms/").content.decode()
+        assert f'<meta name="description" content="{DEFAULT_DESCRIPTION}">' in body
+
+
+@pytest.mark.django_db
+class TestSocialCard:
+    """What a forwarded link shows.
+
+    A link in an email or a chat message is rendered from these tags alone,
+    so a page with none of them arrives as a bare URL and reads as broken.
+    """
+
+    def test_a_provision_page_carries_its_own_card(self, client, provision):
+        body = client.get("/provision/OBC_2006/B/3.2.5.7./v0/").content.decode()
+        assert '<meta property="og:type" content="article">' in body
+        assert '<meta property="og:site_name" content="CodeChronicle">' in body
+        assert '<meta name="twitter:card" content="summary_large_image">' in body
+        assert (
+            '<meta property="og:title" content="3.2.5.7. Fire Department Access '
+            'Routes' in body
+        )
+        assert '<meta property="og:description" content="The text of Ontario' in body
+
+    def test_the_card_title_drops_the_site_name_tail(self, provision):
+        """The card prints the site name on its own line, so a headline that
+        repeats it spends the one line a reader skims."""
+        version = provision.versions.get(version=0)
+        meta = provision_page_meta(provision, version)
+        assert meta["meta_title"].endswith(" | CodeChronicle")
+        assert not meta["social_title"].endswith(" | CodeChronicle")
+        assert meta["meta_title"].startswith(meta["social_title"])
+
+    def test_the_shared_url_is_the_canonical_one(self, client, provision):
+        """A share of v0 must credit the page a share of v2 credits, for the
+        reason the canonical link exists at all."""
+        body = client.get("/provision/OBC_2006/B/3.2.5.7./v0/").content.decode()
+        assert (
+            '<meta property="og:url" content="http://testserver'
+            '/provision/OBC_2006/B/3.2.5.7./v2/">' in body
+        )
+
+    def test_a_page_of_its_own_falls_back_to_the_site_card(self, client):
+        body = client.get("/terms/").content.decode()
+        assert '<meta property="og:type" content="website">' in body
+        # The constant, not the sentence: the copy is the marketing team's to
+        # change, and a test that pins the words fails on an edit that is
+        # correct.  What must hold is that the page carries the site default.
+        assert f'<meta property="og:title" content="{DEFAULT_TITLE}">' in body
+        assert '<meta property="og:url" content="http://testserver/terms/">' in body
+
+    def test_the_card_image_is_absolute_and_sized(self, client):
+        """A crawler resolves neither a relative path nor an unknown size."""
+        body = client.get("/terms/").content.decode()
+        assert 'content="http://testserver/static/images/social-card.png">' in body
+        assert '<meta property="og:image:width" content="1200">' in body
+        assert '<meta property="og:image:height" content="630">' in body
+
+    def test_a_locked_page_carries_no_card(self, client, provision, settings):
+        """A forwarded link must not promise a provision and deliver an upsell."""
+        settings.FREE_TIER_CODE_NAMES = ["OBC_2012"]
+        response = client.get("/provision/OBC_2006/B/3.2.5.7./v0/")
+        assert response.status_code == 403
+        body = response.content.decode()
+        assert "locked_edition.html" in [t.name for t in response.templates]
+        assert "og:" not in body
+        assert "twitter:" not in body

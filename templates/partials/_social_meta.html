@@ -1,0 +1,37 @@
+{% load static %}{% comment %}
+Open Graph and Twitter Card tags — what a forwarded link looks like.
+
+Every link anybody sends is rendered from these tags alone. Without them a
+pasted provision URL arrives as a bare string and reads as a broken link,
+which matters here because forwarding is how this product travels.
+
+Three rules hold this together:
+
+* One source per string. The card reads the same meta_title and
+  meta_description the page and the search engine read, so a page cannot
+  describe itself one way to a reader and another way to a crawler.
+* og:url is the CANONICAL url, not the current one, for the reason the
+  canonical link exists: one provision is reachable at every version of its
+  amendment chain, and a share of v1 must credit the same page a share of v3
+  credits.
+* A locked page carries no card at all. It overrides the social block with
+  nothing. A forwarded link must not promise a provision and deliver an
+  upsell.
+
+The image path is resolved by the static tag HERE, at request time. Resolving
+it at import time crashes the deploy, because the manifest does not exist
+during CI check or the entrypoint migrate (project_static_url_import_time).
+{% endcomment %}
+<meta property="og:site_name" content="{{ site_name }}">
+<meta property="og:type" content="{% firstof og_type 'website' %}">
+<meta property="og:title" content="{% firstof social_title meta_title default_title %}">
+<meta property="og:description" content="{% firstof meta_description default_description %}">
+{% if canonical_path %}<meta property="og:url" content="{{ site_origin }}{{ canonical_path }}">{% else %}<meta property="og:url" content="{{ site_origin }}{{ request.path }}">{% endif %}
+<meta property="og:image" content="{{ site_origin }}{% static social_image_path %}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{ social_image_alt }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{% firstof social_title meta_title default_title %}">
+<meta name="twitter:description" content="{% firstof meta_description default_description %}">
+<meta name="twitter:image" content="{{ site_origin }}{% static social_image_path %}">

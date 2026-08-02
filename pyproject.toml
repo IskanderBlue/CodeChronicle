@@ -65,6 +65,10 @@ dev = [
     "pytest-cov>=4.1",
     "ruff>=0.1",
     "pre-commit>=3.6",
+    # Draws the social card (manage.py make_social_card).  A build-time tool
+    # like the Tailwind CLI: a developer runs it and commits the PNG, so the
+    # server never imports it.
+    "pillow>=10.1",
     # Type checking.  django-stubs serves BOTH checkers: its stub files feed
     # Pyright (editor), and its mypy plugin (mypy_django_plugin) synthesises
     # the dynamic model attributes — reverse relations, pk, _id shadows,

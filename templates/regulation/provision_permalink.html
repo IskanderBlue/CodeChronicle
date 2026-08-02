@@ -1,14 +1,13 @@
 {% extends "base.html" %}
 {% comment %}
-Title, description and canonical all come from core.seo (context keys
-meta_title / meta_description / canonical_path). Built there, not here,
-because the canonical rule is shared with the sitemap: restating it in a
-template is how the two drift apart. The title falls back to the old form if
-the context key is ever missing, so a partial render still names the page.
+Title, description, social card and canonical all come from core.seo (context
+keys meta_title / social_title / meta_description / canonical_path / og_type).
+Built there, not here, because the canonical rule is shared with the sitemap:
+restating it in a template is how the two drift apart. Only the canonical link
+needs a block — base.html reads the other keys straight from the context, so
+this page states each string once.
 {% endcomment %}
-{% block title %}{% if meta_title %}{{ meta_title }}{% else %}{{ provision_id }} — {{ code_display_name }} — CodeChronicle{% endif %}{% endblock %}
-{% block meta_description %}{{ meta_description }}{% endblock %}
-{% block canonical %}{% if canonical_path %}<link rel="canonical" href="{{ request.scheme }}://{{ request.get_host }}{{ canonical_path }}">{% endif %}{% endblock %}
+{% block canonical %}{% if canonical_path %}<link rel="canonical" href="{{ site_origin }}{{ canonical_path }}">{% endif %}{% endblock %}
 {% block content_width %}max-w-[1700px]{% endblock %}
 {% block content %}
 <div class="px-4 py-8 sm:px-8">

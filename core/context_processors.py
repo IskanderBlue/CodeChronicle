@@ -5,6 +5,36 @@ from typing import Any
 from django.http import HttpRequest
 
 from core.models import CorpusCurrency
+from core.seo import (
+    DEFAULT_DESCRIPTION,
+    DEFAULT_TITLE,
+    SITE_NAME,
+    SOCIAL_IMAGE_ALT,
+    SOCIAL_IMAGE_PATH,
+)
+
+
+def page_metadata(request: HttpRequest) -> dict[str, Any]:
+    """Site-wide values the ``<title>``, the canonical link and the card share.
+
+    A link somebody forwards — in email, in Slack, on LinkedIn — is rendered
+    from these tags alone.  They live here rather than in the templates
+    because the description a crawler reads and the description a search
+    engine prints must be one string: two that mean the same thing disagree
+    within a month.
+
+    ``site_origin`` is scheme + host, which the canonical link and ``og:url``
+    both need to make a relative path absolute.  A crawler resolves neither
+    against the page it is reading.
+    """
+    return {
+        "site_name": SITE_NAME,
+        "site_origin": f"{request.scheme}://{request.get_host()}",
+        "default_title": DEFAULT_TITLE,
+        "default_description": DEFAULT_DESCRIPTION,
+        "social_image_path": SOCIAL_IMAGE_PATH,
+        "social_image_alt": SOCIAL_IMAGE_ALT,
+    }
 
 
 def masthead_currency(_request: HttpRequest) -> dict[str, Any]:

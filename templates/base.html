@@ -12,14 +12,15 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}CodeChronicle - Search{% endblock %}</title>
+    <title>{% block title %}{% firstof meta_title default_title %}{% endblock %}</title>
     {% comment %}
-    Description and canonical URL.
+    Description, canonical URL, and the social card.
 
     The description is what a search engine prints under the title, so it has
     to say what THIS page holds — a generic site blurb repeated on every
-    provision makes several thousand pages look interchangeable. Pages that
-    know their own subject override the block; the default covers the rest.
+    provision makes several thousand pages look interchangeable. A page that
+    knows its own subject sets meta_title and meta_description in its view;
+    the defaults from core.seo cover the rest.
 
     The canonical link exists because one provision is reachable at every
     version in its amendment chain, and those pages are near-identical text.
@@ -27,8 +28,9 @@
     version page names the version in the sitemap as canonical, so the chain
     concentrates on one URL and the others still work for a reader.
     {% endcomment %}
-    <meta name="description" content="{% block meta_description %}Search the Ontario Building Code as it read on any date since 1997, with the amendment history and the regulation behind every change.{% endblock %}">
+    <meta name="description" content="{% block meta_description %}{% firstof meta_description default_description %}{% endblock %}">
     {% block canonical %}{% endblock %}
+    {% block social %}{% include "partials/_social_meta.html" %}{% endblock %}
 
     <!-- Alpine.js -->
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
