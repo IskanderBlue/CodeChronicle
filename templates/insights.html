@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% comment %}
+Staff traction dashboard.
+
+Reading order is the funnel, top to bottom: totals, then the two conversion
+rates, then one chart card per metric, then the raw query text.
+
+Charts are inline SVG with geometry precomputed in core.insights — no chart
+library, and no arithmetic in the template. Each series is drawn in the single
+accent role token; identity comes from the card, not from a hue, so there is no
+categorical palette to keep colourblind-safe. One toggle at the top switches
+every card between per-day and cumulative, because the question "did anything
+move" is asked of all of them at once.
+{% endcomment %}
+
+{% block title %}Insights - CodeChronicle{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-10 sm:px-8" x-data="{ mode: 'daily' }">
+
+  {# ── Masthead: what this is, and the two controls ── #}
+  <div class="flex flex-wrap items-end justify-between gap-4 border-b-[3px] border-double border-rule pb-4">
+    <div>
+      <h1 class="font-mono text-[12px] font-semibold uppercase tracking-[0.08em] text-ink">Insights</h1>
+      <p class="mt-1 font-serif text-base text-ink-2">Staff only. Totals are all-time; charts cover the selected window.</p>
+    </div>
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.06em]">
+        {% for choice in window_choices %}
+        <a href="?days={{ choice }}"
+           class="ui-btn-ghost px-2 py-1 {% if choice == days %}text-ink font-semibold{% else %}text-ink-3{% endif %}">{{ choice }}d</a>
+        {% endfor %}
+      </div>
+      <div class="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.06em]">
+        <button type="button" @click="mode = 'daily'"
+                class="ui-btn-ghost px-2 py-1"
+                :class="mode === 'daily' ? 'text-ink font-semibold' : 'text-ink-3'">Per day</button>
+        <button type="button" @click="mode = 'cumulative'"
+                class="ui-btn-ghost px-2 py-1"
+                :class="mode === 'cumulative' ? 'text-ink font-semibold' : 'text-ink-3'">Cumulative</button>
+      </div>
+    </div>
+  </div>
+
+  {# ── The headline row. Hero numbers, not charts: a total has no shape. ── #}
+  {% comment %}
+  Each tile carries its own border and the grid uses a real gap, rather than
+  the hairline-through-the-container trick: that trick needs the tile count to
+  divide evenly at every breakpoint, and it broke the first time a metric was
+  added. This layout does not care how many tiles there are.
+  {% endcomment %}
+  <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    {% for metric in metrics %}
+    <a href="#m-{{ metric.key }}" class="block border border-rule bg-surface-2 p-4 no-underline hover:bg-panel">
+      <div class="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">{{ metric.label }}</div>
+      <div class="mt-1 font-serif text-4xl font-bold leading-none text-ink">{{ metric.total|intcomma }}</div>
+      {% if not metric.is_state %}
+      <div class="mt-1 font-mono text-[10px] tracking-[0.04em] text-ink-3">{{ metric.window_total|intcomma }} in {{ days }}d</div>
+      {% else %}
+      <div class="mt-1 font-mono text-[10px] tracking-[0.04em] text-ink-3">current</div>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+
+  {# ── The two ratios. Reported all-time; see core.insights.conversion_rates. ── #}
+  <div class="mt-6 grid gap-px border border-rule bg-rule sm:grid-cols-2">
+    {% for rate in rates %}
+    <div class="bg-surface-2 p-4">
+      <div class="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">{{ rate.label }}</div>
+      <div class="mt-1 font-serif text-3xl font-bold leading-none text-secondary">
+        {% if rate.value is None %}&mdash;{% else %}{{ rate.value }}%{% endif %}
+      </div>
+      <p class="mt-2 text-sm text-ink-2">{{ rate.definition }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ── One card per metric: definition, then the chart the toggle selected. ── #}
+  {% for metric in metrics %}
+  <section id="m-{{ metric.key }}" class="mt-8 border border-rule bg-surface-2 p-5">
+    <div class="flex flex-wrap items-baseline justify-between gap-3">
+      <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{{ metric.label }}</h2>
+      <div class="font-mono text-[10px] tracking-[0.04em] text-ink-3">
+        {% if metric.is_state %}state, not an event stream{% else %}peak {{ metric.peak|intcomma }}/day &middot; today {{ metric.last_value|intcomma }}{% endif %}
+      </div>
+    </div>
+    <p class="mt-1 max-w-3xl text-sm text-ink-2">{{ metric.definition }}</p>
+
+    {% if metric.is_state %}
+    <p class="mt-4 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+      No history is recorded for this number, so it is shown as a total only.
+    </p>
+    {% else %}
+
+    {% comment %}
+    Per-day bars. Height is scaled to this metric's own peak, and the scale is
+    named on the axis line below, because seven charts on one page with seven
+    different axes is only honest if each one says what its axis is.
+    {% endcomment %}
+    <div x-show="mode === 'daily'" class="mt-4">
+      <svg viewBox="0 0 {{ chart_width }} {{ chart_height }}" width="100%" height="{{ chart_height }}"
+           role="img" aria-label="{{ metric.label }} per day" class="block overflow-visible">
+        {% for bar in metric.bars %}
+        <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"
+              rx="1" fill="rgb(var(--secondary))">
+          <title>{{ bar.day|date:"D j M Y" }} — {{ bar.value|intcomma }}</title>
+        </rect>
+        {% endfor %}
+      </svg>
+    </div>
+
+    {% comment %}
+    Cumulative. Floored at the window's opening total, not at zero, so the
+    growth inside the window is what fills the canvas.
+    {% endcomment %}
+    <div x-show="mode === 'cumulative'" class="mt-4">
+      <svg viewBox="0 0 {{ chart_width }} {{ chart_height }}" width="100%" height="{{ chart_height }}"
+           role="img" aria-label="{{ metric.label }} running total" class="block overflow-visible">
+        <path d="{{ metric.cumulative_path }}" fill="none" stroke="rgb(var(--secondary))"
+              stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+              vector-effect="non-scaling-stroke" />
+      </svg>
+    </div>
+
+    {% comment %}Recessive axis: the two dates and the value range, on a hairline.{% endcomment %}
+    <div class="mt-1 flex items-center justify-between border-t border-rule-2 pt-1 font-mono text-[10px] tracking-[0.04em] text-ink-3">
+      <span>{{ metric.days.0|date:"j M Y" }}</span>
+      <span x-show="mode === 'daily'">0 &ndash; {{ metric.peak|intcomma }} per day</span>
+      <span x-show="mode === 'cumulative'">{{ metric.cumulative_low|intcomma }} &ndash; {{ metric.total|intcomma }} running</span>
+      <span>{{ metric.days|last|date:"j M Y" }}</span>
+    </div>
+
+    {% comment %}The non-visual reading of the same numbers, from the same series.{% endcomment %}
+    <details class="mt-3">
+      <summary class="cursor-pointer font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Table</summary>
+      <div class="mt-2 max-h-64 overflow-y-auto">
+        <table class="w-full text-left font-mono text-[11px]">
+          <thead class="text-ink-3">
+            <tr><th class="py-1 pr-4 font-normal">Date</th><th class="py-1 pr-4 font-normal">Day</th><th class="py-1 font-normal">Running</th></tr>
+          </thead>
+          <tbody class="text-ink-2">
+            {% for day, value, running in metric.rows reversed %}
+            <tr class="border-t border-rule-2"><td class="py-1 pr-4">{{ day|date:"Y-m-d" }}</td><td class="py-1 pr-4">{{ value|intcomma }}</td><td class="py-1">{{ running|intcomma }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  {% comment %}
+  Edition requests. Rows, not counts: the text is free-form, so no grouping
+  key would combine "NBC 2015", "the 1990 OBC" and "Alberta" correctly, and
+  reading twenty of them is how the pattern becomes visible.
+  {% endcomment %}
+  <section class="mt-8 border border-rule bg-surface-2 p-5">
+    <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Edition requests</h2>
+    <p class="mt-1 text-sm text-ink-2">What visitors asked us to carry, newest first. This is the load queue.</p>
+    {% if requests %}
+    <table class="mt-4 w-full text-left">
+      <tbody>
+        {% for row in requests %}
+        <tr class="border-t border-rule-2">
+          <td class="py-1.5 pr-4 font-serif text-sm text-ink">{{ row.code_text }}</td>
+          <td class="py-1.5 pr-4 font-mono text-[11px] text-ink-3">{{ row.email|default:"&mdash;" }}</td>
+          <td class="py-1.5 pr-4 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">{{ row.surface }}</td>
+          <td class="w-24 py-1.5 text-right font-mono text-[11px] text-ink-3">{{ row.created_at|date:"Y-m-d" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="mt-4 font-mono text-[11px] tracking-[0.04em] text-ink-3">No requests in this window.</p>
+    {% endif %}
+  </section>
+
+  {# ── Free keyword research. What people actually typed. ── #}
+  <section class="mt-8 border border-rule bg-surface-2 p-5">
+    <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Most-repeated queries</h2>
+    <p class="mt-1 text-sm text-ink-2">Search text entered in the last {{ days }} days, by count. The shortest path from a real question to a page that answers it.</p>
+    {% if queries %}
+    <table class="mt-4 w-full text-left">
+      <tbody>
+        {% for row in queries %}
+        <tr class="border-t border-rule-2">
+          <td class="py-1.5 pr-4 font-serif text-sm text-ink-2">{{ row.query }}</td>
+          <td class="w-16 py-1.5 text-right font-mono text-[11px] text-ink-3">{{ row.count|intcomma }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="mt-4 font-mono text-[11px] tracking-[0.04em] text-ink-3">No searches in this window.</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

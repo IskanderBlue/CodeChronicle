@@ -634,6 +634,8 @@
                 <a href="{% url 'core:history' %}"
                     class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'history' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">History</a>
                 {% if user.is_staff %}
+                <a href="{% url 'core:insights' %}"
+                    class="pb-1 border-b-2 {% if request.resolver_match.url_name == 'insights' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Insights</a>
                 <a href="/admin/"
                     class="pb-1 border-b-2 {% if request.path == '/admin/' %}text-secondary border-secondary{% else %}text-ink-3 border-transparent hover:text-ink{% endif %}">Admin</a>
                 {% endif %}

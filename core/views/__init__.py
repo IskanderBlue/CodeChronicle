@@ -10,6 +10,7 @@ from .billing import (
 )
 from .demand import edition_request
 from .history import history
+from .insights import insights
 from .landing import landing
 from .pages import (
     data_sources,
@@ -36,6 +37,7 @@ __all__ = [
     "edition_chain",
     "edition_request",
     "history",
+    "insights",
     "landing",
     "list_punctuation",
     "pricing",

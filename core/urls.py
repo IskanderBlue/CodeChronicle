@@ -23,6 +23,8 @@ urlpatterns = [
     path("verification-rail/", views.verification_guide, name="verification_guide"),
     path("list-punctuation/", views.list_punctuation, name="list_punctuation"),
     path("history/", views.history, name="history"),
+    # Staff-only traction dashboard.  Also disallowed in robots.txt.
+    path("insights/", views.insights, name="insights"),
     path("settings/", views.user_settings, name="user_settings"),
     path("search-results/", views.search_results, name="search_results"),
     # Demand capture — which code/edition a visitor came looking for.
