@@ -1,11 +1,14 @@
 # Landing page
 
-Status: built, tested, **not committed**. 560 tests pass; `ruff check .` is clean.
+Status: **done**. Shipped in commit `d75c5fa`
+(`feat(landing): add the public front page, and mount the real components on it`).
+The suite is green (625 tests at the time of the move); `ruff check .` is clean.
 
-`tasks/component-reuse-fidelity.md` is **done**: the search form is one partial
-rendered by all three call sites, the specimen widths read the working grid's own
-tokens instead of a transcribed number, and the verification-rail guide shows the
-whole IN FORCE band rather than a bare rail on the page background.
+`tasks/complete/component-reuse-fidelity.md` is also done: the search form is one
+partial rendered by all three call sites, the specimen widths read the working
+grid's own tokens instead of a transcribed number, and the verification-rail
+guide shows the whole IN FORCE band rather than a bare rail on the page
+background.
 
 ## What it is
 
@@ -108,16 +111,22 @@ date. A malformed value falls back to the default.
 - The corpus table shows `last_day` (the inclusive final day), not
   `ineffective_date` (which is exclusive and shows the next edition's start).
 
-## Open questions
+## Open questions, and where each one stands
 
-1. **Free-tier scope.** The free tier is OBC 2006 only. Eight of the 11
-   difference-class examples therefore open a locked teaser. Is the scope
-   right, and what should the paid tier sell?
-2. **`templates/data_sources.html` still prints `ineffective_date` raw**, so
-   its "Until" column has the off-by-one-day reading the landing table now
-   avoids. Worth the same fix.
-3. Only two "try this" examples are in free scope, both dated 2010-06-01.
-   `EXAMPLE_QUERIES` in `core/views/search.py` needs a third OBC 2006 example.
+1. **Free-tier scope — answered.** The scope stays OBC 2006. Pro sells every
+   covered edition, and the pricing page now names OBC 1997 first, because it
+   is the one edition a reader cannot get anywhere else (commit `c2a2e09`).
+   Eight of the 11 difference-class examples still open a locked teaser. That
+   is the intended behaviour: the teaser is the argument for the paid tier.
+2. **Still open.** `templates/data_sources.html` prints `ineffective_date`
+   raw at line 108, so its "Until" column keeps the off-by-one-day reading
+   that the landing table avoids. The fix is the same one: show `last_day`.
+3. **Still open.** Only two "try this" examples are in free scope, and both
+   carry the date 2010-06-01. `EXAMPLE_QUERIES` in `core/views/search.py`
+   needs a third OBC 2006 example.
+
+Item 2 and item 3 are small and have no card. Write one if either survives
+the next pass over the search page.
 
 ## Local development note
 

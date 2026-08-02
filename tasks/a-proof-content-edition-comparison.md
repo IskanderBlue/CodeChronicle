@@ -88,5 +88,5 @@ the sitemap entry must all belong to us. Add the page to
 
 ## Related
 
-- `tasks/landing-page.md` — the copy rules this article must obey.
+- `tasks/complete/landing-page.md` — the copy rules this article must obey.
 - `core/insights.py` — the query list that tells you which subject to pick.

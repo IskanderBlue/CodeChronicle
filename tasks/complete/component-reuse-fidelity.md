@@ -1,9 +1,10 @@
 # Component reuse: one search form, one column grid
 
-Status: **done**. 560 tests pass; `ruff check .` is clean. Nothing is committed.
+Status: **done**. Shipped in commit `d75c5fa`, with the landing page. The suite
+is green (625 tests at the time of the move); `ruff check .` is clean.
 
 The landing page mounts the product's own partials as worked examples
-(`tasks/landing-page.md`). Two of those mounts copied the product instead of
+(`tasks/complete/landing-page.md`). Two of those mounts copied the product instead of
 using it, and a third surface — the verification-rail guide — showed a component
 in a colour no reader ever meets. All three are fixed.
 
@@ -137,9 +138,9 @@ Tailwind utility classes do not exist until the CSS is rebuilt:
 
     .\tailwindcss.exe -i static/css/input.css -o static/css/tailwind.css --minify
 
-## Uncommitted work in the tree
+## What shipped
 
-All of it green, none of it committed:
+All of the following went in with the landing page, in commit `d75c5fa`:
 
 - `templates/landing.html` (new), `core/views/landing.py` (new),
   `core/tests/test_landing.py` (new), `tasks/landing-page.md` (new)
@@ -154,5 +155,5 @@ All of it green, none of it committed:
   `code_chronicle/settings/base.py` — the routing split and `?d=`
 - `core/tests/test_templates.py`, `core/tests/test_engagement.py`
 
-`conversation-notes.txt` and `tasks/error-bounty.md` are untracked but belong to
-someone else — leave them alone.
+`conversation-notes.txt` and `tasks/error-bounty.md` are still untracked. They
+belong to someone else — leave them alone.
