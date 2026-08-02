@@ -1,0 +1,18 @@
+User-agent: *
+
+# Private or per-reader surfaces.  None of these carry corpus content, and an
+# indexed one is either useless (a signed-out account page) or misleading (a
+# reader's own history).
+Disallow: /accounts/
+Disallow: /admin/
+Disallow: /history/
+Disallow: /settings/
+Disallow: /insights/
+Disallow: /stripe/
+
+# HTMX partial endpoints.  They return page fragments with no <head> and no
+# navigation, so an indexed one is a dead end for a visitor.
+Disallow: /search-results/
+Disallow: /viewer/
+
+Sitemap: {{ sitemap_url }}

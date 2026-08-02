@@ -31,6 +31,7 @@ from core.models import (
 )
 from core.permalinks import provision_permalink_url
 from core.provision_lineage import annotate_lineage_locks, resolve_lineage
+from core.seo import provision_page_meta
 from core.verification import base_input, build_rail
 
 from .search import _active_versions
@@ -981,6 +982,10 @@ def provision_permalink(
         # Fan-in: the provisions that pointed *here* while this version stood.
         # Not in the printed code — only a whole-edition index can answer it.
         "cited_by": cited_by(target_version, matched, code_name),
+        # Search-engine metadata: a per-page title, description and canonical
+        # URL. Built in core.seo rather than in the template because the
+        # canonical rule is shared with the sitemap and must not be restated.
+        **provision_page_meta(matched, target_version),
     })
 
 

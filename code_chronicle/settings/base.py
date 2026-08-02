@@ -31,6 +31,9 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sites",
+    # `sitemaps` ships the templates the /sitemap.xml views render; the URL
+    # scope itself comes from core.sitemaps.
+    "django.contrib.sitemaps",
     "django.contrib.postgres",
     # `intcomma`, for the corpus figures on the landing page — a five-digit
     # count set at display size is unreadable without a thousands separator.

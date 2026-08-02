@@ -3,12 +3,33 @@ URL configuration for code_chronicle project.
 """
 from django.conf import settings
 from django.contrib import admin
+from django.contrib.sitemaps.views import index as sitemap_index
+from django.contrib.sitemaps.views import sitemap
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.urls import URLPattern, URLResolver, include, path
-from django.views.generic.base import RedirectView
+from django.views.generic.base import RedirectView, TemplateView
 from django.views.static import serve
 
 from api.views import api
+from core.sitemaps import SITEMAPS
+
+
+class RobotsView(TemplateView):
+    """``/robots.txt`` — the disallow list plus an absolute sitemap link.
+
+    A template rather than a static file because the ``Sitemap:`` line must be
+    absolute, and the host differs between dev and production.  It is built
+    from the request (not from ``ALLOWED_HOSTS``) so a preview deployment
+    advertises its own sitemap instead of production's.
+    """
+
+    template_name = "robots.txt"
+    content_type = "text/plain"
+
+    def get_context_data(self, **kwargs: object) -> dict[str, object]:
+        context = super().get_context_data(**kwargs)
+        context["sitemap_url"] = self.request.build_absolute_uri("/sitemap.xml")
+        return context
 
 
 class FaviconRedirectView(RedirectView):
@@ -45,6 +66,19 @@ urlpatterns: list[URLResolver | URLPattern] = [
     path('accounts/', include('allauth.urls')),
     path('stripe/', include('djstripe.urls', namespace='djstripe')),
     path('favicon.ico', FaviconRedirectView.as_view()),
+    path('robots.txt', RobotsView.as_view()),
+    # Index + per-section pattern rather than one flat sitemap.xml: the
+    # provision section already runs to thousands of URLs and grows with every
+    # edition loaded, and a section that exceeds ``Sitemap.limit`` can only be
+    # paginated through an index.  The section view keeps Django's default
+    # ``name`` because the index view reverses it to build its own links.
+    path('sitemap.xml', sitemap_index, {'sitemaps': SITEMAPS}),
+    path(
+        'sitemap-<section>.xml',
+        sitemap,
+        {'sitemaps': SITEMAPS},
+        name='django.contrib.sitemaps.views.sitemap',
+    ),
     path('', include('core.urls')),
 ]
 
