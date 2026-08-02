@@ -2,14 +2,13 @@
 
 **Prefix:** `a-` — high priority, actionable now.
 
-**Status 2026-08-02: the images are fixed for readers.** CCM commit `526a5ec0`
-fetched the missing bytes. This repository now reads the version-scoped
-manifest, and the 130 new assets are published. Of the 141 paths the stored
-HTML names, **140 return 200** against `https://www.codechronicle.ca/`.
+**Status 2026-08-02: done, and verified on production.** CCM commit `526a5ec0`
+fetched the missing bytes. This repository reads the version-scoped manifest,
+the assets are published, and production holds the reloaded text.
 
-One item is open, and it is content rather than images: the two provisions that
-carry the ontario.ca footer still carry it, because production holds the old
-text. A production reload replaces it. See "Open" below.
+Both checks pass against `https://www.codechronicle.ca/`: every one of the 140
+paths the stored HTML names returns 200, and so does every one of the 692 keys
+the structured fields name. The ontario.ca chrome is gone from every provision.
 
 The producer work was in **CodeChronicleMapping**. Nothing in CodeChronicle
 could fix it before, because the bytes did not exist in any CCM output. They
@@ -150,30 +149,29 @@ a content diff on these two provisions.
 6. ~~Re-run the check with `.tmp/verify_html_refs.py`.~~ Done: 140 of 141
    paths return 200, against 26 before.
 
-### Open
+7. ~~Reload the editions on production.~~ Done, 1997 then 2006 then 2012,
+   after the deploy applied migration `0049`. The reload removed the last 404
+   (`/laws/assets/scripts/ontario-header.js`), which no image publish could
+   fix, and with it the ontario.ca footer on OBC 2012 `4.4.1.1./C` and OBC
+   2006 `4.3.1.1./C`. Those two provisions now measure 540 and 292 bytes, and
+   no version anywhere in the corpus names `ontario-header` or the King's
+   Printer copyright.
 
-7. **Reload the editions on production.** The one remaining 404 is
-   `/laws/assets/scripts/ontario-header.js`, which no image publish can fix:
-   production still stores the old provision text that names it. The same
-   reload removes the ontario.ca footer from OBC 2012 `4.4.1.1./C` and OBC
-   2006 `4.3.1.1./C`.
-
-   Two cautions. Apply migration `0049` first. Reload oldest to newest, because
-   a reload wipes every cross-edition row that touches the edition
+   Order matters on a reload: oldest to newest, because a reload wipes every
+   cross-edition row that touches the edition
    (`project_edition_reload_cascade`).
-
-   Then re-run both checks. `verify_assets.py` now reads
-   `provision_version_assets`, so it needs the migration.
 
 ## How to check it
 
 Two checks, because the structured keys and the HTML references are two
 different sets and only one of them has a manifest:
 
-* `verify_assets.py` — every key the structured fields name. Passed on
-  2026-08-02: 532/532 return 200.
-* `verify_html_refs.py` — every path the version HTML names. Failed on
-  2026-08-02 with 26 of 141; after the publish, 140 of 141.
+* `verify_assets.py` — every key the structured fields name, now including
+  `provision_version_assets`. 692 of 692 return 200. The set grew from 532
+  because the version scope is registered at last.
+* `verify_html_refs.py` — every path the version HTML names. 26 of 141 before
+  the publish, then 140 of 141, and 140 of 140 after the reload dropped the
+  page-script reference.
 
 Both scripts read the production key list from the database and fetch through
 `www.codechronicle.ca`, so they test the Cloudflare route, the Worker, the R2
