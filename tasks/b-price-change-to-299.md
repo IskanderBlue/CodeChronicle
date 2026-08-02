@@ -55,7 +55,7 @@ Raising the price alone makes a worse deal. The higher tier should carry:
 - Cross-edition comparison (`tasks/a-general-comparison-ui.md`).
 - Exports (`tasks/b-provision-exports.md`).
 - A reply from a person when a reader disputes a text
-  (`tasks/a-this-is-wrong-reports.md`).
+  (`tasks/complete/this-is-wrong-reports.md`).
 
 Those three cards are what make the new price a different product rather than
 the same product costing more.

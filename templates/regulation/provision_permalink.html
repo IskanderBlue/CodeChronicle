@@ -76,8 +76,8 @@ the context key is ever missing, so a partial render still names the page.
             {% if provenance %}
             {% comment %} lg+: wide in-force band in the middle, metadata in the
                right rail. Below lg: the full stacked banner (band + metadata). {% endcomment %}
-            <div class="hidden lg:block">{% include "partials/_provenance_band.html" with result=provenance %}</div>
-            <div class="lg:hidden">{% include "partials/_provenance_banner.html" with result=provenance %}</div>
+            <div class="hidden lg:block">{% include "partials/_provenance_band.html" with result=provenance allow_report=True report_surface="permalink" %}</div>
+            <div class="lg:hidden">{% include "partials/_provenance_banner.html" with result=provenance allow_report=True report_surface="permalink" %}</div>
             {% endif %}
             <div class="mt-3 border border-rule">
                 {% include "partials/_viewer_section_content.html" %}

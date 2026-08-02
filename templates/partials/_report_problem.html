@@ -1,0 +1,47 @@
+{% comment %}
+"This looks wrong" — the reader's way to dispute a specific text.
+
+Sits in the attestation rail's trailing affordances, beside "How to read
+this", and wears the same ui-disclosure register as its neighbours. That
+placement is the argument: the rail is where the page makes its claim about
+how trustworthy this text is, so the invitation to dispute the claim belongs
+in the same line, not in a floating widget or a coloured badge.
+
+Expects a target, passed by whichever surface includes it:
+  code_edition, division, provision_id, version   — a provision report
+  code_edition, reg_id                            — a regulation report
+  report_surface                                  — permalink / search / regulation
+
+The dialog teleports to body, like the commencement modal, because the rail
+and the clause cards clip a fixed overlay. Alpine state stays here in the
+including scope, so several reports on one search page never share a flag.
+
+The panel inside is a separate partial: HTMX swaps it in place on submit, so
+the ask, the thanks and the error are one file and cannot drift apart.
+{% endcomment %}
+<span x-data="{ reportOpen: false }">
+    <button type="button" class="ui-disclosure" @click.stop="reportOpen = true"
+            :aria-expanded="reportOpen"
+            title="Tell us this text looks wrong">This looks wrong <span class="ui-caret"></span></button>
+    <template x-teleport="body">
+        <div x-show="reportOpen" x-cloak
+             class="fixed inset-0 z-50 flex items-center justify-center p-4"
+             @keydown.escape.window="reportOpen = false"
+             role="dialog" aria-modal="true" aria-label="Report a problem with this text">
+            <div class="absolute inset-0 bg-black/40" @click="reportOpen = false"></div>
+            {% comment %}
+            The dialog paints --surface, so it re-declares --backdrop: anything
+            inside that knocks a ring out of its background has to knock it out
+            against this fill, not the page's. Same contract as the band.
+            {% endcomment %}
+            <div class="relative max-h-[85vh] w-full max-w-lg overflow-y-auto border border-rule bg-surface p-5 shadow-xl [--backdrop:var(--surface)]"
+                 @click.stop>
+                <button type="button" @click="reportOpen = false" aria-label="Close"
+                    class="absolute right-3 top-3 cursor-pointer text-ink-3 hover:text-ink">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                </button>
+                {% include "partials/_report_problem_panel.html" with code_edition=code_edition division=division provision_id=provision_id version=version reg_id=reg_id surface=report_surface %}
+            </div>
+        </div>
+    </template>
+</span>

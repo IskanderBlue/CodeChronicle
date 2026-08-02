@@ -23,12 +23,21 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
-from django.db.models import Count, QuerySet
+from django.db.models import Case, Count, IntegerField, Q, QuerySet, Value, When
 from django.db.models.functions import TruncDate
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from djstripe.models import Subscription
 
-from core.models import AuthEvent, EditionRequest, EngagementEvent, SearchHistory, User
+from core.models import (
+    AuthEvent,
+    EditionRequest,
+    EngagementEvent,
+    ProvisionFeedback,
+    Regulation,
+    SearchHistory,
+    User,
+)
 
 #: Default width of the time window, in days.  Long enough that a weekly rhythm
 #: is visible, short enough that one bar is still wide enough to hover.
@@ -288,6 +297,15 @@ def collect_metrics(days: int = DEFAULT_WINDOW_DAYS) -> list[Metric]:
             "created_at",
             window,
         ),
+        _build(
+            "feedback_reports",
+            "Reader reports",
+            "Readers who told us a text on the site looks wrong. Free verification, "
+            "and the clearest sign that somebody read closely enough to argue.",
+            ProvisionFeedback.objects.all(),
+            "created_at",
+            window,
+        ),
         _subscription_metric(),
         _build(
             "searches_signed_in",
@@ -366,6 +384,99 @@ def edition_requests(limit: int = 25, days: int = DEFAULT_WINDOW_DAYS) -> list[d
         }
         for row in rows
     ]
+
+
+def _feedback_target_url(row: ProvisionFeedback) -> str:
+    """A link back to what the reader was looking at, or "".
+
+    Built from the stored natural key rather than from a saved URL string: the
+    permalink shape is allowed to change, and a report filed last year should
+    still open the right page after it does.  Returns "" rather than raising —
+    a report whose edition has since been unloaded is still a report worth
+    reading, and the queue must not 500 over a dead link.
+    """
+    if row.reg_id:
+        # Regulation pages are addressed by row pk, and pk is exactly what a
+        # reload replaces, so resolve the number to a row at read time.
+        # code_name is a property, not a column, hence the Python-side match.
+        for regulation in Regulation.objects.filter(
+            reg_id=row.reg_id
+        ).select_related("edition", "edition__code"):
+            if regulation.edition.code_name == row.code_edition:
+                return reverse("core:regulation_detail", args=[regulation.pk])
+        return ""
+    if row.version is None or not row.provision_id:
+        return ""
+    try:
+        if row.division:
+            return reverse(
+                "core:provision_permalink",
+                args=[row.code_edition, row.division, row.provision_id, row.version],
+            )
+        return reverse(
+            "core:provision_permalink_no_division",
+            args=[row.code_edition, row.provision_id, row.version],
+        )
+    except NoReverseMatch:
+        return ""
+
+
+def _feedback_dict(row: ProvisionFeedback) -> dict[str, Any]:
+    """One queue row, shaped for the template."""
+    return {
+        "id": row.pk,
+        "note": row.note,
+        "email": row.email,
+        "target_ref": row.target_ref,
+        "target_url": _feedback_target_url(row),
+        "status": row.status,
+        # Read from the choices map rather than get_FOO_display() so Pyright
+        # (no Django plugin) can see the attribute exists.
+        "status_label": dict(ProvisionFeedback.Status.choices).get(
+            row.status, row.status
+        ),
+        "surface": dict(ProvisionFeedback.Surface.choices).get(
+            row.surface, row.surface
+        ),
+        "created_at": row.created_at,
+    }
+
+
+def feedback_row(pk: int) -> dict[str, Any] | None:
+    """One queue row by pk, for the status control's partial re-render."""
+    row = ProvisionFeedback.objects.filter(pk=pk).first()
+    return _feedback_dict(row) if row is not None else None
+
+
+def feedback_reports(limit: int = 50, days: int = DEFAULT_WINDOW_DAYS) -> list[dict[str, Any]]:
+    """Reader reports, untriaged first and newest first within that.
+
+    Ordered by state before date on purpose.  The question this queue answers
+    is "what have I not decided about yet", and a strict date order buries a
+    week-old untriaged report under yesterday's resolved ones.
+
+    Windowed like the other sections, with one exception: a report still in
+    ``new`` is always listed, however old.  An unanswered report does not stop
+    being unanswered because 90 days passed — that is precisely when it most
+    needs to be visible.
+    """
+    since = timezone.now() - timedelta(days=days)
+    rows = (
+        ProvisionFeedback.objects
+        .filter(Q(created_at__gte=since) | Q(status=ProvisionFeedback.Status.NEW))
+        .order_by(
+            # Postgres sorts by the stored value, and "new" happens to sort
+            # after "fixed" alphabetically, so order on a computed flag rather
+            # than on the column.
+            Case(
+                When(status=ProvisionFeedback.Status.NEW, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            ),
+            "-created_at",
+        )[:limit]
+    )
+    return [_feedback_dict(row) for row in rows]
 
 
 def top_queries(limit: int = 15, days: int = DEFAULT_WINDOW_DAYS) -> list[dict[str, Any]]:

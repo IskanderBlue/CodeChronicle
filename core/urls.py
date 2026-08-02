@@ -29,6 +29,9 @@ urlpatterns = [
     path("search-results/", views.search_results, name="search_results"),
     # Demand capture — which code/edition a visitor came looking for.
     path("edition-request/", views.edition_request, name="edition_request"),
+    # Reader reports — "this looks wrong" on a specific text.
+    path("report/", views.report_problem, name="report_problem"),
+    path("report/<int:pk>/status/", views.feedback_status, name="feedback_status"),
     path("viewer/edition-nav/", views.viewer_edition_nav, name="viewer_edition_nav"),
     path("viewer/edition-dates/", views.viewer_edition_dates, name="viewer_edition_dates"),
     path("viewer/section-content/", views.viewer_section_content, name="viewer_section_content"),

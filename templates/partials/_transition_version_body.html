@@ -5,6 +5,10 @@
    x-data: with diff_html present, a shared (undefined showDiff) scope hides both
    panes at runtime, so each version must carry its own toggle state.
    Expects `version`, `metadata_in_rail`, and `query_date` in context. {% endcomment %}
-{% include "partials/_provenance_band.html" with result=version query_date=query_date compare_pane=True %}
+{% comment %} allow_report: a compare pane is where a reader is most likely to spot
+   a wrong date or a wrong text, because the two versions are side by side. The
+   pane is narrow, and the rail's affordance row wraps rather than overflows.
+{% endcomment %}
+{% include "partials/_provenance_band.html" with result=version query_date=query_date compare_pane=True allow_report=True report_surface="search" %}
 {% if not metadata_in_rail %}{% include "partials/_provenance_rail.html" with result=version collapsible_chain=True %}{% endif %}
 {% include "partials/_result_document_block.html" with result=version shared_expand=False %}

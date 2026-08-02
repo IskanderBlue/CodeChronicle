@@ -59,6 +59,15 @@
             {% if not in_legend %}
             <a href="{% url 'core:verification_guide' %}" target="_blank" rel="noopener" class="ui-disclosure" title="How to read this verification rail (opens in a new tab)">How to read this <span aria-hidden="true">&nearr;</span></a>
             {% endif %}
+            {% comment %} The dispute affordance, after the explanation: read how the
+               claim is made, then say if you disagree with it. allow_report is opt-in
+               per surface — the landing page's specimen band and the legend's example
+               rails show a real component but are not a reading surface, so a report
+               filed from either would name a provision nobody was actually reading.
+            {% endcomment %}
+            {% if allow_report and not in_legend %}
+            {% include "partials/_report_problem.html" with code_edition=result.code_edition division=result.division provision_id=result.id version=result.version.version reg_id="" report_surface=report_surface %}
+            {% endif %}
         </span>
         {% endif %}
     </div>

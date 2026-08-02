@@ -72,6 +72,17 @@
                 </div>
             </div>
             {% endif %}
+            {% comment %} The report affordance normally lives in the rail's trailing
+               group. This branch has no rail — a never-in-force version, or a page
+               with no query date — and those are exactly the versions whose dates a
+               reader is most likely to dispute, so it must not be the branch that
+               drops the invitation. Same partial, so the wording cannot drift.
+            {% endcomment %}
+            {% if allow_report and not in_legend %}
+            <span class="ml-auto self-center">
+                {% include "partials/_report_problem.html" with code_edition=result.code_edition division=result.division provision_id=result.id version=result.version.version reg_id="" report_surface=report_surface %}
+            </span>
+            {% endif %}
         </div>
         {% endif %}
 

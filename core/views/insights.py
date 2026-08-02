@@ -22,8 +22,10 @@ from core.insights import (
     collect_metrics,
     conversion_rates,
     edition_requests,
+    feedback_reports,
     top_queries,
 )
+from core.models import ProvisionFeedback
 
 #: Windows offered by the range control.  Fixed choices rather than a free
 #: number: the bar width is computed against a known canvas, and a 3000-day
@@ -55,6 +57,10 @@ def insights(request: HttpRequest) -> HttpResponse:
         "rates": conversion_rates(metrics),
         "queries": top_queries(days=days),
         "requests": edition_requests(days=days),
+        "reports": feedback_reports(days=days),
+        # The status control renders one button per state, so the template
+        # needs the choice list rather than just the current value.
+        "statuses": ProvisionFeedback.Status.choices,
         "days": days,
         "window_choices": WINDOW_CHOICES,
         "chart_width": CHART_WIDTH,

@@ -37,6 +37,13 @@
             <span class="text-rule">&middot;</span>
             <a href="{% url 'core:edition_chain' regulation.edition.pk %}"
                class="text-secondary border-b border-secondary hover:text-secondary-2">VIEW AMENDMENT CHAIN →</a>
+            {% comment %} The dispute affordance. This page has no attestation rail
+               to hang it on, so it joins the metadata row, which is the same mono
+               register. The target is the regulation, not a provision: the page
+               shows a whole instrument, and a reader who disputes a clause here
+               can name it in the note. {% endcomment %}
+            <span class="text-rule">&middot;</span>
+            {% include "partials/_report_problem.html" with code_edition=regulation.edition.code_name reg_id=regulation.reg_id division="" provision_id="" version="" report_surface="regulation" %}
         </div>
     </div>
 

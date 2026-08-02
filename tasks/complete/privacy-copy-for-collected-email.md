@@ -11,7 +11,7 @@ account:
 1. **Edition requests** — `EditionRequest` (`core/views/demand.py`), on the
    landing page and both rate-limit surfaces. Live 2026-08-01.
 2. **"This looks wrong" reports** — `ProvisionFeedback`, still to come; see
-   `tasks/a-this-is-wrong-reports.md`.
+   `tasks/complete/this-is-wrong-reports.md`.
 
 `templates/privacy_policy.html` described account email, search history and
 payment data. It said nothing about an address given by somebody who never

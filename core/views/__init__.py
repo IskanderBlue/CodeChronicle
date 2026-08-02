@@ -9,6 +9,7 @@ from .billing import (
     stripe_success,
 )
 from .demand import edition_request
+from .feedback import feedback_status, report_problem
 from .history import history
 from .insights import insights
 from .landing import landing
@@ -36,6 +37,7 @@ __all__ = [
     "data_sources",
     "edition_chain",
     "edition_request",
+    "feedback_status",
     "history",
     "insights",
     "landing",
@@ -44,6 +46,7 @@ __all__ = [
     "privacy_policy",
     "provision_permalink",
     "regulation_detail",
+    "report_problem",
     "search_page",
     "search_results",
     "stripe_cancel",

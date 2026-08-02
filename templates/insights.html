@@ -154,6 +154,36 @@ move" is asked of all of them at once.
   {% endfor %}
 
   {% comment %}
+  Reader reports. First of the tables, because it is the only section that is
+  a work queue rather than a reading: every other number here is something
+  that happened, and these are things somebody has to decide about.
+
+  hx-headers sits on the section so every status button inherits the CSRF
+  header — the buttons are in no form, and a row swapped in later lands inside
+  this same element and inherits it too.
+  {% endcomment %}
+  <section class="mt-8 border border-rule bg-surface-2 p-5"
+           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+    <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Reader reports</h2>
+    <p class="mt-1 text-sm text-ink-2">
+      Readers who say a text on the site is wrong. Untriaged first, then newest.
+      A report still marked New is listed however old it is &mdash; it does not
+      stop being unanswered because the window moved.
+    </p>
+    {% if reports %}
+    <table class="mt-4 w-full text-left">
+      <tbody>
+        {% for row in reports %}
+        {% include "partials/_feedback_row.html" with row=row statuses=statuses %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="mt-4 font-mono text-[11px] tracking-[0.04em] text-ink-3">No reports. Either the corpus is clean or nobody is reading closely.</p>
+    {% endif %}
+  </section>
+
+  {% comment %}
   Edition requests. Rows, not counts: the text is free-form, so no grouping
   key would combine "NBC 2015", "the 1990 OBC" and "Alberta" correctly, and
   reading twenty of them is how the pattern becomes visible.

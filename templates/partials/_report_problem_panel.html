@@ -1,0 +1,78 @@
+{% comment %}
+The body of the "this looks wrong" dialog. Three states in one file — ask,
+thanks, error — because HTMX swaps this whole panel in place and two files
+would let the wording drift.
+
+The target is shown as its own pieces rather than as one joined reference.
+The queue joins them (ProvisionFeedback.target_ref); if this template joined
+them too, the two strings would be free to disagree about a text whose whole
+value is being exact.
+
+The hidden fields carry the target. version can legitimately be 0, so it is
+tested against None and never for truthiness.
+{% endcomment %}
+<div class="report-panel">
+  {% if submitted %}
+  <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Thank you &mdash; recorded</h3>
+  <p class="mt-2 font-serif text-base text-ink-2">
+    A person reads every report. If you left an address, we will write back when
+    we have looked at it &mdash; and say what we found, whether or not we change
+    anything.
+  </p>
+  {% else %}
+  <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">This looks wrong</h3>
+  <p class="mt-2 font-serif text-base text-ink-2">
+    Tell us what is wrong and we will check it against the source. Reports are
+    free for everyone, and correcting the record is the point of the site.
+  </p>
+
+  <dl class="mt-4 border border-rule-2 bg-surface-2 px-3 py-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+    <div class="flex gap-2"><dt>Edition</dt><dd class="text-ink-2">{{ code_edition }}</dd></div>
+    {% if reg_id %}
+    <div class="flex gap-2"><dt>Regulation</dt><dd class="text-ink-2">O. Reg. {{ reg_id }}</dd></div>
+    {% else %}
+    {% if division %}<div class="flex gap-2"><dt>Division</dt><dd class="text-ink-2">{{ division }}</dd></div>{% endif %}
+    <div class="flex gap-2"><dt>Provision</dt><dd class="text-ink-2">{{ provision_id }}</dd></div>
+    <div class="flex gap-2"><dt>Version</dt><dd class="text-ink-2">v{{ version }}</dd></div>
+    {% endif %}
+  </dl>
+
+  {% if error %}
+  <p class="mt-3 font-mono text-[11px] tracking-[0.04em] text-secondary">{{ error }}</p>
+  {% endif %}
+
+  <form hx-post="{% url 'core:report_problem' %}"
+        hx-target="closest .report-panel"
+        hx-swap="outerHTML"
+        class="mt-4">
+    {% csrf_token %}
+    <input type="hidden" name="surface" value="{{ surface|default:'permalink' }}">
+    <input type="hidden" name="code_edition" value="{{ code_edition }}">
+    {% comment %} The two target shapes, split rather than merged. A regulation
+       report carries no provision fields at all, so a blank one can never be
+       posted and stored as an empty-string provision id that looks like a
+       provision report with a missing number. {% endcomment %}
+    {% if reg_id %}
+    <input type="hidden" name="reg_id" value="{{ reg_id }}">
+    {% else %}
+    <input type="hidden" name="division" value="{{ division }}">
+    <input type="hidden" name="provision_id" value="{{ provision_id }}">
+    <input type="hidden" name="version" value="{{ version }}">
+    {% endif %}
+
+    <label class="block">
+      <span class="block font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">What is wrong</span>
+      <textarea name="note" required rows="5" maxlength="4000"
+                placeholder="e.g. the in-force end date should be 31 Dec 2013 — O. Reg. 332/12 revoked this article earlier than shown"
+                class="mt-1 w-full border border-rule bg-panel px-3 py-2 font-serif text-base text-ink placeholder:text-ink-3 focus:border-secondary focus:outline-none"></textarea>
+    </label>
+    <label class="mt-3 block">
+      <span class="block font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">Email &mdash; optional</span>
+      <input type="email" name="email" maxlength="254"
+             placeholder="only if you want an answer"
+             class="mt-1 w-full border border-rule bg-panel px-3 py-2 font-serif text-base text-ink placeholder:text-ink-3 focus:border-secondary focus:outline-none">
+    </label>
+    <button type="submit" class="ui-btn mt-4 px-4 py-2 tracking-[0.1em]">Send report</button>
+  </form>
+  {% endif %}
+</div>

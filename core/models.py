@@ -445,6 +445,110 @@ class EditionRequest(models.Model):
         return f"{who} wants {self.code_text}"
 
 
+class ProvisionFeedback(models.Model):
+    """A reader telling us that a specific text on this site is wrong.
+
+    Free for everybody — anonymous, free and Pro alike.  A reader who reports a
+    discrepancy is doing our verification for us, and a product that invites
+    correction reads as more trustworthy than one that does not.  That is the
+    same argument the Sources page and the verification-rail guide already make.
+
+    **The target is text, never a ForeignKey.**  ``load_edition`` replaces
+    provision and version primary keys wholesale on reload, so a report keyed
+    on a pk would point at a different provision — or nothing — after the next
+    load.  The natural key (edition, division, provision id, version) survives
+    that, and is also what a permalink is built from, so the triage queue can
+    link straight back to what the reader was looking at.  This is the same
+    reasoning ``EngagementEvent.object_id`` already uses.
+
+    Two target shapes, because two kinds of page carry a claim a reader can
+    dispute.  A provision report names the provision and its version.  A
+    regulation report names ``reg_id`` instead, since a regulation page shows
+    a whole instrument and no single provision.  Exactly one shape is filled;
+    ``core.views.feedback`` refuses a submission with neither.
+    """
+
+    # Auto pk + FK id-shadow, plugin-only — declared for Pyright.
+    id: int
+    user_id: int | None
+
+    class Surface(models.TextChoices):
+        PERMALINK = "permalink", "Provision permalink"
+        SEARCH = "search", "Search result"
+        REGULATION = "regulation", "Regulation detail"
+
+    class Status(models.TextChoices):
+        NEW = "new", "New"
+        REVIEWED = "reviewed", "Reviewed"
+        FIXED = "fixed", "Fixed"
+        NOT_A_DEFECT = "not_a_defect", "Not a defect"
+
+    #: Edition name in the permalink's own form, e.g. "OBC_2006".
+    code_edition = models.CharField(max_length=50)
+    #: Bare division letter, "" for a division-less code.  Same convention as
+    #: everywhere else in the corpus.
+    division = models.CharField(max_length=10, blank=True, default="")
+    provision_id = models.CharField(max_length=50, blank=True, default="")
+    version = models.IntegerField(null=True, blank=True)
+    #: Regulation number ("350/06") for a regulation-page report.  The number,
+    #: not the row pk, for the reload reason above.
+    reg_id = models.CharField(max_length=50, blank=True, default="")
+
+    #: What the reader says is wrong.  The whole point of the record.
+    note = models.TextField()
+    #: Optional.  A report we cannot answer is still a useful report, and
+    #: requiring an address would lose the reader who will not give one.
+    email = models.EmailField(blank=True, default="")
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="provision_feedback",
+        null=True,
+        blank=True,
+    )
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    surface = models.CharField(
+        max_length=20, choices=Surface.choices, default=Surface.PERMALINK
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    #: Triage state.  A report with no queue becomes a table nobody opens, so
+    #: the status is part of the feature, not a later addition.
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.NEW
+    )
+    #: Our note back to ourselves — what we found, what we changed.
+    resolution = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "provision_feedback"
+        verbose_name = "Provision Feedback"
+        verbose_name_plural = "Provision Feedback"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["code_edition", "provision_id"]),
+        ]
+
+    def __str__(self) -> str:
+        who = self.email or (self.user.email if self.user else self.ip_address or "anon")
+        return f"{who}: {self.target_ref} looks wrong"
+
+    @property
+    def target_ref(self) -> str:
+        """The target as a reader would name it."""
+        if self.reg_id:
+            return f"{self.code_edition} · O. Reg. {self.reg_id}"
+        parts = [self.code_edition]
+        if self.division:
+            parts.append(f"Div {self.division}")
+        parts.append(self.provision_id)
+        if self.version is not None:
+            parts.append(f"v{self.version}")
+        return " · ".join(parts)
+
+
 class AuthEvent(models.Model):
     """Append-only security audit log of authentication outcomes.
 

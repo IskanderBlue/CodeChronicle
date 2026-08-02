@@ -320,6 +320,17 @@
            .ui-action: nothing happens on click, and conflating the two is the
            confusion that class exists to prevent. */
         .ui-note { border-bottom: 1px dotted rgb(var(--ink-3)); cursor: help; }
+        /* Selected state for a ghost-button group (the /insights/ report-status
+           control). It lives here, and not as `border-secondary text-secondary`
+           on the element, because .ui-btn-ghost sets colour and border in this
+           UNLAYERED block while Tailwind v4 emits its utilities inside
+           @layer utilities — and an unlayered rule beats a layered one whatever
+           the source order. The utilities were silently losing, so every button
+           in the group rendered identically and the group showed no state at
+           all. Two classes also out-specify the one it modifies. */
+        .ui-btn-ghost.is-current {
+            color: rgb(var(--secondary)); border-color: rgb(var(--secondary));
+        }
         /* Relevance-datum instrument (results header -> "close matches").
            Geometry lives here rather than in Tailwind utilities for the same
            survive-the-purge reason as .font-legal / .paper-container, but with

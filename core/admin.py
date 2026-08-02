@@ -8,6 +8,7 @@ from .models import (
     CodeEditionProvisionVersion,
     EngagementEvent,
     ProvinceCode,
+    ProvisionFeedback,
     ProvisionMapping,
     ProvisionVersionTable,
     Regulation,
@@ -30,6 +31,25 @@ class SearchHistoryAdmin(admin.ModelAdmin):
     list_filter = ['timestamp']
     search_fields = ['query', 'user__email']
     readonly_fields = ['parsed_params']
+
+
+@admin.register(ProvisionFeedback)
+class ProvisionFeedbackAdmin(admin.ModelAdmin):
+    """Triage a reader report in full.
+
+    The /insights/ queue is the daily view and moves the status only. This is
+    where the resolution note gets written, because a free-text answer wants a
+    real text area and belongs to the rare act of closing a report rather than
+    to the frequent act of reading the queue.
+    """
+
+    list_display = ['target_ref', 'status', 'email', 'surface', 'created_at']
+    list_filter = ['status', 'surface', 'created_at']
+    search_fields = ['note', 'email', 'provision_id', 'reg_id', 'code_edition']
+    readonly_fields = [
+        'code_edition', 'division', 'provision_id', 'version', 'reg_id',
+        'note', 'email', 'user', 'ip_address', 'surface', 'created_at',
+    ]
 
 
 @admin.register(EngagementEvent)

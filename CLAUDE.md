@@ -236,9 +236,20 @@ document that changed. Full reasoning:
 - `templates/robots.txt` — served by `RobotsView`, with a request-derived
   absolute sitemap link.
 - `/insights/` (`core/insights.py`, staff only) — traction totals, per-day and
-  cumulative charts, most-repeated queries, and the edition-request queue.
+  cumulative charts, most-repeated queries, the edition-request queue, and the
+  reader-report triage queue.
 - `EditionRequest` (`core/views/demand.py`) — "which edition do you need?"
   demand capture. The need is required; the email is optional.
+- `ProvisionFeedback` (`core/views/feedback.py`) — the "This looks wrong"
+  reader report, free for everybody including anonymous readers. The trigger
+  lives in the attestation rail's trailing affordances, beside "How to read
+  this", and is opt-in per surface (`allow_report`) so the landing page's
+  specimen band and the verification guide's example rails do not offer it.
+  **The target is stored as text, never a FK**: `load_edition` replaces every
+  provision and version pk on reload, and a report must outlive that. Two
+  target shapes — provision (edition/division/id/version) or regulation
+  (edition + `reg_id`) — and the queue resolves either back to a live URL at
+  read time.
 
 ## Temporary Files
 

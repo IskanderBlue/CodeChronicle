@@ -1,0 +1,52 @@
+{% comment %}
+One row of the reader-report queue, on /insights/.
+
+Its own partial because the status control re-renders exactly this much: the
+row is what changed, and re-rendering the page would throw the reader back to
+the top of a long dashboard.
+
+The row is the swap target (hx-target="closest tr"), so the whole <tr> must be
+this file's root element — an extra wrapper would break the table.
+
+The buttons sit in no form, so they carry no csrf field. The CSRF header comes
+from hx-headers on the queue section in insights.html, which htmx inherits
+down the tree — including into a row swapped in later, since the new row lands
+inside that same ancestor.
+{% endcomment %}
+<tr class="border-t border-rule-2 align-top">
+  <td class="w-40 py-2 pr-4">
+    {% if row.target_url %}
+    <a href="{{ row.target_url }}" class="ui-link font-mono text-[11px]">{{ row.target_ref }}</a>
+    {% else %}
+    {% comment %} No link: the edition was unloaded, or the shape has no page.
+       The reference still reads, which is what triage needs. {% endcomment %}
+    <span class="font-mono text-[11px] text-ink-3">{{ row.target_ref }}</span>
+    {% endif %}
+    <div class="mt-1 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">{{ row.surface }} &middot; {{ row.created_at|date:"Y-m-d" }}</div>
+  </td>
+  <td class="py-2 pr-4">
+    <p class="font-serif text-sm text-ink-2">{{ row.note }}</p>
+    {% if row.email %}
+    <a href="mailto:{{ row.email }}?subject=Your%20CodeChronicle%20report" class="ui-link mt-1 inline-block font-mono text-[11px]">{{ row.email }}</a>
+    {% else %}
+    <span class="mt-1 inline-block font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">no reply address</span>
+    {% endif %}
+  </td>
+  <td class="w-44 py-2 text-right">
+    {% comment %} One button per state, the current one marked. A select plus a
+       submit would be two interactions for a decision that is one; and the
+       button row shows what the states even are, which a closed select does not.
+    {% endcomment %}
+    <div class="flex flex-wrap justify-end gap-1">
+      {% for value, label in statuses %}
+      <button type="button"
+              hx-post="{% url 'core:feedback_status' row.id %}"
+              hx-vals='{"status": "{{ value }}"}'
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              class="ui-btn-ghost px-2 py-1 text-[10px] tracking-[0.06em] {% if row.status == value %}is-current{% endif %}"
+              {% if row.status == value %}aria-current="true"{% endif %}>{{ label }}</button>
+      {% endfor %}
+    </div>
+  </td>
+</tr>
