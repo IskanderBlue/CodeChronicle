@@ -10,6 +10,7 @@ from django.db.models import Count, Q
 from django.shortcuts import render
 
 from core.models import CodeEdition
+from core.pricing import get_pro_price
 
 from .billing import _sync_subscription_status
 
@@ -103,14 +104,34 @@ def _pricing_plans(user: Any) -> list[dict[str, Any]]:
 
     Name/price/CTA only — the feature comparison lives in
     ``PRICING_COMPARISON`` so each point lines up Free-vs-Pro in one row.
-    Price recovered from the original pre-early-access view.
+
+    The Pro figure comes from Stripe (``core.pricing``), not from a literal
+    here: the literal and the Stripe price were two numbers for one fact, and
+    only one of them took money.  Free is genuinely zero and has no Stripe
+    price, so it carries the same currency and interval as Pro for the two
+    cards to read as a pair.
     """
     is_pro = bool(getattr(user, "is_authenticated", False)) and bool(
         getattr(user, "has_active_subscription", False)
     )
+    pro = get_pro_price()
     return [
-        {"id": "free", "name": "Free", "price": "0", "is_current": not is_pro},
-        {"id": "pro", "name": "Pro", "price": "29", "is_current": is_pro},
+        {
+            "id": "free",
+            "name": "Free",
+            "price": "0",
+            "currency": pro.currency,
+            "interval": pro.interval,
+            "is_current": not is_pro,
+        },
+        {
+            "id": "pro",
+            "name": "Pro",
+            "price": pro.amount,
+            "currency": pro.currency,
+            "interval": pro.interval,
+            "is_current": is_pro,
+        },
     ]
 
 
@@ -120,9 +141,19 @@ def _pricing_plans(user: Any) -> list[dict[str, Any]]:
 # free-tier gate's scope (core.access / FREE_TIER_CODE_NAMES): Free is
 # OBC 2006 in full; Pro is every loaded edition.
 PRICING_COMPARISON: list[dict[str, str | None]] = [
+    # OBC 1997 leads the Pro cell, and is named before the other two.  It is
+    # the edition whose text left e-Laws before the consolidation era, so it
+    # is the only one a reader cannot get anywhere else — which makes it the
+    # reason to pay.  The row used to read "OBC 2006, 2012, and counting" and
+    # omitted it entirely, so the page that had to make the argument was the
+    # one page that did not make it.
+    #
+    # No coverage dates here on purpose: the masthead already prints the real
+    # span from CorpusCurrency on every page, and a hand-written date in this
+    # constant would be a second figure free to drift from it.
     {
         "free": "Ontario Building Code 2006",
-        "pro": "Every covered edition (OBC 2006, 2012, and counting)",
+        "pro": "Every covered edition — OBC 1997, 2006 and 2012",
     },
     {
         "free": "Amendment history & amending regulations for OBC 2006",

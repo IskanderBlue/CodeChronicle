@@ -221,7 +221,10 @@ class TestPricingPage:
         content = client.get("/pricing/").content.decode()
         assert "Choose your plan" in content
         assert "Ontario Building Code 2006" in content
-        assert "Every covered edition (OBC 2006, 2012, and counting)" in content
+        # The Pro cell must name OBC 1997: it is the edition a reader cannot
+        # get elsewhere, so it is the reason to pay, and the page that has to
+        # make that argument used to omit it.
+        assert "Every covered edition — OBC 1997, 2006 and 2012" in content
         # Keeps the early-access page's lower half (partner pitch + roadmap)
         # but not its free-for-now framing.
         assert "Roadmap" in content

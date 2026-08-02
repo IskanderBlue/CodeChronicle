@@ -81,7 +81,7 @@ context processor (real dates).
             <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{{ not_covered_province }} isn&rsquo;t covered yet</h3>
             <p class="mt-2 text-sm text-ink-2">
                 We cover Ontario for now &mdash; other jurisdictions are on the
-                <a href="{% url 'core:pricing' %}" class="ui-link font-semibold">roadmap</a>.
+                <a href="{% url 'core:pricing' %}#roadmap" class="ui-link font-semibold">roadmap</a>.
                 {% if not date_out_of_range %}Showing Ontario results below.{% endif %}
             </p>
         </div>

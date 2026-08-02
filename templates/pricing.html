@@ -32,9 +32,15 @@
                 <span class="border border-secondary px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary">Current</span>
                 {% endif %}
             </div>
+            {% comment %}
+            Price, currency and interval all come from the Stripe row via
+            core.pricing — never a literal here. The currency is always shown:
+            "$29" is ambiguous to a Canadian buyer and wrong to an American
+            one, and this product is priced in CAD.
+            {% endcomment %}
             <p class="mt-8">
                 <span class="font-serif text-4xl font-bold text-ink">${{ plan.price }}</span>
-                <span class="text-base font-medium text-ink-3">/mo</span>
+                <span class="text-base font-medium text-ink-3">{{ plan.currency }}/{{ plan.interval }}</span>
             </p>
 
             {% if plan.id == 'free' %}
@@ -135,8 +141,13 @@
         </p>
     </div>
 
-    <!-- Roadmap -->
-    <div class="mt-12 border border-rule bg-surface-2 p-8">
+    {% comment %}
+    Anchored so other pages can link straight to the roadmap rather than to
+    the top of the pricing page. The "not covered yet" notice in the search
+    results uses it: a reader told their jurisdiction is missing wants the
+    plan, not the price list.
+    {% endcomment %}
+    <div id="roadmap" class="mt-12 scroll-mt-24 border border-rule bg-surface-2 p-8">
         <h2 class="font-serif text-2xl font-bold text-ink text-center mb-6">Roadmap</h2>
 
         <div class="max-w-md mx-auto">
