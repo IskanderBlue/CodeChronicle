@@ -20,7 +20,15 @@
 
     <div class="space-y-4">
         {% for item in history %}
-        <a href="{% url 'core:search' %}?q={{ item.query|urlencode }}"
+        {% comment %} The link must carry the date as well as the words. The
+           AS-OF picker overrides whatever the parser reads out of the query
+           text, so a link with only ?q= re-runs the same question at the
+           default date and returns a different edition's text — silently,
+           under the date this card displays two lines below. parsed_params
+           holds the date the search actually ran at, already in the ISO form
+           ?d= parses. Province needs no parameter; it is always ON.
+           {% endcomment %}
+        <a href="{% url 'core:search' %}?q={{ item.query|urlencode }}{% if item.parsed_params.date %}&amp;d={{ item.parsed_params.date|urlencode }}{% endif %}"
             class="block bg-surface-2 border border-rule p-6 hover:border-secondary transition-colors cursor-pointer no-underline"
             x-show="!query || '{{ item.query|escapejs }}'.toLowerCase().includes(query.toLowerCase())" x-transition>
             <div class="flex justify-between items-start">
