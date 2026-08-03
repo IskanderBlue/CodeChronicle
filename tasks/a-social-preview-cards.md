@@ -33,10 +33,24 @@ image") is still open and is its own piece of work.
 - The landing page and `pricing.html` lost their `{% block title %}`
   overrides. The landing page carries the site default, because that sentence
   *is* the site; the pricing view supplies its own pair.
-- `manage.py make_social_card` draws `static/images/social-card.png` from
-  `CorpusCurrency`, so the coverage span on the card is the corpus's own
-  figure. Re-run it after loading an edition. Pillow is a dev dependency; the
-  server never imports it.
+- `manage.py make_social_card` draws `static/images/social-card.png` at
+  **1200x600**, the one ratio every platform renders whole. Nothing on it is
+  typed in: the wordmark is the app bar's (`Code` bold roman, `Chronicle`
+  medium italic, `.ca` semibold, all ink, tracked -0.02em, in the vendored
+  Source Serif 4), and the edition bands come from `CodeEdition`, the same
+  rows the masthead's corpus span measures. **Re-run it after loading an
+  edition.** Pillow is a dev dependency; the server never imports it.
+- The bands use **edition** dates, not version dates. Five of the 2012
+  edition's versions run to 2025-03-31 and three of the 2006 edition's to
+  2016-01-01, and a tail of five must not set the width of a band standing
+  for thousands.
+- Each edition costs 46px in a frame that cannot grow, so the command
+  **refuses to draw** a card that would overflow rather than write a clipped
+  one. At four editions the staircase must become a single row of contiguous
+  segments — the editions abut, so one row is faithful and its height is
+  constant. `tasks/b-social-card-single-row.md` holds the design.
+- `fonts/` holds the vendored faces, both OFL licences, and how they were
+  made. They are build inputs; `collectstatic` never sees them.
 - Six tests in `core/tests/test_seo.py::TestSocialCard`, including the locked
   page carrying no `og:` or `twitter:` string at all.
 
