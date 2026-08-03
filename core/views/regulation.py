@@ -35,7 +35,13 @@ from core.models import (
 )
 from core.permalinks import provision_permalink_url
 from core.provision_lineage import annotate_lineage_locks, resolve_lineage
-from core.seo import TITLE_SUFFIX, provision_page_meta
+from core.seo import (
+    TITLE_SUFFIX,
+    provision_jsonld,
+    provision_page_meta,
+    regulation_jsonld,
+    site_origin,
+)
 from core.verification import base_input, build_rail
 
 from .search import _active_versions
@@ -797,6 +803,10 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
         "clauses": clauses,
         "commencement": commencement,
         "has_staggered_commencement": has_staggered_commencement,
+        # The schema.org/Legislation block. A provision's block names this
+        # regulation in legislationConsolidates and links here, so the object
+        # it names describes itself when a crawler follows the link.
+        "jsonld": regulation_jsonld(regulation, origin=site_origin(request)),
     })
 
 
@@ -971,6 +981,14 @@ def provision_permalink(
         # URL. Built in core.seo rather than in the template because the
         # canonical rule is shared with the sitemap and must not be restated.
         **provision_page_meta(matched, target_version),
+        # The schema.org/Legislation block. Built here rather than merged into
+        # provision_page_meta because it needs the request's origin to make its
+        # URLs absolute, and that helper deliberately knows nothing of the
+        # request. base.html prints it only where it is set, so the locked
+        # teaser above carries no block without a tier test of its own.
+        "jsonld": provision_jsonld(
+            matched, target_version, origin=site_origin(request)
+        ),
     })
 
 

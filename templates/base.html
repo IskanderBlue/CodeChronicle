@@ -31,6 +31,22 @@
     <meta name="description" content="{% block meta_description %}{% firstof meta_description default_description %}{% endblock %}">
     {% block canonical %}{% endblock %}
     {% block social %}{% include "partials/_social_meta.html" %}{% endblock %}
+    {% comment %}
+    Structured data (schema.org/Legislation). Invisible; changes nothing a
+    reader sees. It states the in-force window in a form a crawler and an
+    answer engine can act on, which no other tag on the page does.
+
+    The condition IS the gate. A page that knows its subject sets jsonld in
+    its view; every other page — including the locked-edition teaser, which
+    is a 403 about an edition and not a page about a provision — sets nothing
+    and carries no block. There is no tier test here, because the view has
+    already decided by rendering a different template.
+
+    The string is built and escaped in core.seo, so it prints raw. Never
+    assemble JSON here: one apostrophe in a heading breaks the block
+    silently, and a template cannot escape what it did not serialize.
+    {% endcomment %}
+    {% if jsonld %}<script type="application/ld+json">{{ jsonld }}</script>{% endif %}
 
     <!-- Alpine.js -->
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>

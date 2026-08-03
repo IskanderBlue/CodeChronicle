@@ -6,6 +6,7 @@ declares v3 canonical tells the crawler to ignore everything we gave it, and
 nothing else in this module matters if that breaks.
 """
 
+import json
 import re
 from datetime import date
 from pathlib import Path
@@ -19,6 +20,9 @@ from core.models import (
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
+    CodeEditionProvisionVersionClause,
+    Regulation,
+    RegulationClause,
 )
 from core.seo import (
     DEFAULT_DESCRIPTION,
@@ -27,7 +31,9 @@ from core.seo import (
     SOCIAL_IMAGE_PATH,
     SOCIAL_IMAGE_WIDTH,
     canonical_version_number,
+    provision_jsonld,
     provision_page_meta,
+    regulation_jsonld,
 )
 from core.sitemaps import ProvisionSitemap
 
@@ -216,3 +222,276 @@ class TestSocialCard:
         settings.FREE_TIER_CODE_NAMES = ["OBC_2012"]
         body = client.get("/provision/OBC_2006/B/3.2.5.7./v0/").content.decode()
         assert "<title>OBC 2006 — Pro content | CodeChronicle</title>" in body
+
+
+@pytest.fixture
+def enacted(provision):
+    """The same provision, with the instruments behind it loaded.
+
+    A base regulation on the edition, and one amending regulation whose clause
+    produced v1.  v0 and v2 keep no contributing clause, which is the ordinary
+    state: v0 was never amended, and CCM does not always ship the link.
+
+    The edition is given an end date, because OBC 2006 has one.  Without it
+    every currency assertion below tests a corpus that does not exist.
+    """
+    edition = provision.edition
+    edition.ineffective_date = date(2014, 1, 1)
+    edition.save()
+    base = Regulation.objects.create(
+        reg_id="O. Reg. 350/06",
+        edition=edition,
+        role=Regulation.Role.BASE,
+        filed_date=date(2006, 8, 18),
+        effective_date=date(2006, 12, 31),
+        source_url="https://www.ontario.ca/laws/regulation/060350",
+    )
+    amending = Regulation.objects.create(
+        reg_id="O. Reg. 315/08",
+        edition=edition,
+        role=Regulation.Role.AMENDMENT,
+        amends=base,
+        filed_date=date(2008, 9, 10),
+        effective_date=date(2009, 1, 1),
+    )
+    clause = RegulationClause.objects.create(regulation=amending, clause_id="1")
+    CodeEditionProvisionVersionClause.objects.create(
+        version=provision.versions.get(version=1), clause=clause, apply_order=0,
+    )
+    return provision
+
+
+def _block(provision, version, **kwargs):
+    """The emitted block, parsed back into a dict."""
+    raw = provision_jsonld(
+        provision, version, origin="https://www.codechronicle.ca", **kwargs
+    )
+    return json.loads(raw)
+
+
+@pytest.mark.django_db
+class TestProvisionJsonLd:
+    """The machine-readable form of the in-force window.
+
+    Nothing here changes what a reader sees.  What it must never do is state a
+    date or a currency the page itself does not support: a wrong figure in
+    prose is a bug, and a wrong figure in structured data is a bug an answer
+    engine repeats with confidence.
+    """
+
+    def test_the_block_is_valid_json(self, enacted):
+        block = _block(enacted, enacted.versions.get(version=0))
+        assert block["@context"] == "https://schema.org"
+        assert block["@type"] == "Legislation"
+
+    def test_a_superseded_edition_is_not_in_force(self, enacted):
+        """The error this product cannot afford, asserted directly."""
+        for version in enacted.versions.all():
+            block = _block(enacted, version)
+            assert block["legislationLegalForce"] == "NotInForce"
+
+    def test_a_current_edition_is_in_force(self, enacted):
+        """The other half of the rule.  Without it an inverted computation
+        still passes, because free scope today holds one superseded edition
+        and nothing else — every page a crawler sees says NotInForce.
+        """
+        edition = enacted.edition
+        edition.ineffective_date = None
+        edition.save()
+        version = enacted.versions.get(version=2)
+        block = _block(enacted, version, today=date(2013, 6, 1))
+        assert block["legislationLegalForce"] == "InForce"
+
+    def test_the_edition_end_closes_a_version_with_no_end_of_its_own(self, enacted):
+        """A few provisions outlive their edition and carry no ineffective_date.
+        Read alone they look open-ended, and open-ended reads as current.
+        """
+        version = enacted.versions.get(version=2)
+        assert version.ineffective_date is None
+        block = _block(enacted, version, today=date(2020, 1, 1))
+        assert block["legislationLegalForce"] == "NotInForce"
+        assert block["temporalCoverage"] == "2012-01-01/2013-12-31"
+
+    def test_coverage_ends_the_day_before_the_ineffective_date(self, enacted):
+        """The stored window is half-open; an ISO interval is closed.  Copying
+        ineffective_date across claims the text applied on the day it stopped.
+        """
+        version = enacted.versions.get(version=0)
+        assert version.ineffective_date == date(2009, 1, 1)
+        assert _block(enacted, version)["temporalCoverage"] == "2006-12-31/2008-12-31"
+
+    def test_an_open_window_uses_the_open_form_not_today(self, enacted):
+        edition = enacted.edition
+        edition.ineffective_date = None
+        edition.save()
+        version = enacted.versions.get(version=2)
+        assert _block(enacted, version)["temporalCoverage"] == "2012-01-01/.."
+
+    def test_a_version_that_never_governed_a_day_claims_no_window(self, enacted):
+        version = enacted.versions.get(version=1)
+        version.ineffective_date = version.effective_date
+        version.save()
+        block = _block(enacted, version)
+        assert version.never_in_force
+        assert "temporalCoverage" not in block
+        assert block["legislationLegalForce"] == "NotInForce"
+
+    def test_the_two_dates_are_not_the_same_date(self, enacted):
+        """legislationDate is when the instrument was adopted;
+        legislationDateVersion is when this version began.  Collapsing them
+        back-dates every amendment to the edition's own date.
+        """
+        version = enacted.versions.get(version=1)
+        block = _block(enacted, version)
+        assert block["legislationDate"] == "2006-08-18"
+        assert block["legislationDateVersion"] == "2009-01-01"
+
+    def test_the_url_is_canonical_not_the_page_being_rendered(self, enacted):
+        for version in enacted.versions.all():
+            block = _block(enacted, version)
+            assert block["url"] == (
+                "https://www.codechronicle.ca/provision/OBC_2006/B/3.2.5.7./v2/"
+            )
+
+    def test_the_base_regulation_is_named_on_every_version(self, enacted):
+        """An edition-level fact, so it survives the base-enactment gap."""
+        for version in enacted.versions.all():
+            consolidates = _block(enacted, version)["legislationConsolidates"]
+            assert consolidates["legislationIdentifier"] == "O. Reg. 350/06"
+            assert consolidates["sameAs"].startswith("https://www.ontario.ca/")
+
+    def test_the_amending_regulation_is_named_only_where_it_applies(self, enacted):
+        """Absent on a version nothing amended, rather than falling back to the
+        base regulation — a guessed citation is a false one.
+        """
+        assert "legislationChangedBy" not in _block(
+            enacted, enacted.versions.get(version=0)
+        )
+        changed_by = _block(enacted, enacted.versions.get(version=1))[
+            "legislationChangedBy"
+        ]
+        assert [r["legislationIdentifier"] for r in changed_by] == ["O. Reg. 315/08"]
+
+    def test_the_identifier_is_a_citation_that_stands_alone(self, enacted):
+        """The bare provision number names a provision in three editions and in
+        more than one division, so on its own it identifies nothing.
+        """
+        block = _block(enacted, enacted.versions.get(version=0))
+        assert block["legislationIdentifier"] == (
+            "Article 3.2.5.7. of Division B of O. Reg. 350/06"
+        )
+
+    def test_an_untitled_version_omits_the_name(self, enacted):
+        version = enacted.versions.get(version=0)
+        version.title = ""
+        version.save()
+        block = _block(enacted, version)
+        assert "name" not in block
+        assert block["legislationIdentifier"]
+
+    def test_a_heading_cannot_close_the_script_element(self, enacted):
+        """json.dumps does not escape these three, and a heading is data we did
+        not write.  An unescaped closing script tag ends the block early and
+        drops the rest of the head into the body.
+        """
+        version = enacted.versions.get(version=0)
+        version.title = "Routes </script><img src=x> & <b>more</b>"
+        version.save()
+        raw = provision_jsonld(enacted, version, origin="https://example.com")
+        assert "<" not in raw
+        assert ">" not in raw
+        assert "&" not in raw
+        assert json.loads(raw)["name"] == version.title
+
+
+@pytest.mark.django_db
+class TestJsonLdOnThePage:
+    def test_a_provision_page_carries_the_block(self, client, enacted):
+        body = client.get("/provision/OBC_2006/B/3.2.5.7./v0/").content.decode()
+        found = re.search(
+            r'<script type="application/ld\+json">(.*?)</script>', body, re.DOTALL
+        )
+        assert found is not None
+        block = json.loads(found.group(1))
+        assert block["@type"] == "Legislation"
+        assert block["url"] == "http://testserver/provision/OBC_2006/B/3.2.5.7./v2/"
+
+    def test_a_locked_page_carries_no_block(self, client, enacted, settings):
+        """The teaser is a 403 about an edition, not a page about a provision.
+        No tier test achieves this — the view renders a template that sets
+        nothing, and base.html prints the block only where it is set.
+        """
+        settings.FREE_TIER_CODE_NAMES = ["OBC_2012"]
+        response = client.get("/provision/OBC_2006/B/3.2.5.7./v0/")
+        assert response.status_code == 403
+        assert "application/ld+json" not in response.content.decode()
+
+    def test_a_page_with_no_subject_carries_no_block(self, client):
+        assert "application/ld+json" not in client.get("/terms/").content.decode()
+
+
+@pytest.mark.django_db
+class TestRegulationJsonLd:
+    """The companion block on the regulation page.
+
+    A provision's block names its base regulation and links here, so the
+    object it names must describe itself when a crawler follows the link.
+    """
+
+    def _block(self, reg):
+        return json.loads(
+            regulation_jsonld(reg, origin="https://www.codechronicle.ca")
+        )
+
+    def test_the_block_names_the_instrument(self, enacted):
+        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        block = self._block(base)
+        assert block["@type"] == "Legislation"
+        assert block["legislationIdentifier"] == "O. Reg. 350/06"
+        assert block["legislationType"] == "Regulation"
+        assert block["legislationDate"] == "2006-08-18"
+        assert block["sameAs"] == "https://www.ontario.ca/laws/regulation/060350"
+
+    def test_the_url_matches_the_one_the_provision_block_links_to(self, enacted):
+        """One node builder, because the two blocks point at each other."""
+        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        linked = _block(enacted, enacted.versions.get(version=0))[
+            "legislationConsolidates"
+        ]["url"]
+        assert self._block(base)["url"] == linked
+
+    def test_an_amending_regulation_names_what_it_changes(self, enacted):
+        amending = Regulation.objects.get(reg_id="O. Reg. 315/08")
+        changes = self._block(amending)["legislationChanges"]
+        assert changes["legislationIdentifier"] == "O. Reg. 350/06"
+
+    def test_a_base_regulation_changes_nothing(self, enacted):
+        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        assert "legislationChanges" not in self._block(base)
+
+    def test_an_instrument_claims_no_currency(self, enacted):
+        """An amendment is not superseded the way a text is — the change it
+        made stays made.  To state a window or a force here invents a fact.
+        """
+        for reg in Regulation.objects.all():
+            block = self._block(reg)
+            assert "temporalCoverage" not in block
+            assert "legislationLegalForce" not in block
+
+    def test_a_regulation_page_carries_the_block(self, client, enacted):
+        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        body = client.get(f"/regulation/{base.pk}/").content.decode()
+        found = re.search(
+            r'<script type="application/ld\+json">(.*?)</script>', body, re.DOTALL
+        )
+        assert found is not None
+        assert json.loads(found.group(1))["legislationIdentifier"] == "O. Reg. 350/06"
+
+    def test_a_locked_regulation_page_carries_no_block(
+        self, client, enacted, settings
+    ):
+        settings.FREE_TIER_CODE_NAMES = ["OBC_2012"]
+        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        response = client.get(f"/regulation/{base.pk}/")
+        assert response.status_code == 403
+        assert "application/ld+json" not in response.content.decode()

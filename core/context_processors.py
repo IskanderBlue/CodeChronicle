@@ -13,6 +13,7 @@ from core.seo import (
     SOCIAL_IMAGE_HEIGHT,
     SOCIAL_IMAGE_PATH,
     SOCIAL_IMAGE_WIDTH,
+    site_origin,
 )
 
 
@@ -31,7 +32,7 @@ def page_metadata(request: HttpRequest) -> dict[str, Any]:
     """
     return {
         "site_name": SITE_NAME,
-        "site_origin": f"{request.scheme}://{request.get_host()}",
+        "site_origin": site_origin(request),
         "default_title": DEFAULT_TITLE,
         "default_description": DEFAULT_DESCRIPTION,
         "social_image_path": SOCIAL_IMAGE_PATH,
