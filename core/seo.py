@@ -63,14 +63,14 @@ SOCIAL_IMAGE_PATH = "images/social-card.png"
 SOCIAL_IMAGE_ALT = DEFAULT_TITLE
 
 #: The card's real pixel size, declared in the tags so a crawler reserves the
-#: right space.  ``make_social_card`` crops the drawing to its own ink, so the
-#: height follows the copy; the command refuses to write a card that disagrees
-#: with these numbers rather than let the tags lie.  The card is deliberately
-#: wider than the 1.91:1 most guides quote — Slack, LinkedIn and Mail scale a
-#: card to the message width and keep its ratio, so a shorter card takes less
-#: of the conversation.
+#: right space.  2:1 is the one ratio every platform renders whole: Slack,
+#: LinkedIn and Mail scale a card to the message width and keep its ratio,
+#: while X normalises toward 2:1 and crops anything wider.
+#:
+#: ``make_social_card`` draws into this frame and refuses to write a card that
+#: disagrees with these numbers, rather than let the tags lie.
 SOCIAL_IMAGE_WIDTH = 1200
-SOCIAL_IMAGE_HEIGHT = 368
+SOCIAL_IMAGE_HEIGHT = 600
 
 
 def canonical_version_number(provision: CodeEditionProvision) -> int | None:
