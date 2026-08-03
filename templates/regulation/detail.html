@@ -290,7 +290,7 @@
                     <ul class="space-y-[3px]">
                         {% for t in clause.targets %}
                         <li{% if forloop.counter > 3 %} x-show="showTargets" x-cloak{% endif %} style="padding-left: {{ t.indent }}px">
-                            {% if t.url %}<a href="{{ t.url }}" class="font-mono text-[11.5px] text-secondary border-b border-secondary hover:text-secondary-2">{{ t.label }}</a>{% else %}<span class="font-mono text-[11.5px]">{{ t.label }}</span>{% endif %}{% if t.version is not None %} <span class="font-mono text-[10px] text-ink-3 ml-1.5">v{{ t.version }}</span>{% endif %}
+                            {% if t.url %}<a href="{{ t.url }}" class="text-[11.5px] text-secondary border-b border-secondary hover:text-secondary-2"><span class="font-mono">{{ t.label }}</span>{% if t.title %} <span class="italic">{{ t.title }}</span>{% endif %}</a>{% else %}<span class="font-mono text-[11.5px]">{{ t.label }}</span>{% endif %}{% if t.version is not None %} <span class="font-mono text-[10px] text-ink-3 ml-1.5">v{{ t.version }}</span>{% endif %}
                         </li>
                         {% endfor %}
                     </ul>

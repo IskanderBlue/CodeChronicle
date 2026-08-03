@@ -9,6 +9,15 @@
    locked link (free-tier gate) upsells to pricing instead of 403ing after
    click-through.
 
+   The title goes in the HOVER here, not in the row text
+   (tasks/c-lineage-anchor-text.md). The link does name a different provision,
+   which is the case the rule writes titles for — but this rail is 19rem and
+   every row above it is an id and a date, so a line of prose in the middle of
+   the box read as an intruder and crowded the track. `link.title` is stamped
+   by core.provision_lineage.annotate_lineage_titles from the link's own
+   version, never the target's latest, and an untitled version leaves the
+   hover naming the id alone.
+
    `link.compare_url` opens this counterpart beside the version being read.
    The prepared-pair control cannot reach it: that ladder takes the local
    comparison first, so a provision amended twice AND renumbered would offer
@@ -16,5 +25,5 @@
    already upsells — a second pricing link beside the first is noise.
 {% endcomment %}
 <p>
-    <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition.code.code }} {{ link.edition.edition_id }}{% endif %} &middot;</span> {{ link.verb }} {% if link.locked %}<a href="{% url 'core:pricing' %}" @click.stop class="text-ink-3 hover:text-secondary" title="Available on Pro">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }} &mdash; Pro</a>{% else %}<a href="{{ link.url }}" @click.stop class="ui-cite">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}</a>{% endif %}{% if link.compare_url %} <a href="{{ link.compare_url }}" @click.stop class="ui-cite font-mono text-[10px]" title="Compare this counterpart with the version you are reading">compare</a>{% endif %}
+    <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition.code.code }} {{ link.edition.edition_id }}{% endif %} &middot;</span> {{ link.verb }} {% if link.locked %}<a href="{% url 'core:pricing' %}" @click.stop class="text-ink-3 hover:text-secondary" title="{% if link.title %}{{ link.title }} &middot; {% endif %}Available on Pro">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }} &mdash; Pro</a>{% else %}<a href="{{ link.url }}" @click.stop class="ui-cite" title="{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}{% if link.title %} &mdash; {{ link.title }}{% endif %}">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}</a>{% endif %}{% if link.compare_url %} <a href="{{ link.compare_url }}" @click.stop class="ui-cite font-mono text-[10px]" title="Compare this counterpart with the version you are reading">compare</a>{% endif %}
 </p>

@@ -33,7 +33,11 @@ from core.models import (
     ProvisionCrossReference,
     Regulation,
 )
-from core.provision_lineage import annotate_lineage_locks, resolve_lineage
+from core.provision_lineage import (
+    annotate_lineage_locks,
+    annotate_lineage_titles,
+    resolve_lineage,
+)
 from core.verification import base_input, build_rail, consolidations_for
 
 logger = logging.getLogger(__name__)
@@ -1253,6 +1257,7 @@ def _attach_lineage(formatted: List[Dict[str, Any]], user: Any = None) -> None:
         [r["provision"] for r in formatted if r.get("provision")]
     )
     annotate_lineage_locks(lineage.values(), user)
+    annotate_lineage_titles(lineage.values())
     for result in formatted:
         provision = result.get("provision")
         lin = lineage.get(provision.pk) if provision is not None else None

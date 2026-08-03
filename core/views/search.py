@@ -26,7 +26,12 @@ from core.models import (
     CodeEditionProvisionVersion,
     EngagementEvent,
 )
-from core.provision_lineage import LineageDirection, annotate_lineage_locks, resolve_lineage
+from core.provision_lineage import (
+    LineageDirection,
+    annotate_lineage_locks,
+    annotate_lineage_titles,
+    resolve_lineage,
+)
 from core.search_prefs import resolve_match_threshold
 from core.seo import TITLE_SUFFIX
 from services.search_service import run_search
@@ -40,9 +45,7 @@ def _query_value(request: HttpRequest, key: str) -> str:
 
 
 
-def _lineage_nav_direction(
-    direction: LineageDirection, titles: dict[int, str]
-) -> dict[str, Any]:
+def _lineage_nav_direction(direction: LineageDirection) -> dict[str, Any]:
     """Shape one lineage direction for the viewer nav partial.
 
     Linked rows become in-viewer load buttons, so each entry carries the
@@ -61,7 +64,7 @@ def _lineage_nav_direction(
             "locked": link.locked,
             "edition_label": f"{link.edition.code.code} {link.edition.edition_id}",
             "id": target.provision_id,
-            "title": titles.get(target.pk, target.provision_id),
+            "title": link.title or target.provision_id,
             "code": link.edition.code_name,
             "code_display_name": (
                 f"{get_code_display_name(link.edition.code.code)} "
@@ -199,25 +202,13 @@ def viewer_edition_nav(request: HttpRequest):
     if matched is not None:
         lineage = resolve_lineage([matched])[matched.pk]
         annotate_lineage_locks([lineage], request.user)
-        # Latest version's title is the most informative for a navigation
-        # label (the user's effective query date doesn't matter here);
-        # ascending order so the last write per provision wins.
-        target_pks = [
-            link.provision.pk
-            for d in (lineage.predecessors, lineage.successors)
-            for link in d.links
-        ]
-        titles: dict[int, str] = {}
-        for prov_pk, title in (
-            CodeEditionProvisionVersion.objects
-            .filter(provision_id__in=target_pks)
-            .order_by("version")
-            .values_list("provision_id", "title")
-        ):
-            if title:
-                titles[prov_pk] = title
-        predecessors = _lineage_nav_direction(lineage.predecessors, titles)
-        successors = _lineage_nav_direction(lineage.successors, titles)
+        # Titles come from the annotator, which reads each link's *own*
+        # version rather than the target's latest.  This view used to take
+        # the latest title; a title can change between versions, so the two
+        # disagree, and the link must name the page it opens.
+        annotate_lineage_titles([lineage])
+        predecessors = _lineage_nav_direction(lineage.predecessors)
+        successors = _lineage_nav_direction(lineage.successors)
 
     return render(
         request,

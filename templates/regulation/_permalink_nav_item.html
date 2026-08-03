@@ -1,22 +1,55 @@
 {% comment %} One neighbour provision in the permalink hierarchy nav.
-   `item`: {provision_id, versions:[{version, effective_date,
-   ineffective_date, url}]}.  A single overlapping version links the id
-   itself; multiple versions show the id plain with one chip per version,
-   since the same neighbour read differently across the pinned version's
-   lifetime. {% endcomment %}
-{% if item.versions|length == 1 %}
-    {% with v=item.versions.0 %}
-    <a href="{{ v.url }}" class="font-mono font-semibold ui-cite"
-       title="v{{ v.version }} — {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">{{ item.provision_id }}</a>
-    {% endwith %}
-{% elif item.versions %}
-    <span class="font-mono font-semibold text-ink">{{ item.provision_id }}</span>
-    <span class="flex flex-wrap gap-1">
-        {% for v in item.versions %}
-        <a href="{{ v.url }}" class="bg-secondary-soft px-1.5 font-mono text-[11px] ui-cite"
-           title="{% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">v{{ v.version }}</a>
-        {% endfor %}
-    </span>
-{% else %}
-    <span class="font-mono text-ink-3">{{ item.provision_id }}</span>
-{% endif %}
+
+   `item`: {provision_id, title, versions:[{version, title, effective_date,
+   ineffective_date, never_in_force, url}]}.  `glyph`: the direction mark for
+   the gutter — the pager passes an arrow back or forward, the parent group an
+   arrow up, the children group an arrow down.  All four groups render through
+   this partial, so every row in the nav is built the same way.
+
+   Layout is `.pnav-row` / `.pnav-versions` (base.html): a two-column grid,
+   a fixed gutter for the glyph and then everything else.  The ids therefore
+   start at one indent whatever the group and whatever the id's length, and
+   the version rows sit in column two — the alignment falls out of the grid,
+   so nothing here adds a padding computed from the gutter and the gap.
+   Component classes rather than arbitrary Tailwind utilities, because an
+   arbitrary utility does not exist until a build rescans this file.
+
+   The row names a provision *other* than the one being read, so the id and
+   the title go in the link (tasks/c-lineage-anchor-text.md).
+
+   A single overlapping version links the id and the title together.  Several
+   overlapping versions have no single target, so the id and the title become
+   plain text and each version gets its own row underneath — one date per row,
+   because a wrapping line of dates gave no way to tell where one ended and
+   the next began.  The link text is the **date**: the versions differ only by
+   date, and that is what the reader chooses between.
+
+   The nav column is narrow (`--ws-nav`), so a long title truncates on one
+   line and keeps its full text in the hover.  Do not write a width down here;
+   `min-w-0` lets the track's own token decide.
+{% endcomment %}
+<div class="pnav-row">
+    <span class="shrink-0 font-mono text-[11px] text-ink-3">{{ glyph }}</span>
+    {% if item.versions|length == 1 %}
+        {% with v=item.versions.0 %}
+        <a href="{{ v.url }}" class="flex min-w-0 items-baseline gap-1.5 ui-cite"
+           title="{{ item.provision_id }}{% if v.title %} &mdash; {{ v.title }}{% endif %} &middot; v{{ v.version }}, {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">
+            <span class="shrink-0 font-mono font-semibold">{{ item.provision_id }}</span>
+            {% if v.title %}<span class="min-w-0 truncate italic">{{ v.title }}</span>{% endif %}
+        </a>
+        {% endwith %}
+    {% elif item.versions %}
+        <span class="flex min-w-0 items-baseline gap-1.5" title="{{ item.provision_id }}{% if item.title %} &mdash; {{ item.title }}{% endif %}">
+            <span class="shrink-0 font-mono font-semibold text-ink">{{ item.provision_id }}</span>
+            {% if item.title %}<span class="min-w-0 truncate italic text-ink">{{ item.title }}</span>{% endif %}
+        </span>
+        <ul class="pnav-versions">
+            {% for v in item.versions %}
+            <li><a href="{{ v.url }}" class="font-mono text-[11px] ui-cite"
+                   title="v{{ v.version }}{% if v.title %} &mdash; {{ v.title }}{% endif %} &middot; {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">{% if v.never_in_force %}never in force{% else %}{{ v.effective_date|date:'j M Y' }}{% endif %}</a></li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <span class="font-mono text-ink-3">{{ item.provision_id }}</span>
+    {% endif %}
+</div>

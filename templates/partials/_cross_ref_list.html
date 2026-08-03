@@ -1,9 +1,17 @@
 {% comment %} A list of within-edition cross-references, as a collapsed disclosure.
 
    Context: `entries` — rows from `core.cross_refs.cites` (outbound) or
-   `.cited_by` (inbound), each {provision_id, division, url, title, and either
-   `surface_text` or `version`}; `label` — the heading text; `count_label` —
-   optional singular/plural noun.
+   `.cited_by` (inbound), each {provision_id, division, url, title,
+   provision_title, and either `surface_text` or `version`}; `label` — the
+   heading text; `count_label` — optional singular/plural noun.
+
+   Every row names a provision *other* than the one being read, so the link
+   text carries the id and the title (tasks/c-lineage-anchor-text.md).
+   `provision_title` is the linked version's own title, not the provision's
+   latest — a title can change between versions.  `title` is the hover, and is
+   a different string: the in-force window, or what the citing provision said.
+   The version label sits outside the link, because it is not part of what the
+   target page is about.
 
    Two jobs.  Outbound: the only cross-reference affordance on a version
    rendered as page images, where there is no html to link into.  Inbound: the
@@ -21,14 +29,14 @@
         {% for entry in entries %}
         <li class="text-[13px]">
             {% if entry.url %}
-            <a href="{{ entry.url }}" @click.stop class="font-mono ui-cite" title="{{ entry.title|default:entry.surface_text }}">
-                {% if entry.division %}<span class="text-ink-3">{{ entry.division }}</span> {% endif %}{{ entry.provision_id }}{% if entry.version_label %}<span class="text-ink-3"> {{ entry.version_label }}</span>{% endif %}
-            </a>
+            <a href="{{ entry.url }}" @click.stop class="ui-cite" title="{{ entry.title|default:entry.surface_text }}">
+                {% if entry.division %}<span class="font-mono text-ink-3">{{ entry.division }}</span> {% endif %}<span class="font-mono">{{ entry.provision_id }}</span>{% if entry.provision_title %} <span class="italic">{{ entry.provision_title }}</span>{% endif %}
+            </a>{% if entry.version_label %}<span class="font-mono text-ink-3"> {{ entry.version_label }}</span>{% endif %}
             {% else %}
             <span class="font-mono text-ink-3">{{ entry.provision_id }}</span>
             {% endif %}
             {% for alt in entry.alternates %}
-            <a href="{{ alt.url }}" @click.stop class="cross-ref-alt ui-cite font-mono" title="Reading we believe was intended: {{ alt.title }}">{{ alt.provision_id }}</a>
+            <a href="{{ alt.url }}" @click.stop class="cross-ref-alt ui-cite" title="Reading we believe was intended: {{ alt.title }}"><span class="font-mono">{{ alt.provision_id }}</span>{% if alt.provision_title %} <span class="italic">{{ alt.provision_title }}</span>{% endif %}</a>
             {% endfor %}
         </li>
         {% endfor %}

@@ -126,6 +126,14 @@ class LineageLink:
     #: Empty on a locked link — that row already upsells, and a second
     #: pricing link beside the first is noise.
     compare_url: str = ""
+    #: The target's title, for the link text — a lineage link names a
+    #: *different* provision, so the link says what that page is about
+    #: (``tasks/c-lineage-anchor-text.md``).  Stamped by
+    #: :func:`annotate_lineage_titles`, for the same reason ``locked`` is
+    #: stamped: the title is a per-version field and this dataclass carries a
+    #: version *number*.  Empty for an untitled version; every render site
+    #: falls back to the id on its own.
+    title: str = ""
 
 
 @dataclass
@@ -400,3 +408,38 @@ def annotate_lineage_locks(lineages: Iterable[Lineage], user: Any) -> None:
         for direction in (lineage.predecessors, lineage.successors):
             for link in direction.links:
                 link.locked = not edition_allowed(user, link.edition.code_name)
+
+
+def annotate_lineage_titles(lineages: Iterable[Lineage]) -> None:
+    """Stamp each link's target title on it, in place.
+
+    A lineage link names a provision *other* than the one being read, so its
+    text says what the target page is about (``tasks/c-lineage-anchor-text.md``).
+    The resolver cannot supply it: the resolver works from provisions and
+    carries a version *number*, while the title is a per-version field.
+
+    The title comes from the version the link points at, never the target's
+    latest — an amendment can retitle a provision, and a link that names the
+    page differently from the page's own heading is the failure this rule
+    exists to stop.  One query for every link on the page, in the manner of
+    :func:`annotate_lineage_locks`.
+    """
+    links = [
+        link
+        for lineage in lineages
+        for direction in (lineage.predecessors, lineage.successors)
+        for link in direction.links
+    ]
+    if not links:
+        return
+    titles = {
+        (provision_pk, version): title
+        for provision_pk, version, title in (
+            CodeEditionProvisionVersion.objects
+            .filter(provision_id__in={link.provision.pk for link in links})
+            .values_list("provision_id", "version", "title")
+        )
+        if title
+    }
+    for link in links:
+        link.title = titles.get((link.provision.pk, link.version), "")

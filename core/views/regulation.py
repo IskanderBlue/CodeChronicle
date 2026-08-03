@@ -34,7 +34,11 @@ from core.models import (
     natural_provision_key,
 )
 from core.permalinks import provision_permalink_url
-from core.provision_lineage import annotate_lineage_locks, resolve_lineage
+from core.provision_lineage import (
+    annotate_lineage_locks,
+    annotate_lineage_titles,
+    resolve_lineage,
+)
 from core.seo import (
     TITLE_SUFFIX,
     provision_jsonld,
@@ -112,6 +116,7 @@ def _fallback_targets(clause: RegulationClause) -> list[dict[str, Any]]:
             "url": None,
             "level": clause.target_level,
             "version": None,
+            "title": "",
             "indent": 0,
         }]
     chosen = next(
@@ -125,6 +130,7 @@ def _fallback_targets(clause: RegulationClause) -> list[dict[str, Any]]:
         ),
         "level": prov.level,
         "version": chosen.version,
+        "title": chosen.title,
         "indent": 0,
     }]
 
@@ -162,6 +168,9 @@ def _clause_targets(clause: RegulationClause) -> list[dict[str, Any]]:
             "url": reverse("core:regulation_detail", args=[reg.pk]) if reg else None,
             "level": "regulation",
             "version": None,
+            # A regulation target has no provision title; the label already
+            # names the regulation, which is what that page is about.
+            "title": "",
             "indent": 0,
         }]
 
@@ -217,6 +226,11 @@ def _clause_targets(clause: RegulationClause) -> list[dict[str, Any]]:
             ),
             "level": prov.level,
             "version": v.version,
+            # Each target is a provision other than the one being read, so the
+            # link names it (tasks/c-lineage-anchor-text.md).  This version's
+            # own title, not the provision's latest — the title can change
+            # between versions.  Free: ``v`` is already in hand.
+            "title": v.title,
             "indent": depth * 12,
         })
     return targets
@@ -264,9 +278,16 @@ def _related_links(
     )
     return {
         "provision_id": provision.provision_id,
+        # The row names a *different* provision, so its label carries the
+        # title (tasks/c-lineage-anchor-text.md).  The last overlapping
+        # version's title is the provision's most recent reading inside the
+        # pinned window; where a title changed mid-window, each version's own
+        # title still shows on its own link below.
+        "title": versions[-1].title if versions else "",
         "versions": [
             {
                 "version": v.version,
+                "title": v.title,
                 "effective_date": v.effective_date,
                 "ineffective_date": v.ineffective_date,
                 "never_in_force": v.never_in_force,
@@ -289,6 +310,11 @@ def _sibling_link(
     back to the earliest version when nothing is in force then (e.g. the
     sibling didn't exist yet).  Returns ``None`` for a sibling with no
     versions at all.
+
+    Shaped exactly like :func:`_related_links` — a ``versions`` list holding
+    one entry — so all four nav groups (pager, parent, children) render
+    through one partial and align on one grid.  A pager row that built its
+    own markup was how the ids stopped lining up.
     """
     versions = sorted(provision.versions.all(), key=lambda v: v.version)
     if not versions:
@@ -296,10 +322,19 @@ def _sibling_link(
     chosen = next((v for v in versions if v.in_force_on(day)), versions[0])
     return {
         "provision_id": provision.provision_id,
-        "version": chosen.version,
-        "url": provision_permalink_url(
-            code_name, provision.division, provision.provision_id, chosen.version
-        ),
+        # The pager names a sibling — a different provision — so the link
+        # text carries its title (tasks/c-lineage-anchor-text.md).
+        "title": chosen.title,
+        "versions": [{
+            "version": chosen.version,
+            "title": chosen.title,
+            "effective_date": chosen.effective_date,
+            "ineffective_date": chosen.ineffective_date,
+            "never_in_force": chosen.never_in_force,
+            "url": provision_permalink_url(
+                code_name, provision.division, provision.provision_id, chosen.version
+            ),
+        }],
     }
 
 
@@ -344,6 +379,7 @@ def _provenance_result(
     next_clause = next_version.last_contributing_clause if next_version else None
     lineage = resolve_lineage([matched])[matched.pk]
     annotate_lineage_locks([lineage], user)
+    annotate_lineage_titles([lineage])
     # Commencement proof for both band edges, mirroring
     # api.formatters._format_single_result: a base version's From falls back
     # to the base regulation's own schedule, and an edition-final version's

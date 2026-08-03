@@ -420,9 +420,50 @@ def cites(
             "url": _slice_url(record, slice_, code_name),
             "title": _window_title(slice_),
             "note": record.note,
+            "provision_pk": provision.pk,
+            "version": slice_["version"],
             "alternates": _alternate_rows(record, code_name, on_date),
         })
-    return list(rows.values())
+    out = list(rows.values())
+    _stamp_provision_titles(out)
+    return out
+
+
+def _version_titles(
+    pairs: Iterable[tuple[int, int]],
+) -> dict[tuple[int, int], str]:
+    """Provision title for each ``(provision pk, version)`` pair, in one query.
+
+    Keyed by the pair, not by the provision, because a title can change
+    between versions: a link must name the title of the version it points at,
+    never the provision's latest title.  Untitled versions are left out, so a
+    caller's ``.get`` falls back to the id on its own.
+    """
+    wanted = set(pairs)
+    if not wanted:
+        return {}
+    return {
+        (provision_pk, version): title
+        for provision_pk, version, title in (
+            CodeEditionProvisionVersion.objects
+            .filter(provision_id__in={pk for pk, _ in wanted})
+            .values_list("provision_id", "version", "title")
+        )
+        if title and (provision_pk, version) in wanted
+    }
+
+
+def _stamp_provision_titles(rows: list[dict[str, Any]]) -> None:
+    """Fill ``provision_title`` on each row and its alternates, in one query.
+
+    The lists name provisions other than the one being read, so the link text
+    carries the title (``tasks/c-lineage-anchor-text.md``).  Stamped after the
+    rows are built rather than inside the loop: one query for the whole list.
+    """
+    targets = [r for row in rows for r in (row, *row.get("alternates", ()))]
+    titles = _version_titles((r["provision_pk"], r["version"]) for r in targets)
+    for row in targets:
+        row["provision_title"] = titles.get((row["provision_pk"], row["version"]), "")
 
 
 def _alternate_rows(
@@ -448,6 +489,8 @@ def _alternate_rows(
             "division": provision.division,
             "url": url,
             "title": _window_title(slice_),
+            "provision_pk": provision.pk,
+            "version": slice_["version"],
         })
     return out
 
@@ -612,6 +655,10 @@ def _cited_by_rows(
             "version": citing.version,
             "version_label": f"v{citing.version}",
             "title": f"cites “{record.surface_text}”",
+            # The citing provision is a *different* provision, so its title
+            # belongs in the link text — see tasks/c-lineage-anchor-text.md.
+            # Free here: ``from_version`` is already selected.
+            "provision_title": citing.title,
             "surface_text": record.surface_text,
             "url": provision_permalink_url(
                 code_name,

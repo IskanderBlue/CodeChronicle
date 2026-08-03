@@ -28,6 +28,7 @@ from core.provision_lineage import (
     LINKED,
     NO_DATA_YET,
     annotate_lineage_locks,
+    annotate_lineage_titles,
     resolve_lineage,
 )
 
@@ -424,6 +425,58 @@ class TestRenderFields:
         backward = lineage[lineage_fixtures["p12_renum_new"].pk].predecessors.links[0]
         assert forward.locked is True
         assert backward.locked is False
+
+
+@pytest.mark.django_db
+class TestLineageTitles:
+    """``annotate_lineage_titles`` — the link text names the target provision.
+
+    tasks/c-lineage-anchor-text.md: a lineage link goes to a *different*
+    provision, so it says what that page is about.  The title is per-version
+    and can change between versions, so the stamp must follow the version the
+    link points at.
+    """
+
+    def test_link_carries_the_targets_title(self, lineage_fixtures):
+        target = lineage_fixtures["p12_renum_new"]
+        target.versions.filter(version=0).update(title="Fire Department Access")
+        lineage = resolve_lineage([lineage_fixtures["p06_renum_old"]])
+        annotate_lineage_titles(lineage.values())
+        link = lineage[lineage_fixtures["p06_renum_old"].pk].successors.links[0]
+        assert link.title == "Fire Department Access"
+
+    def test_title_follows_the_linked_version_not_the_latest(
+        self, lineage_fixtures
+    ):
+        # A predecessor link points at the version that handed off — the last
+        # one.  Retitle v0 and v1 apart: taking the latest title is right here
+        # only by accident, so also assert the v0 title is NOT what lands.
+        source = lineage_fixtures["p06_renum_old"]
+        source.versions.filter(version=0).update(title="Older Wording")
+        source.versions.filter(version=1).update(title="Newer Wording")
+        lineage = resolve_lineage([lineage_fixtures["p12_renum_new"]])
+        annotate_lineage_titles(lineage.values())
+        link = lineage[lineage_fixtures["p12_renum_new"].pk].predecessors.links[0]
+        assert link.version == 1
+        assert link.title == "Newer Wording"
+
+    def test_untitled_target_stamps_an_empty_string(self, lineage_fixtures):
+        lineage = resolve_lineage([lineage_fixtures["p06_renum_old"]])
+        annotate_lineage_titles(lineage.values())
+        link = lineage[lineage_fixtures["p06_renum_old"].pk].successors.links[0]
+        assert link.title == ""
+
+    def test_no_links_runs_no_query(self, lineage_fixtures, django_assert_num_queries):
+        lineage = resolve_lineage([lineage_fixtures["p06_disc"]])
+        with django_assert_num_queries(0):
+            annotate_lineage_titles(lineage.values())
+
+    def test_one_query_for_every_link_on_the_page(
+        self, lineage_fixtures, django_assert_num_queries
+    ):
+        lineage = resolve_lineage(list(CodeEditionProvision.objects.all()))
+        with django_assert_num_queries(1):
+            annotate_lineage_titles(lineage.values())
 
 
 @pytest.mark.django_db

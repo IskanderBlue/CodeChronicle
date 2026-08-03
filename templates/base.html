@@ -420,6 +420,41 @@
             transition: border-color .12s, color .12s;
         }
         .ui-btn-ghost:hover { border-color: rgb(var(--secondary)); color: rgb(var(--secondary)); }
+        /* Two-line ghost button: the verb + provision id on one line, the
+           provision title under it (_viewer_edition_nav.html, where a lineage
+           row names a provision the reader has not seen). A modifier class and
+           NOT layout utilities, for the reason .is-current documents above:
+           .ui-btn-ghost sets display/align/justify in this UNLAYERED block, so
+           `flex-col items-start` would silently lose and the two lines would
+           render centred on one row. */
+        .ui-btn-ghost.is-stacked {
+            flex-direction: column; align-items: flex-start;
+            justify-content: flex-start; gap: 2px; text-align: left;
+        }
+        /* Permalink hierarchy-nav rows (_permalink_nav_item.html). Two
+           columns: a gutter for the direction glyph, then everything else.
+           Every group — pager, parent, children — renders through the same
+           partial, so all four start their ids at ONE indent whatever the
+           group and whatever the id's length. `.pnav-versions` sits in column
+           two, which is how the per-version rows line up under the id without
+           anybody adding a padding computed from the gutter plus the gap.
+
+           A component class and NOT `grid-cols-[0.85rem_1fr]`: an arbitrary
+           Tailwind utility does not exist until a build rescans the template,
+           so the first render collapsed to one column and stacked the glyph
+           above each row. This block ships with the page and cannot skew —
+           the same reason .ws-cols lives here. */
+        .pnav-row {
+            display: grid; grid-template-columns: 0.85rem 1fr;
+            align-items: baseline; column-gap: 6px; row-gap: 4px;
+        }
+        .pnav-versions {
+            grid-column-start: 2;
+            display: flex; flex-direction: column; gap: 2px;
+            /* A step inside the id above, so a column of dates reads as
+               belonging to that row rather than as more ids. */
+            padding-left: 8px;
+        }
 
         /* ── Verification "attestation rail" ───────────────────────────────
            Replaces the consolidation line in the provenance band. ALL % come

@@ -6,6 +6,12 @@
    loads content from (query_date/query_code are re-stamped on click); a
    locked row (free-tier gate) keeps the edition visible but links to
    pricing instead. Marker rows carry no action.
+
+   Each row names a provision the reader has not seen, so the row carries the
+   title as well as the id (tasks/c-lineage-anchor-text.md): the verb and id on
+   the first line, the title under it. `link.title` falls back to the id in
+   core.views.search._lineage_nav_direction, so the second line is suppressed
+   when the two match — one line, never the id twice.
 {% endcomment %}
 <div class="flex flex-col gap-2"
     data-edition-nav
@@ -15,16 +21,26 @@
     {% if predecessors.state == 'linked' %}
     {% for link in predecessors.links %}
     {% if link.locked %}
-    <a href="{% url 'core:pricing' %}"
-        class="ui-btn-ghost w-full px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-3">
-        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-        {{ link.edition_label }} &middot; {{ link.id }} &mdash; Pro
+    {% comment %} rel="nofollow": the whole chip is the click target, so the
+       provision title sits inside an anchor whose target is the pricing page.
+       The title describes the provision, not that page, and nofollow stops the
+       link text being read as a claim about it. The rail's locked row solves
+       the same problem by leaving only "— Pro" inside the anchor; here the
+       chip must stay clickable end to end. {% endcomment %}
+    <a href="{% url 'core:pricing' %}" rel="nofollow"
+        class="ui-btn-ghost is-stacked w-full min-w-0 px-3 py-2 text-ink-3">
+        <span class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.06em]">
+            <svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+            {{ link.edition_label }} &middot; {{ link.id }} &mdash; Pro
+        </span>
+        {% if link.title != link.id %}<span class="w-full truncate text-[12px] italic">{{ link.title }}</span>{% endif %}
     </a>
     {% else %}
     <button type="button"
         data-edition-result='{"id":"{{ link.id|escapejs }}","title":"{{ link.title|escapejs }}","code":"{{ link.code|escapejs }}","code_display_name":"{{ link.code_display_name|escapejs }}","division":"{{ link.division|escapejs }}"}'
-        class="ui-btn-ghost w-full gap-1 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em]">
-        <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition_label }}{% endif %} &middot;</span> {{ link.verb }} {{ link.id }}
+        class="ui-btn-ghost is-stacked w-full min-w-0 px-3 py-2">
+        <span class="font-mono text-[11px] uppercase tracking-[0.06em]"><span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition_label }}{% endif %} &middot;</span> {{ link.verb }} {{ link.id }}</span>
+        {% if link.title != link.id %}<span class="w-full truncate text-[12px] italic">{{ link.title }}</span>{% endif %}
     </button>
     {% endif %}
     {% endfor %}
@@ -44,16 +60,26 @@
     {% if successors.state == 'linked' %}
     {% for link in successors.links %}
     {% if link.locked %}
-    <a href="{% url 'core:pricing' %}"
-        class="ui-btn-ghost w-full px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-ink-3">
-        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-        {{ link.edition_label }} &middot; {{ link.id }} &mdash; Pro
+    {% comment %} rel="nofollow": the whole chip is the click target, so the
+       provision title sits inside an anchor whose target is the pricing page.
+       The title describes the provision, not that page, and nofollow stops the
+       link text being read as a claim about it. The rail's locked row solves
+       the same problem by leaving only "— Pro" inside the anchor; here the
+       chip must stay clickable end to end. {% endcomment %}
+    <a href="{% url 'core:pricing' %}" rel="nofollow"
+        class="ui-btn-ghost is-stacked w-full min-w-0 px-3 py-2 text-ink-3">
+        <span class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.06em]">
+            <svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+            {{ link.edition_label }} &middot; {{ link.id }} &mdash; Pro
+        </span>
+        {% if link.title != link.id %}<span class="w-full truncate text-[12px] italic">{{ link.title }}</span>{% endif %}
     </a>
     {% else %}
     <button type="button"
         data-edition-result='{"id":"{{ link.id|escapejs }}","title":"{{ link.title|escapejs }}","code":"{{ link.code|escapejs }}","code_display_name":"{{ link.code_display_name|escapejs }}","division":"{{ link.division|escapejs }}"}'
-        class="ui-btn-ghost w-full gap-1 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em]">
-        <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition_label }}{% endif %} &middot;</span> {{ link.verb }} {{ link.id }}
+        class="ui-btn-ghost is-stacked w-full min-w-0 px-3 py-2">
+        <span class="font-mono text-[11px] uppercase tracking-[0.06em]"><span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition_label }}{% endif %} &middot;</span> {{ link.verb }} {{ link.id }}</span>
+        {% if link.title != link.id %}<span class="w-full truncate text-[12px] italic">{{ link.title }}</span>{% endif %}
     </button>
     {% endif %}
     {% endfor %}

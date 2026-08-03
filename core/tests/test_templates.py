@@ -1040,6 +1040,29 @@ class TestNeverInForceRail:
         assert "Never in force" not in html
 
 
+def test_permalink_nav_row_puts_each_version_on_its_own_row():
+    """Several overlapping versions stack one per row in column two, under
+    the id — a wrapping line of dates gave no way to tell them apart."""
+    html = render_to_string(
+        "regulation/_permalink_nav_item.html",
+        {"glyph": "↓", "item": {
+            "provision_id": "1.10.2.4.", "title": "Time Periods", "versions": [
+                {"version": 0, "effective_date": date(2011, 1, 1),
+                 "ineffective_date": date(2016, 1, 1), "never_in_force": False,
+                 "url": "/x/v0/"},
+                {"version": 1, "effective_date": date(2016, 1, 1),
+                 "ineffective_date": date(2014, 1, 1), "never_in_force": True,
+                 "url": "/x/v1/"},
+            ]}},
+    )
+    assert '<div class="pnav-row">' in html
+    assert "↓" in html
+    assert '<ul class="pnav-versions">' in html
+    assert html.count("<li>") == 2
+    assert ">1 Jan 2011</a>" in html
+    assert ">never in force</a>" in html
+
+
 def test_permalink_nav_chip_title_says_never_in_force():
     html = render_to_string(
         "regulation/_permalink_nav_item.html",
@@ -1053,7 +1076,130 @@ def test_permalink_nav_chip_title_says_never_in_force():
         ]}},
     )
     assert "in force 1 Jan 2011 to 1 Jan 2016" in html
-    assert 'title="never in force"' in html
+    # The chips name the same provision at different versions, so the date is
+    # the link text and the hover leads with the version it points at.
+    assert "v1 &middot; never in force" in html
+    assert ">never in force</a>" in html
+    assert ">1 Jan 2011</a>" in html
+
+
+class TestAnchorTextNamesTheSubject:
+    """tasks/c-lineage-anchor-text.md — what a link's text may claim.
+
+    Two halves, and the tests keep them apart.  A link to a *different*
+    provision names it, id and title.  A link to *another version of the
+    same* provision keeps its date and version, and puts the title in the
+    hover: down a chain the id and title do not change, so a title in every
+    link would make every link read alike and repeat the page heading.
+    """
+
+    def test_lineage_row_puts_the_title_in_the_hover_not_the_row(self):
+        """The rail is 19rem and every other row is an id and a date, so the
+        lineage row keeps its prose in the hover — the one place the rule
+        yields to the surface."""
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked",
+            links=[_lineage_link(title="Fire Department Access Routes")],
+        )})
+        assert 'title="9.10.18.7. &mdash; Fire Department Access Routes"' in html
+        anchor_text = (
+            html.split('href="/provision/OBC_2012/B/9.10.18.7./v0/"')[1]
+            .split(">", 1)[1]
+            .split("</a>")[0]
+        )
+        assert "9.10.18.7." in anchor_text
+        assert "Fire Department Access Routes" not in anchor_text
+
+    def test_untitled_lineage_link_hovers_the_id_alone(self):
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked", links=[_lineage_link(title="")],
+        )})
+        # Never a dangling separator with nothing after it.
+        assert 'title="9.10.18.7."' in html
+        assert "&mdash; \"" not in html
+
+    def test_locked_lineage_row_hovers_the_title_beside_the_upsell(self):
+        html = _rail({"lineage_successors": LineageDirection(
+            state="linked",
+            links=[_lineage_link(locked=True, title="Fire Department Access Routes")],
+        )})
+        assert (
+            'title="Fire Department Access Routes &middot; Available on Pro"' in html
+        )
+        assert "9.10.18.7. &mdash; Pro" in html
+
+    def test_chain_row_keeps_its_version_and_puts_the_title_in_the_hover(self, db):
+        """The chain names one provision at several dates, so the link text
+        stays the version and the title goes to the hover."""
+        code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+        edition = CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        prov = CodeEditionProvision.objects.create(
+            edition=edition, provision_id="9.10.18.6.", level="article", division="B",
+        )
+        v0 = CodeEditionProvisionVersion.objects.create(
+            provision=prov, version=0, title="Alarm and Detection",
+            effective_date=date(2007, 1, 1), ineffective_date=date(2012, 1, 1),
+        )
+        # The title changed at v1 — the hover must follow the version it links.
+        v1 = CodeEditionProvisionVersion.objects.create(
+            provision=prov, version=1, title="Fire Alarm and Detection",
+            effective_date=date(2012, 1, 1),
+        )
+        reg = Regulation.objects.create(
+            reg_id="315/10", edition=edition, role="amendment",
+            effective_date=date(2012, 1, 1),
+        )
+        clause = RegulationClause.objects.create(regulation=reg, clause_id="3(3)")
+        CodeEditionProvisionVersionClause.objects.create(
+            version=v1, clause=clause, apply_order=0,
+        )
+        html = _rail({
+            "version": v0, "amendment_chain": [v0, v1], "next_version": v1,
+        })
+        assert 'title="Fire Alarm and Detection"' in html
+        assert "v1 &rarr;" in html
+        # The chain link text names no title — that is the whole point.
+        assert ">Fire Alarm and Detection<" not in html
+        assert "View this version" not in html
+
+    def test_chain_row_without_a_title_falls_back_to_the_id(self, chain_no_titles):
+        v0, v1 = chain_no_titles
+        html = _rail({
+            "version": v0, "amendment_chain": [v0, v1], "next_version": v1,
+        })
+        # Never an empty hover: the id stands in for a missing title.
+        assert 'title=""' not in html
+        assert 'title="9.10.18.6."' in html
+
+    @pytest.fixture
+    def chain_no_titles(self, db):
+        code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+        edition = CodeEdition.objects.create(
+            code=code, edition_id="2006", year=2006,
+            effective_date=date(2006, 12, 31),
+        )
+        prov = CodeEditionProvision.objects.create(
+            edition=edition, provision_id="9.10.18.6.", level="article", division="B",
+        )
+        v0 = CodeEditionProvisionVersion.objects.create(
+            provision=prov, version=0,
+            effective_date=date(2007, 1, 1), ineffective_date=date(2012, 1, 1),
+        )
+        v1 = CodeEditionProvisionVersion.objects.create(
+            provision=prov, version=1, effective_date=date(2012, 1, 1),
+        )
+        reg = Regulation.objects.create(
+            reg_id="315/10", edition=edition, role="amendment",
+            effective_date=date(2012, 1, 1),
+        )
+        clause = RegulationClause.objects.create(regulation=reg, clause_id="3(3)")
+        CodeEditionProvisionVersionClause.objects.create(
+            version=v1, clause=clause, apply_order=0,
+        )
+        return v0, v1
 
 
 def test_revoked_version_renders_tombstone_warning():
