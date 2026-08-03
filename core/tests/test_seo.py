@@ -6,6 +6,7 @@ declares v3 canonical tells the crawler to ignore everything we gave it, and
 nothing else in this module matters if that breaks.
 """
 
+import re
 from datetime import date
 
 import pytest
@@ -171,12 +172,31 @@ class TestSocialCard:
         assert '<meta property="og:image:width" content="1200">' in body
         assert '<meta property="og:image:height" content="630">' in body
 
-    def test_a_locked_page_carries_no_card(self, client, provision, settings):
-        """A forwarded link must not promise a provision and deliver an upsell."""
+    def test_a_locked_page_carries_a_generic_card(self, client, provision, settings):
+        """It names the edition, and it names no provision.
+
+        A card that quoted the heading would promise a text the page does not
+        deliver.  No card at all is worse still: the link arrives as a bare URL
+        and reads as broken, which is the failure the card exists to prevent.
+
+        ``og:url`` still carries the provision number, because it is the URL
+        the reader pasted.  What must not appear is a claim about the text.
+        """
         settings.FREE_TIER_CODE_NAMES = ["OBC_2012"]
         response = client.get("/provision/OBC_2006/B/3.2.5.7./v0/")
         assert response.status_code == 403
-        body = response.content.decode()
         assert "locked_edition.html" in [t.name for t in response.templates]
-        assert "og:" not in body
-        assert "twitter:" not in body
+        body = response.content.decode()
+        assert '<meta property="og:title" content="OBC 2006 is Pro content' in body
+        assert '<meta name="twitter:card" content="summary_large_image">' in body
+        # The heading is the promise, and it appears nowhere on the page.
+        assert "Fire Department Access Routes" not in body
+        for tag in ("og:title", "og:description", "twitter:title", "twitter:description"):
+            content = re.search(rf'"{tag}" content="([^"]*)"', body)
+            assert content is not None
+            assert "3.2.5.7." not in content.group(1)
+
+    def test_a_locked_page_keeps_its_own_tab_title(self, client, provision, settings):
+        settings.FREE_TIER_CODE_NAMES = ["OBC_2012"]
+        body = client.get("/provision/OBC_2006/B/3.2.5.7./v0/").content.decode()
+        assert "<title>OBC 2006 — Pro content | CodeChronicle</title>" in body

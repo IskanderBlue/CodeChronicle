@@ -58,6 +58,11 @@ MONO_CANDIDATES = (
 
 TAGLINE = "The Ontario Building Code: dated, sourced, and searchable."
 
+#: A card travels further than the link it came from — it is screenshotted,
+#: pasted into a deck, and forwarded again.  The domain is how a reader who
+#: meets the image alone can get back to the site.
+DOMAIN = "codechronicle.ca"
+
 #: Where the text block starts, and how wide it may run before it collides
 #: with the right edge.
 LEFT = 96
@@ -151,6 +156,16 @@ class Command(BaseCommand):
             draw.text((LEFT, 456), span.upper(), font=mono, fill=OXBLOOD)
         if label:
             draw.text((LEFT, 502), label.upper(), font=mono, fill=INK_3)
+
+        # Right-aligned against the same margin the text block uses, so the
+        # domain reads as a colophon rather than as another line of the block.
+        domain_font = _fit(draw, DOMAIN, MONO_CANDIDATES, 24)
+        draw.text(
+            (WIDTH - LEFT - draw.textlength(DOMAIN, font=domain_font), 502),
+            DOMAIN,
+            font=domain_font,
+            fill=INK_3,
+        )
 
         image.save(out, "PNG", optimize=True)
         logger.info(

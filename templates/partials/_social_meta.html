@@ -14,9 +14,10 @@ Three rules hold this together:
   canonical link exists: one provision is reachable at every version of its
   amendment chain, and a share of v1 must credit the same page a share of v3
   credits.
-* A locked page carries no card at all. It overrides the social block with
-  nothing. A forwarded link must not promise a provision and deliver an
-  upsell.
+* A locked page carries a GENERIC card. It names the edition and says the
+  edition is Pro content, and it names no provision, so a forwarded link
+  cannot promise a text it will not deliver. It does carry a card, because a
+  link with no card arrives as a bare URL and looks broken.
 
 The image path is resolved by the static tag HERE, at request time. Resolving
 it at import time crashes the deploy, because the manifest does not exist

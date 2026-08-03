@@ -1,11 +1,10 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ edition_display_name }} — Pro content - CodeChronicle{% endblock %}
-
-{% comment %} No social card on a locked page. A forwarded link must not
-   promise a provision and then deliver an upsell, so this page tells a
-   crawler nothing rather than something it cannot honour. {% endcomment %}
-{% block social %}{% endblock %}
+{% comment %} The title and the social card both come from the view, which
+   names the edition and says the edition is Pro content. The card names no
+   provision, so a forwarded link cannot promise a text it will not deliver.
+   An earlier version emitted no card at all; a link with no card arrives as
+   a bare URL and looks broken, which is worse. {% endcomment %}
 
 {% block content %}
 <div class="max-w-2xl mx-auto px-4 py-16">

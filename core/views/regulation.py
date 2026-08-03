@@ -31,7 +31,7 @@ from core.models import (
 )
 from core.permalinks import provision_permalink_url
 from core.provision_lineage import annotate_lineage_locks, resolve_lineage
-from core.seo import provision_page_meta
+from core.seo import TITLE_SUFFIX, provision_page_meta
 from core.verification import base_input, build_rail
 
 from .search import _active_versions
@@ -685,7 +685,15 @@ def _locked_edition_response(
     here rather than at each call site — a new gated view gets the signal by
     using this helper.  ``surface`` says which view refused; the caller must
     pass it since the helper can't tell.
+
+    The page carries a **generic** social card.  It names the edition and says
+    the edition is Pro content, and it names no provision, so a forwarded link
+    cannot promise a text it will not deliver.  The first design emitted no
+    card at all, which read worse than an upsell: a link with no card arrives
+    in Slack as a bare URL, which looks broken, and looking broken is the
+    failure the card exists to prevent.
     """
+    edition_name = f"{edition.code.code} {edition.edition_id}".strip()
     record_event(
         request,
         event_type=EngagementEvent.EventType.LOCKED_CONTENT_VIEW,
@@ -703,8 +711,13 @@ def _locked_edition_response(
         "locked_edition.html",
         {
             "edition": edition,
-            "edition_display_name": (
-                f"{edition.code.code} {edition.edition_id}".strip()
+            "edition_display_name": edition_name,
+            "meta_title": f"{edition_name} — Pro content{TITLE_SUFFIX}",
+            "social_title": f"{edition_name} is Pro content on CodeChronicle",
+            "meta_description": (
+                f"{edition_name} is part of the Pro plan. The free plan covers "
+                "the Ontario Building Code 2006 in full, with its amendment "
+                "history."
             ),
         },
         status=403,

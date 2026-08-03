@@ -1,13 +1,15 @@
 # Social preview cards (Open Graph)
 
-**Prefix:** `a-` — high priority. The code is done; one manual check is left.
+**Prefix:** `a-` — high priority. The code is done and a real crawler confirms
+it.
 
-**Status 2026-08-02: shipped, and it needs your eyes on a real crawler.**
-Every page carries `og:` and `twitter:` tags, the static card is drawn and
-committed, and a locked page carries no card. What remains is the "Verify"
-step below: only the LinkedIn and Slack crawlers can prove what they read, and
-pasting a link is your call, not mine. The generated per-provision image
-(option 2 under "The image") is still open and is its own piece of work.
+**Status 2026-08-02: shipped and confirmed on Slack.** Every page carries
+`og:` and `twitter:` tags, the static card is drawn and committed, and a locked
+page carries no card. A pasted link now shows a caption in Slack, which is the
+proof no test can give: Slack reads the page itself and renders from the tags
+alone. The LinkedIn Post Inspector is the one surface still unchecked, and it
+reads the same tags. The generated per-provision image (option 2 under "The
+image") is still open and is its own piece of work.
 
 ## What shipped
 
@@ -19,8 +21,12 @@ pasting a link is your call, not mine. The generated per-provision image
   (scheme and host). The canonical link now reads `site_origin` too, instead
   of rebuilding the same string.
 - `templates/partials/_social_meta.html` emits the tags. `base.html` includes
-  it in a `social` block, so a page suppresses its card by overriding the
-  block with nothing — which `locked_edition.html` does.
+  it in a `social` block, so a page can suppress its card by overriding the
+  block with nothing. No page does. A **locked** page carries a generic card
+  instead: it names the edition, says the edition is Pro content, and names no
+  provision. The first design emitted no card there, and a link with no card
+  arrives as a bare URL and looks broken — the failure the card exists to
+  prevent.
 - `provision_page_meta` adds `social_title` (the title without the
   ` | CodeChronicle` tail) and `og_type: "article"`. Both derive from strings
   the function already built.
@@ -89,8 +95,13 @@ Two options. Do the first, and treat the second as a later improvement.
   time. See the memory note `project_static_url_import_time`.
 - **`og:url` is the canonical URL**, not the current page, for the same reason
   the canonical tag is.
-- **Never emit a card for a locked page.** A forwarded link should not promise
-  a provision and deliver an upsell.
+- **A locked page carries a generic card, not none and not the provision's.**
+  A card that quotes the heading promises a text the page will not deliver. No
+  card at all is worse: the link arrives as a bare URL and reads as broken.
+- **Slack caches the image separately from the metadata**, keyed on the image
+  URL. Because every page shares one card, a fresh page URL does not give the
+  image a fresh key. Only a new image URL does, and the filename is
+  content-hashed, so the image itself must change.
 
 ## Verify
 
@@ -98,13 +109,15 @@ Paste a URL into the LinkedIn Post Inspector, and into a Slack message in a
 private channel. Both show what their crawler actually read. Check three
 shapes: the landing page, a provision permalink, and the pricing page.
 
+Slack: done, 2026-08-02. A pasted link shows a caption.
+
 ## Done when
 
 - ~~Every page carries `og:` and `twitter:` tags with values from
   `core/seo.py`.~~ Done.
-- A provision link pasted into Slack shows the provision number, the heading
-  and the window. The tag says so — `og:title` reads
-  "3.2.5.7. Fire Department Access Routes — Ontario Building Code 2006 (in
-  force 31 December 2006 to 1 January 2009)" — but only the crawler proves it.
-- ~~Locked pages carry no card, with a test.~~ Done
-  (`test_a_locked_page_carries_no_card`).
+- ~~A provision link pasted into Slack shows the provision number, the heading
+  and the window.~~ Done, 2026-08-02. The link renders with a caption.
+  `og:title` reads "3.2.5.7. Fire Department Access Routes — Ontario Building
+  Code 2006 (in force 31 December 2006 to 1 January 2009)".
+- ~~Locked pages carry a generic card that names no provision, with a test.~~
+  Done (`test_a_locked_page_carries_a_generic_card`).
