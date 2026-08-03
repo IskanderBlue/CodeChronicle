@@ -1,0 +1,224 @@
+"""The comparison page: any two provision versions, side by side.
+
+The comparison is a *page*, not a mode.  A reader arrives by a link and leaves
+by browser back or by one of the two sides, each of which links to its own
+permalink.  There is nothing to arm and nothing to cancel, which is why there
+is no "stop comparing" control here.
+
+The page drops the provenance rail that every other provision surface carries.
+The rail states the provenance of *one* version, and here there are two; it
+would have to pick a side or say everything twice.  The twin header is the
+rail's content, re-cut for two.
+"""
+
+from datetime import date
+from typing import Any
+
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import render
+
+from api.formatters import _diff_html_content, diff_is_empty, diff_similarity
+from core.access import edition_allowed
+from core.compare import (
+    REDLINE_FLOOR,
+    pairing_basis,
+    parse_version_ref,
+    resolve_version_ref,
+    version_ref,
+    version_timeline,
+)
+from core.cross_refs import annotate_versions
+from core.events import record_event
+from core.models import CodeEditionProvisionVersion, EngagementEvent
+from core.permalinks import provision_permalink_url
+from core.seo import TITLE_SUFFIX
+
+from .regulation import _locked_edition_response
+
+
+def _side(version: CodeEditionProvisionVersion, label: str) -> dict[str, Any]:
+    """One side of the comparison, with everything the twin header states."""
+    provision = version.provision
+    edition = provision.edition
+    clause = version.last_contributing_clause
+    return {
+        "label": label,
+        "version": version,
+        "provision": provision,
+        "edition": edition,
+        "edition_name": f"{edition.code.code} {edition.edition_id}".strip(),
+        "regulation": clause.regulation if clause is not None else None,
+        "url": provision_permalink_url(
+            edition.code_name,
+            provision.division,
+            provision.provision_id,
+            version.version,
+        ),
+        "ref": version_ref(version).path,
+    }
+
+
+def _missing(request: HttpRequest, message: str) -> HttpResponse:
+    """A comparison that cannot be built, said plainly rather than 404ed.
+
+    A reader reaches this by editing a URL or by following a link to a
+    provision that has since been reloaded under different ids.  Naming what
+    is wrong is more use than a 404, and the page offers the search box.
+    """
+    return render(
+        request,
+        "compare_missing.html",
+        {
+            "message": message,
+            "meta_title": f"Comparison not found{TITLE_SUFFIX}",
+            "meta_description": (
+                "This comparison names a provision version that is not in the "
+                "corpus."
+            ),
+        },
+        status=404,
+    )
+
+
+def compare_versions(request: HttpRequest) -> HttpResponse:
+    """Compare the two versions named by ``?a=`` and ``?b=``.
+
+    Both references use the permalink path form, so a reader builds a
+    comparison by copying two URLs.  The pair is ordered by effective date
+    before rendering, not by which parameter it arrived in: a comparison reads
+    earlier-to-later whichever way round the reader named it.
+    """
+    ref_a = parse_version_ref(request.GET.get("a"))
+    ref_b = parse_version_ref(request.GET.get("b"))
+    if ref_a is None or ref_b is None:
+        return _missing(
+            request,
+            "A comparison needs two versions, each named the way a permalink "
+            "names one — for example OBC_2006/B/3.2.5.7./v0.",
+        )
+
+    version_a = resolve_version_ref(ref_a)
+    if version_a is None:
+        return _missing(
+            request,
+            f"{ref_a.provision_id} v{ref_a.version} is not in {ref_a.code_edition}.",
+        )
+    version_b = resolve_version_ref(ref_b)
+    if version_b is None:
+        return _missing(
+            request,
+            f"{ref_b.provision_id} v{ref_b.version} is not in {ref_b.code_edition}.",
+        )
+
+    if version_a.pk == version_b.pk:
+        return _missing(
+            request, "A comparison needs two different versions.",
+        )
+
+    # Gate both sides.  Same-edition comparison inside the free tier passes;
+    # a cross-edition pair with one side outside it does not.  This is the
+    # tier rule applied twice, never a second definition of a tier.
+    for version in (version_a, version_b):
+        edition = version.provision.edition
+        if not edition_allowed(request.user, edition.code_name):
+            return _locked_edition_response(request, edition, surface="compare")
+
+    # A comparison reads earlier-to-later whichever way round the reader named
+    # it.  A version that was never in force has no effective date; it sorts
+    # first rather than raising, and the header says "never in force" for it.
+    earlier, later = sorted(
+        (version_a, version_b),
+        key=lambda v: (v.effective_date or date.min, v.version),
+    )
+
+    cross_edition = earlier.provision.edition_id != later.provision.edition_id
+
+    # Engagement: a comparison was delivered.  After the gate, so a refusal
+    # counts as a LOCKED_CONTENT_VIEW and never also as value delivered — the
+    # two numbers are the numerator and the denominator of the same question.
+    # The object is the later version, because that is the one the reader was
+    # almost always looking at when they asked.  Non-fatal.
+    record_event(
+        request,
+        event_type=EngagementEvent.EventType.VERSION_COMPARISON,
+        object_type="CodeEditionProvisionVersion",
+        object_id=later.pk,
+        search_id=request.GET.get("search_id"),
+        context={
+            "a": version_ref(earlier).path,
+            "b": version_ref(later).path,
+            "cross_edition": cross_edition,
+        },
+    )
+
+    # Turn each side's citations into permalinks, one query per side.  A
+    # citation is a link on every other provision surface, and a reader who
+    # follows one out of a comparison is doing exactly what a comparison
+    # prompts.  Per side, because ``annotate_versions`` scopes the links to one
+    # edition and a cross-edition pair has two — a citation in the 1997 text
+    # must resolve inside OBC 1997, not inside the edition on the other side.
+    for version in (earlier, later):
+        annotate_versions([version], version.provision.edition.code_name)
+
+    basis = pairing_basis(earlier, later)
+    similarity = diff_similarity(earlier.html, later.html)
+    forced = request.GET.get("redline") == "on"
+    # Below the floor a redline is two panes of almost entirely marked text.
+    # The reader may disagree with the threshold, so the fallback is a default
+    # and not a verdict: `?redline=on` draws it anyway.
+    redline = forced or similarity >= REDLINE_FLOOR
+
+    old_diff, new_diff = (None, None)
+    if redline:
+        # Diff the linked bodies, so the citations survive into the redline.
+        # The differ passes tags through untouched and compares words only, so
+        # the anchors change neither what is marked nor where.
+        old_diff, new_diff = _diff_html_content(
+            earlier.linked_html or earlier.html,
+            later.linked_html or later.html,
+        )
+
+    side_a = _side(earlier, "A")
+    side_b = _side(later, "B")
+    title = (
+        f"{side_a['provision'].provision_id} — "
+        f"{side_a['edition_name']} compared with {side_b['edition_name']}"
+    )
+
+    return render(
+        request,
+        "compare.html",
+        {
+            "side_a": side_a,
+            "side_b": side_b,
+            # The same two dicts as a list, because the twin header loops over
+            # them and a Django `for` cannot take a tuple literal.
+            "sides": [side_a, side_b],
+            "old_diff": old_diff,
+            "new_diff": new_diff,
+            "redline": redline,
+            # True only when the floor is what suppressed the redline, so the
+            # page explains the fallback rather than the reader guessing.
+            "redline_suppressed": not redline,
+            "redline_forced": forced,
+            # Stated above the panes.  A redline marks what changed, so an
+            # unmarked pair and an unfinished read look the same until the
+            # reader has been through both columns to the end.
+            "text_unchanged": diff_is_empty(earlier.html, later.html),
+            "similarity_pct": round(similarity * 100),
+            "basis": basis,
+            "timeline": version_timeline(earlier, later, request.user),
+            "cross_edition": cross_edition,
+            "force_redline_url": (
+                f"?a={side_a['ref']}&b={side_b['ref']}&redline=on"
+            ),
+            "meta_title": f"{title}{TITLE_SUFFIX}",
+            "social_title": title,
+            "meta_description": (
+                f"{side_a['provision'].provision_id} as it read in "
+                f"{side_a['edition_name']}, beside "
+                f"{side_b['provision'].provision_id} in "
+                f"{side_b['edition_name']}, with the amending regulations named."
+            ),
+        },
+    )

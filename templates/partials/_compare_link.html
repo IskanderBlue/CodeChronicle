@@ -1,18 +1,25 @@
-{% comment %} Inline "compare" affordance for the provenance rail.
+{% comment %} Per-row "compare" affordance in the provenance rail.
 
-   Links the currently-viewed provision permalink to itself with
-   ``?compare=<target_version>`` so the matched provision renders as a
-   two-version accordion (provenance/_transition_view.html) — letting a reader
-   lay any two versions of the same provision side by side without a query date
-   that happens to fall in an overlap window.
+   Opens ``/compare/`` on this row's version and the version being read.
 
-   Context (inherited from the rail):
-     `compare_self_url`        — permalink to the pinned version (no compare arg)
-     `compare_active_version`  — the version currently being compared, if any
-     `target_version`          — the version int this link compares against
+   It used to hang ``?compare=<n>`` off the permalink and render a second
+   comparison in place. That was the same feature built twice: the in-place
+   one could not cross an edition, had no redline floor — so two versions
+   sharing almost nothing rendered as a wall of marked text with no
+   explanation — and its URL named a permalink with a modifier rather than
+   naming a comparison. There is now one comparison and one URL for it.
+
+   Because nothing is toggled any more, there is no "comparing ×" state to
+   keep in sync: the link navigates, and browser back is the way out.
+
+   `target.compare_url` is built by ``core.compare.annotate_chain_comparisons``
+   — never here. The earlier version goes on the A side, and that ordering is
+   a rule rather than a layout choice.
+
+   Context: `target` — a CodeEditionProvisionVersion from the chain.
 {% endcomment %}
-{% if target_version == compare_active_version %}
-<a href="{{ compare_self_url }}" @click.stop class="shrink-0 font-mono text-[10px] uppercase tracking-[0.06em] text-secondary ui-cite" title="Stop comparing">comparing &times;</a>
-{% else %}
-<a href="{{ compare_self_url }}?compare={{ target_version }}" @click.stop class="shrink-0 font-mono text-[10px] ui-cite" title="Compare this version with the one you're viewing">compare</a>
+{% if target.compare_url %}
+<a href="{{ target.compare_url }}" @click.stop
+   class="shrink-0 font-mono text-[10px] ui-cite"
+   title="Compare this version with the one you are reading">compare</a>
 {% endif %}

@@ -1,0 +1,22 @@
+{% comment %} The transition card's link to /compare/.
+
+   One card, one comparison, two surfaces: the desktop banner toggle
+   (_result_citation_header.html) and the mobile "previous version" disclosure
+   (_result_expanded.html) each sit beside a copy of this link. It lives in its
+   own file because those two surfaces have drifted before — the whole
+   metadata_in_rail fork is that drift — and a link whose wording and title
+   text are written once cannot.
+
+   The link is never gated. Both panes are already on screen, so both editions
+   have already passed the tier check; asking again would be a second
+   definition of a tier (core/access.py owns the only one).
+
+   Context: `compare_url` (api.formatters._transition_compare_url; empty when
+   the pair carries no version objects, and then nothing renders — a dead
+   anchor is worse than no anchor).
+{% endcomment %}
+{% if compare_url %}
+<a href="{{ compare_url }}" @click.stop
+    class="ui-cite font-mono text-[10px] font-semibold uppercase tracking-[0.1em]"
+    title="Open these two versions on the comparison page">Compare</a>
+{% endif %}

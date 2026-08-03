@@ -76,7 +76,7 @@ this page states each string once.
             {% comment %} lg+: wide in-force band in the middle, metadata in the
                right rail. Below lg: the full stacked banner (band + metadata). {% endcomment %}
             <div class="hidden lg:block">{% include "partials/_provenance_band.html" with result=provenance allow_report=True report_surface="permalink" %}</div>
-            <div class="lg:hidden">{% include "partials/_provenance_banner.html" with result=provenance allow_report=True report_surface="permalink" %}</div>
+            <div class="lg:hidden">{% include "partials/_provenance_banner.html" with result=provenance allow_report=True report_surface="permalink" compare_enabled=True allow_compare=True %}</div>
             {% endif %}
             <div class="mt-3 border border-rule">
                 {% include "partials/_viewer_section_content.html" %}
@@ -94,7 +94,7 @@ this page states each string once.
         {# Col 3 — provenance metadata rail (lg+ only; folded into the banner on mobile) #}
         {% if provenance %}
         <div class="hidden lg:block lg:sticky lg:top-4">
-            {% include "partials/_provenance_rail.html" with result=provenance compare_enabled=True compare_active_version=compare_version_number %}
+            {% include "partials/_provenance_rail.html" with result=provenance compare_enabled=True allow_compare=True %}
         </div>
         {% endif %}
     </div>

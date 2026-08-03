@@ -324,6 +324,14 @@ class EngagementEvent(models.Model):
         # / edition_chain / search_viewer) from an impression (search_results,
         # where the user only saw a locked count).
         LOCKED_CONTENT_VIEW = "locked_content_view", "Locked content view"
+        # A reader opened /compare/ on two versions that both resolved and
+        # both passed the gate.  Recorded separately from
+        # PROVISION_VERSION_VIEW because a comparison is not two views: it is
+        # the question the product exists to answer, and the one a reader
+        # cannot answer with two browser tabs.  ``context.cross_edition`` is
+        # the split that matters — a cross-edition comparison needs Pro on at
+        # least one side, so it is the value the price buys.
+        VERSION_COMPARISON = "version_comparison", "Version comparison"
         # An anonymous visitor asked for a search after spending the day's
         # allowance.  The other gate event (LOCKED_CONTENT_VIEW) records
         # content withheld; this one records the *search* withheld, and it is

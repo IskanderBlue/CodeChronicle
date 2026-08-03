@@ -333,6 +333,30 @@
         .ui-btn-ghost.is-current {
             color: rgb(var(--secondary)); border-color: rgb(var(--secondary));
         }
+        /* Version-timeline marks (/compare/, _version_timeline.html). Component
+           classes and not utilities for one reason: each mark knocks the dotted
+           connector out behind it, and the fill must be `--backdrop` — the token
+           that follows whatever container the box is placed in. Written inline
+           on the element that fill would beat the hover utility, so the pair
+           has to live together in a rule. Three states, one meaning each:
+           .tl-on = this side is here, .tl-taken = the other side is here (a real
+           option but for that), .tl-open = a click moves this side here. Only
+           .tl-open gets the strong outline, because it is the only one a click
+           does anything to. */
+        .tl-on, .tl-taken, .tl-open {
+            display: block; width: 12px; height: 12px; border-radius: 50%;
+        }
+        .tl-on { background: rgb(var(--secondary)); }
+        .tl-taken {
+            border: 1px solid rgb(var(--ink-3)); background: rgb(var(--backdrop));
+        }
+        .tl-open {
+            border: 2px solid rgb(var(--secondary)); background: rgb(var(--backdrop));
+            transition: background .12s;
+        }
+        .tl-open:hover { background: rgb(var(--secondary)); }
+        /* The date label knocks the connector out the same way. */
+        .tl-date { background: rgb(var(--backdrop)); padding: 0 4px 0 2px; }
         /* Relevance-datum instrument (results header -> "close matches").
            Geometry lives here rather than in Tailwind utilities for the same
            survive-the-purge reason as .font-legal / .paper-container, but with

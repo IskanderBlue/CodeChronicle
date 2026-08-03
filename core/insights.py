@@ -281,6 +281,27 @@ def collect_metrics(days: int = DEFAULT_WINDOW_DAYS) -> list[Metric]:
             window,
         ),
         _build(
+            "comparisons",
+            "Comparisons",
+            "Readers who opened two versions side by side. The question the "
+            "product exists to answer, and the one two browser tabs cannot.",
+            events.filter(event_type=EngagementEvent.EventType.VERSION_COMPARISON),
+            "timestamp",
+            window,
+        ),
+        _build(
+            "comparisons_cross_edition",
+            "Cross-edition comparisons",
+            "Comparisons spanning two editions. Pro is needed on at least one "
+            "side, so this is the value the price buys.",
+            events.filter(
+                event_type=EngagementEvent.EventType.VERSION_COMPARISON,
+                context__cross_edition=True,
+            ),
+            "timestamp",
+            window,
+        ),
+        _build(
             "signups",
             "Signups",
             "Accounts created. The wall's numerator.",

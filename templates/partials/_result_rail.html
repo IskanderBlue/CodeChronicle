@@ -5,7 +5,7 @@
    (their layouts interleave it with content), so the rail is intentionally
    empty for them — see _result_expanded.html. {% endcomment %}
 {% if result.group_type != 'parent_children' and result.result_type != 'transition_compare' %}
-{% include "partials/_provenance_rail.html" with result=result %}
+{% include "partials/_provenance_rail.html" with result=result allow_compare=True %}
 {% include "partials/_result_justification.html" with result=result %}
 {% elif result.result_type == 'transition_compare' %}
 {% comment %} Transition compare has two in-force versions, each a complete

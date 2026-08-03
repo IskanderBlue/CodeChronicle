@@ -455,6 +455,17 @@ def test_transition_compare_renders_per_version_band_and_provenance():
     # when a single clause produced both versions.
     assert "350/06 version (previous)" in html
     assert "332/12 version" in html
+    # Below lg the desktop banner toggle is not rendered, so the mobile branch
+    # carries the /compare/ link itself or the narrow reader has no route to
+    # the comparison page.
+    mobile_linked = render_to_string(
+        "partials/_result_expanded.html",
+        {
+            "result": {**card, "compare_url": "/compare/?a=X&b=Y"},
+            "query_date": "2013-06-01",
+        },
+    )
+    assert 'href="/compare/?a=X&amp;b=Y"' in mobile_linked
 
     # ── Master-detail (metadata_in_rail=True): chain/metadata moves to the rail ──
     middle = render_to_string(
@@ -480,7 +491,24 @@ def test_transition_compare_renders_per_version_band_and_provenance():
     )
     assert "two versions in force" in header
     assert 'comparePrevious = !comparePrevious' in header
-    assert "&middot; compare" in header
+    # Two comparisons, each named for what it is: the toggle opens the panes in
+    # place, the link opens the comparison page. Both called "compare" and they
+    # read as rivals.
+    assert "&middot; inline compare" in header
+    assert "&middot; hide" in header
+    assert "&middot; hide previous" not in header
+    # The link is only rendered when the merge could build one; this card's
+    # stub versions carry no version objects, so the header must not emit a
+    # dead anchor.
+    assert "/compare/?a=" not in header
+    linked = render_to_string(
+        "partials/_result_citation_header.html",
+        {
+            "result": {**card, "compare_url": "/compare/?a=X&b=Y"},
+            "compare_toggle": True,
+        },
+    )
+    assert 'href="/compare/?a=X&amp;b=Y"' in linked
     # Without the flag (mobile accordion header), the banner stays static text.
     plain_header = render_to_string(
         "partials/_result_citation_header.html", {"result": card}
@@ -535,6 +563,30 @@ def test_amendment_chain_collapses_only_in_paired_ui():
     assert "chainOpen" not in open_rail  # standard result: chain always open
     assert "chainOpen" in collapsed  # paired UI: chain collapsible
     assert "Amendment chain (1)" in collapsed  # count excludes the base entry
+
+
+def test_search_accordion_offers_the_compare_control_below_lg():
+    """The stacked surface reaches the rail through the banner.
+
+    ``allow_compare`` is set at the call site, not inside the banner: the
+    banner is only a stacker, and the surface is what decides whether it offers
+    the control (the landing page's specimen rail deliberately does not).  So
+    the flag has to travel two includes deep, and this is the test that it
+    does.
+    """
+    html = render_to_string(
+        "partials/_result_body.html",
+        {
+            "result": {
+                "version": None,
+                "amendment_chain": [],
+                "next_version": None,
+                "compare_pair": {"url": "/compare/?a=X&b=Y", "locked": False},
+            },
+        },
+    )
+    assert "Compare versions" in html
+    assert 'href="/compare/?a=X&amp;b=Y"' in html
 
 
 def test_provenance_banner_shows_amendment_info():

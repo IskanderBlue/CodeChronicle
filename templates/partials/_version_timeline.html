@@ -1,0 +1,99 @@
+{% comment %} The comparison's date axis: every version behind it, one row per side.
+
+   Why it exists: the "Compare versions" control opens a comparison the reader
+   did not choose (core.compare.prepared_pair guesses). A guess the reader
+   cannot see is a guess they cannot correct. The axis draws every version that
+   was available, marks the two on screen, and puts every other choice one
+   click away — so a wrong default is visibly wrong instead of invisible.
+
+   Two rows, not one. A single row has to decide which pin a click moves, and
+   every rule for deciding leaves pairs unreachable — see VersionTimeline. The
+   row you click in is the pin that moves, and there is no rule to get wrong.
+
+   Three marks, one meaning each:
+     filled circle          this side is on this version
+     quiet outline circle   the other side holds it — a real option but for that
+     strong outline circle  a click moves this side here
+
+   The strong outline is reserved for the only mark a click does anything to.
+   Each row leaves out the one version it can never hold (the newest for the
+   earlier side, the oldest for the later one), so nothing is drawn that cannot
+   be taken, and the dotted connector stops at the last mark rather than
+   promising a choice past it.
+
+   Each row's date follows its own dot, on its own line. A date at the end of a
+   row labels the row, and a row is not what the reader is reading. The track
+   reserves a trailing margin so the last dot's date has somewhere to sit. The
+   other marks carry their date on hover — labelling all of them would collide
+   at the first pair of amendments a month apart. There is no scale strip under
+   the axis: the two pins print their own dates, and a second row of dates
+   underneath was the very placement the inline labels replaced.
+
+   The date and the hollow marks knock the connector out behind them, filling
+   with `--backdrop` rather than a named surface: this box paints its own
+   background, so it re-declares the token once and every knockout inside
+   follows (see the memory note project_backdrop_token). Hard-coding
+   `bg-surface-2` here would be a guess about the container that breaks the
+   first time the box is placed somewhere else.
+
+   Real dates, not even spacing: a decade of silence between two amendments is
+   the fact the axis exists to carry. Marks that would land on top of each
+   other stack into lanes, because a mark half-covering another mark draws
+   nothing.
+
+   A click REPLACES history rather than pushing it. Nudging the pins five times
+   must not cost six back presses to escape the page. The anchors carry real
+   hrefs, so the middle-click, the copy-link and the no-JS reader all still
+   work; the handler only changes how the entry is recorded.
+
+   Context: `timeline` (core.compare.VersionTimeline).
+{% endcomment %}
+{% if timeline.is_useful %}
+<div class="mt-4 border border-rule bg-surface-2 px-4 pb-2.5 pt-2.5" x-data style="--backdrop: var(--surface-2)">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">
+            Every version &middot; {{ timeline.editions|join:" &rarr; " }}
+        </p>
+        <p class="font-mono text-[10px] text-ink-3">
+            Click in a row to move that side
+        </p>
+    </div>
+
+    {% for row in timeline.rows %}
+    <div class="mt-3 flex items-start gap-3">
+        <span class="w-3 shrink-0 pt-0.5 font-mono text-[11px] font-semibold text-secondary">{{ row.label }}</span>
+        <div class="relative min-w-0 flex-1" style="margin-right: 5rem; height: {{ timeline.lanes }}rem">
+            {% comment %} The connector runs between this row's own first and
+               last marks. {% endcomment %}
+            <div class="absolute top-1.5 border-t border-dotted border-rule"
+                style="left: {{ row.line_start|floatformat:3 }}%; width: {{ row.line_width|floatformat:3 }}%"></div>
+            {% for tick in row.ticks %}
+            <span class="absolute -translate-x-1/2"
+                style="left: {{ tick.offset|floatformat:3 }}%; top: {{ tick.lane }}rem">
+                {% if tick.state == 'selected' %}
+                <span aria-current="true"
+                    title="{{ tick.edition_name }} {{ tick.version.provision.provision_id }} v{{ tick.version.version }} &middot; {{ tick.version.effective_date|date:'Y-m-d' }} &middot; side {{ row.label }}"
+                    class="tl-on"></span>
+                {% elif tick.state == 'taken' %}
+                <span title="{{ tick.edition_name }} {{ tick.version.provision.provision_id }} v{{ tick.version.version }} &middot; {{ tick.version.effective_date|date:'Y-m-d' }} &middot; the other side is here"
+                    class="tl-taken"></span>
+                {% else %}
+                <a href="{{ tick.url }}" @click.prevent="window.location.replace($el.href)"
+                    title="{{ tick.edition_name }} {{ tick.version.provision.provision_id }} v{{ tick.version.version }} &middot; {{ tick.version.effective_date|date:'Y-m-d' }} &middot; move side {{ row.label }} here"
+                    class="tl-open"></a>
+                {% endif %}
+            </span>
+            {% endfor %}
+
+            {% comment %} The pin's date, on the pin's own line, just after the
+               dot. The trailing margin on the track is what keeps the last
+               one inside the box. {% endcomment %}
+            <span class="tl-date absolute whitespace-nowrap font-mono text-[10px] font-semibold leading-3 text-secondary"
+                style="left: {{ row.pin_offset|floatformat:3 }}%; top: {{ row.pin_lane }}rem; margin-left: 0.5rem">
+                {{ row.version.effective_date|date:"Y-m-d" }}
+            </span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

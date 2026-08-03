@@ -839,9 +839,9 @@
                         <div class="lp-mount lp-mount-rail">
                             {% comment %} compare_enabled on purpose: the copy beside this
                                promises redlines, and the compare control IS that
-                               affordance. It resolves to the permalink page with
-                               ?compare=, which is in the free tier here, so the promise
-                               is one click from the claim. {% endcomment %}
+                               affordance. It resolves to /compare/ on two OBC 2006
+                               versions, which are in the free tier, so the promise is
+                               one click from the claim. {% endcomment %}
                             {% include "partials/_provenance_rail.html" with result=specimen.provenance compare_enabled=True %}
                         </div>
                         {% endif %}

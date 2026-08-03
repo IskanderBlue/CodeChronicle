@@ -18,11 +18,17 @@
 {# -- Provenance: in-force band (+ rail when stacked inline) -- #}
 {% comment %} allow_report turns on the band's "This looks wrong" affordance. Set
    here rather than in the view: an expanded result is a reading surface, and the
-   same partial rendered as a landing-page specimen is not. {% endcomment %}
+   same partial rendered as a landing-page specimen is not.
+
+   allow_compare is the same kind of switch, and is set on the same terms. The
+   banner is only a stacker, so it carries the flag down to the rail without
+   deciding anything — the surface decides, which is what lets the landing
+   page's specimen rail show no compare control. Above lg the rail arrives by
+   _result_rail.html instead, which sets the flag itself. {% endcomment %}
 {% if metadata_in_rail %}
 <div class="mt-3">{% include "partials/_provenance_band.html" with result=result query_date=query_date allow_report=True report_surface="search" %}</div>
 {% else %}
-{% include "partials/_provenance_banner.html" with result=result allow_report=True report_surface="search" %}
+{% include "partials/_provenance_banner.html" with result=result allow_report=True report_surface="search" allow_compare=True %}
 {% endif %}
 
 {# -- Provision body -- #}

@@ -15,15 +15,26 @@
         <p class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary">{{ result.code_display_name }}</p>
         {% if result.result_type == 'transition_compare' %}
         {% if compare_toggle %}
-        {% comment %} Desktop master-detail: the banner IS the compare control — toggling the
-           root `comparePrevious` widens the centre into the side-by-side panes. The
-           caret + action hint flip with state so the affordance reads as a button. {% endcomment %}
-        <button type="button" @click.stop="comparePrevious = !comparePrevious"
-            :aria-expanded="comparePrevious ? 'true' : 'false'" class="ui-action mt-2">
-            <span class="ui-caret"></span>
-            <span>Transition &mdash; two versions in force</span>
-            <span class="ui-hint" x-text="comparePrevious ? '&middot; hide previous' : '&middot; compare'"></span>
-        </button>
+        {% comment %} Desktop master-detail: the banner IS the inline compare control —
+           toggling the root `comparePrevious` widens the centre into the side-by-side
+           panes. The caret + action hint flip with state so the affordance reads as a
+           button.
+
+           Two comparisons sit side by side here, and each says which it is. The
+           toggle is the "inline compare" — both texts, in the results list, without
+           leaving the page. The link is the comparison page, which the inline panes
+           cannot be: it carries the redline floor, the pairing basis and a URL to
+           send somebody. Naming both of them "compare" is what made them read as
+           rivals. {% endcomment %}
+        <div class="mt-2 flex flex-wrap items-center gap-x-3">
+            <button type="button" @click.stop="comparePrevious = !comparePrevious"
+                :aria-expanded="comparePrevious ? 'true' : 'false'" class="ui-action">
+                <span class="ui-caret"></span>
+                <span>Transition &mdash; two versions in force</span>
+                <span class="ui-hint" x-text="comparePrevious ? '&middot; hide' : '&middot; inline compare'"></span>
+            </button>
+            {% include "partials/_transition_compare_link.html" with compare_url=result.compare_url %}
+        </div>
         {% else %}
         <p class="mt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-secondary">
             Transition &mdash; two versions in force

@@ -8,7 +8,13 @@
    the other edition's version numbering would read as this edition's. A
    locked link (free-tier gate) upsells to pricing instead of 403ing after
    click-through.
+
+   `link.compare_url` opens this counterpart beside the version being read.
+   The prepared-pair control cannot reach it: that ladder takes the local
+   comparison first, so a provision amended twice AND renumbered would offer
+   no way to ask for the cross-edition one. Empty on a locked link, which
+   already upsells — a second pricing link beside the first is noise.
 {% endcomment %}
 <p>
-    <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition.code.code }} {{ link.edition.edition_id }}{% endif %} &middot;</span> {{ link.verb }} {% if link.locked %}<a href="{% url 'core:pricing' %}" @click.stop class="text-ink-3 hover:text-secondary" title="Available on Pro">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }} &mdash; Pro</a>{% else %}<a href="{{ link.url }}" @click.stop class="ui-cite">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}</a>{% endif %}
+    <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition.code.code }} {{ link.edition.edition_id }}{% endif %} &middot;</span> {{ link.verb }} {% if link.locked %}<a href="{% url 'core:pricing' %}" @click.stop class="text-ink-3 hover:text-secondary" title="Available on Pro">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }} &mdash; Pro</a>{% else %}<a href="{{ link.url }}" @click.stop class="ui-cite">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}</a>{% endif %}{% if link.compare_url %} <a href="{{ link.compare_url }}" @click.stop class="ui-cite font-mono text-[10px]" title="Compare this counterpart with the version you are reading">compare</a>{% endif %}
 </p>

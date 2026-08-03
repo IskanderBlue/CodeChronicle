@@ -12,11 +12,15 @@ from django.urls import reverse
 
 from api.formatters import (
     _build_copy_text,
-    _diff_html_content,
     replacement_commencement,
     select_commencement_record,
 )
 from core.access import edition_allowed
+from core.compare import (
+    annotate_chain_comparisons,
+    annotate_lineage_comparisons,
+    prepared_pair,
+)
 from core.cross_refs import annotate_versions, cited_by
 from core.events import record_event
 from core.models import (
@@ -362,6 +366,16 @@ def _provenance_result(
         until_commencement_date = (
             target_version.ineffective_date if until_commencement else None
         )
+    annotate_lineage_comparisons(
+        target_version, lineage.predecessors, lineage.successors,
+    )
+    # ``next_version`` is not in ``chain`` — the chain is what has happened,
+    # and the next version has not yet.  It still deserves a compare link: "what
+    # is about to change" is the same question as "what changed", asked early.
+    annotate_chain_comparisons(
+        target_version,
+        [*chain, next_version] if next_version is not None else chain,
+    )
     return {
         "version": target_version,
         "clause": clause,
@@ -371,6 +385,17 @@ def _provenance_result(
         "next_version": next_version,
         "lineage_predecessors": lineage.predecessors,
         "lineage_successors": lineage.successors,
+        # The comparison "Compare versions" opens.  Same ladder the search
+        # results use, over the keys just above — never a second definition
+        # of what a prepared pair is.  ``annotate_lineage_comparisons`` runs
+        # just before the return, so the lineage rows carry their own
+        # cross-edition comparisons too.
+        "compare_pair": prepared_pair(
+            version=target_version,
+            chain=chain or [target_version],
+            predecessors=lineage.predecessors,
+            successors=lineage.successors,
+        ),
         "from_commencement": from_commencement,
         "until_commencement": until_commencement,
         "until_commencement_date": until_commencement_date,
@@ -775,32 +800,6 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     })
 
 
-def _compare_version(
-    provision: CodeEditionProvision,
-    pinned_version: int,
-    raw: str | None,
-) -> CodeEditionProvisionVersion | None:
-    """Resolve the ``?compare=`` query param to a sibling version.
-
-    Returns ``None`` when the param is absent, malformed, equal to the pinned
-    version, or names a version that doesn't exist for this provision — in
-    every one of those cases the permalink renders the pinned version alone.
-    """
-    if raw is None:
-        return None
-    try:
-        number = int(raw)
-    except ValueError:
-        return None
-    if number == pinned_version:
-        return None
-    return (
-        CodeEditionProvisionVersion.objects
-        .filter(provision=provision, version=number)
-        .first()
-    )
-
-
 def provision_permalink(
     request: HttpRequest,
     code_edition: str,
@@ -926,32 +925,12 @@ def provision_permalink(
         fan_out=True,
     )
 
-    # Optional version comparison: ``?compare=<version>`` renders the matched
-    # provision as a side-by-side diff of the two versions' bodies — both panes
-    # visible at once with changed words highlighted — so a reader can actually
-    # compare them, without needing a query date that happens to fall in an
-    # overlap window (the only situation that surfaces the inline transition
-    # view otherwise). Ordered by time: the earlier version is the "old"
-    # (comparison) pane, the later the "new" (current) pane, regardless of which
-    # one is pinned. ``_diff_html_content`` returns (None, None) when either
-    # body is empty (image-only versions) — the pane partial then falls back to
-    # the plain content, still side by side, just without highlighting.
-    compare_version = _compare_version(matched, version, request.GET.get("compare"))
-    compare_payload: dict[str, Any] | None = None
-    if compare_version is not None:
-        older, newer = sorted(
-            [target_version, compare_version],
-            key=lambda v: (v.effective_date, v.version),
-        )
-        old_diff, new_diff = _diff_html_content(older.html, newer.html)
-        compare_payload = {
-            "old": older,
-            "new": newer,
-            "old_diff": old_diff,
-            "new_diff": new_diff,
-            "pinned_pk": target_version.pk,
-        }
-
+    # There is no in-place comparison here any more.  ``?compare=<version>``
+    # rendered a second side-by-side diff on this page: the same feature as
+    # ``/compare/`` but unable to cross an edition, without the redline floor,
+    # and behind a URL that named a permalink with a modifier rather than
+    # naming a comparison.  The rail's per-row ``compare`` links now go to
+    # ``/compare/``.
     sections: list[dict[str, Any]] = []
     for prov in sorted(all_provisions, key=lambda p: _natural_key(p.provision_id)):
         prov_versions = by_provision.get(prov.pk, [])
@@ -962,10 +941,6 @@ def provision_permalink(
             "division": prov.division,
             "active_versions": prov_versions,
             "is_active": prov.pk == matched.pk,
-            # Only the matched provision is paired by ``?compare=``; descendants
-            # render normally (a descendant carrying two versions is a genuine
-            # date-overlap transition, not a user-chosen comparison).
-            "compare": compare_payload if prov.pk == matched.pk else None,
         })
 
     return render(request, "regulation/provision_permalink.html", {
@@ -989,9 +964,6 @@ def provision_permalink(
         "active_node_id": provision_id,
         "active_provision_id": provision_id,
         "transition_active": False,
-        "compare_version_number": (
-            compare_version.version if compare_version is not None else None
-        ),
         # Fan-in: the provisions that pointed *here* while this version stood.
         # Not in the printed code — only a whole-edition index can answer it.
         "cited_by": cited_by(target_version, matched, code_name),

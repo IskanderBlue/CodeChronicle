@@ -1,0 +1,35 @@
+{% comment %} "Compare versions" — opens a prepared comparison.
+
+   Not a mode. One click goes straight to a comparison of two named versions;
+   there is no armed state to leave. Which two comes from
+   ``core.compare.prepared_pair``, stamped onto the result as ``compare_pair``
+   by the search formatter and by the permalink view, so every entry point
+   opens the same pair.
+
+   Renders nothing when there is no pair, which is the case for a provision
+   with exactly one version and no mapped counterpart. An affordance that
+   fails on click is worse than no affordance.
+
+   A locked pair (the counterpart sits in an edition this reader cannot open)
+   upsells to pricing rather than leading to a 403 — the same choice
+   _lineage_link_row.html makes for a locked lineage target.
+
+   .ui-btn-ghost is type-agnostic by design and inherits font and size from
+   the call site, so the type utilities here are required, not decoration —
+   without them the control renders at the rail's 10px metadata size. Its
+   colour and border, by contrast, come from an UNLAYERED block in base.html
+   and beat any Tailwind utility: vary the label, never the paint.
+
+   Context: `compare_pair` (core.compare.PreparedPair or None).
+{% endcomment %}
+{% if compare_pair %}
+{% if compare_pair.locked %}
+<a href="{% url 'core:pricing' %}" @click.stop
+   class="ui-btn-ghost mt-2 w-full font-mono text-[11px] font-semibold uppercase tracking-[0.08em]"
+   title="Comparing across editions is part of Pro">Compare versions &mdash; Pro</a>
+{% else %}
+<a href="{{ compare_pair.url }}" @click.stop
+   class="ui-btn-ghost mt-2 w-full font-mono text-[11px] font-semibold uppercase tracking-[0.08em]"
+   title="See this provision beside another version of it">Compare versions</a>
+{% endif %}
+{% endif %}

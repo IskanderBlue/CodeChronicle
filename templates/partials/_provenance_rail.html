@@ -11,14 +11,11 @@
         Provenance
     </p>
     <div class="space-y-1.5 px-4 py-3 font-mono text-[11px] text-ink-2">
-        {% comment %} Permalink-only: a self-link to the pinned version that the
-           compare affordances hang ``?compare=<other>`` off. Computed once so
-           each compare link below doesn't re-resolve the division branch. The
-           search-results rail never passes `compare_enabled`, so this and every
-           compare control stays inert there. {% endcomment %}
-        {% if compare_enabled %}
-        {% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.version.version as compare_self_url %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.version.version as compare_self_url %}{% endif %}
-        {% endif %}
+        {% comment %} `compare_enabled` turns on the per-row compare links.
+           The search-results rail never passes it, so they stay out of a list
+           the reader is still scanning. Each link's URL is stamped in Python
+           (core.compare.annotate_chain_comparisons); the rail no longer builds
+           a self-URL for them to hang a query param off. {% endcomment %}
         {% comment %} Lineage: predecessor rows — where this provision came
            from in the previous edition (or an intra-edition renumber). Sits
            above the Base row, separated by a rule, because it precedes this
@@ -45,7 +42,7 @@
         {% if result.base_regulation %}
         <p class="flex items-baseline justify-between gap-2 {% if result.version.pk == result.amendment_chain.0.pk %}bg-secondary-soft px-1.5 py-0.5 font-semibold text-ink ring-1 ring-secondary/40{% endif %}">
             <span><span class="text-ink-3">Base &middot;</span> {% if result.base_regulation.pk %}<a href="{% url 'core:regulation_detail' result.base_regulation.pk %}" @click.stop class="ui-cite">O. Reg. {{ result.base_regulation.reg_id }}</a>{% else %}O. Reg. {{ result.base_regulation.reg_id }}{% endif %}{% if result.base_regulation.source_url %} <span class="text-ink-3">&middot;</span> <a href="{{ result.base_regulation.source_url }}" target="_blank" rel="noopener" @click.stop class="ui-cite text-[10px]" title="{{ result.base_regulation.source_link_label }}">ext</a>{% endif %}{% if result.version.pk == result.amendment_chain.0.pk %}<span class="ml-1 font-mono text-[9px] uppercase tracking-[0.08em] text-secondary">&larr; current</span>{% endif %}</span>
-            {% if result.amendment_chain.0 and result.version.pk != result.amendment_chain.0.pk %}<span class="flex shrink-0 items-baseline gap-2"><a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.amendment_chain.0.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.amendment_chain.0.version %}{% endif %}" @click.stop class="font-mono text-[10px] ui-cite" title="View this version">v{{ result.amendment_chain.0.version }} &rarr;</a>{% if compare_enabled %}{% include "partials/_compare_link.html" with target_version=result.amendment_chain.0.version %}{% endif %}</span>{% endif %}
+            {% if result.amendment_chain.0 and result.version.pk != result.amendment_chain.0.pk %}<span class="flex shrink-0 items-baseline gap-2"><a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.amendment_chain.0.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.amendment_chain.0.version %}{% endif %}" @click.stop class="font-mono text-[10px] ui-cite" title="View this version">v{{ result.amendment_chain.0.version }} &rarr;</a>{% if compare_enabled %}{% include "partials/_compare_link.html" with target=result.amendment_chain.0 %}{% endif %}</span>{% endif %}
         </p>
         {% endif %}
 
@@ -89,7 +86,7 @@
                         <span>{% if entry_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="ui-cite">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}{% endif %}{% if entry_clause.regulation.source_url %} <span>&middot;</span> <a href="{{ entry_clause.regulation.source_url }}" target="_blank" rel="noopener" @click.stop class="ui-cite text-[10px]" title="{{ entry_clause.regulation.source_link_label }}">ext</a>{% endif %}</span>
                         <a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id entry.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id entry.version %}{% endif %}" @click.stop class="shrink-0 font-mono text-[10px] ui-cite" title="View this version">v{{ entry.version }} &rarr;</a>
                     </p>
-                    <p class="flex items-baseline justify-between gap-2 text-[10px]"><span>{% if entry.never_in_force %}Never in force{% else %}In force {{ entry.effective_date|date:"Y-m-d" }}{% endif %}</span>{% if compare_enabled %}{% include "partials/_compare_link.html" with target_version=entry.version %}{% endif %}</p>
+                    <p class="flex items-baseline justify-between gap-2 text-[10px]"><span>{% if entry.never_in_force %}Never in force{% else %}In force {{ entry.effective_date|date:"Y-m-d" }}{% endif %}</span>{% if compare_enabled %}{% include "partials/_compare_link.html" with target=entry %}{% endif %}</p>
                 </div>
                 {% endif %}
                 {% endif %}
@@ -103,7 +100,7 @@
         {% with next_clause=result.next_version.last_contributing_clause %}
         <p class="flex items-baseline justify-between gap-2 italic text-ink-3">
             <span>Next: {% if next_clause %}{% if next_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' next_clause.regulation.pk %}#clause-{{ next_clause.pk }}" @click.stop class="not-italic ui-cite">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</a> {% else %}O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }} {% endif %}{% if next_clause.regulation.source_url %}<span>&middot;</span> <a href="{{ next_clause.regulation.source_url }}" target="_blank" rel="noopener" @click.stop class="not-italic ui-cite text-[10px]" title="{{ next_clause.regulation.source_link_label }}">ext</a> {% endif %}{% endif %}{% if result.next_version.never_in_force %}(never in force){% else %}(not in force until {{ result.next_version.effective_date|date:"Y-m-d" }}){% endif %}</span>
-            <a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.next_version.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.next_version.version %}{% endif %}" @click.stop class="shrink-0 font-mono text-[10px] not-italic ui-cite" title="View this version">v{{ result.next_version.version }} &rarr;</a>
+            <a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.next_version.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.next_version.version %}{% endif %}" @click.stop class="shrink-0 font-mono text-[10px] not-italic ui-cite" title="View this version">v{{ result.next_version.version }} &rarr;</a>{% if compare_enabled %}<span class="not-italic">{% include "partials/_compare_link.html" with target=result.next_version %}</span>{% endif %}
         </p>
         {% endwith %}
         {% endif %}
@@ -127,5 +124,12 @@
         </div>
         {% endwith %}
         {% endif %}
+
+        {% comment %} "Compare versions" — the way into /compare/. Last in the
+           rail because it acts on everything above it. allow_compare is
+           opt-in per surface, like allow_report: the landing page's specimen
+           rail and the transition panes state provenance without offering to
+           navigate away from what they are demonstrating. {% endcomment %}
+        {% if allow_compare %}{% include "partials/_compare_button.html" with compare_pair=result.compare_pair %}{% endif %}
     </div>
 </div>

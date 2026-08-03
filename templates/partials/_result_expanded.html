@@ -97,6 +97,16 @@
 </div>
 {% endif %}
 
+{% comment %} A verdict, stated before the panes. The redline marks what
+   changed, so "nothing is marked" and "I have not found the mark yet" look
+   alike until the reader has read both panes to the end. Saying it once, at
+   the top, is the whole point — see api.formatters.diff_is_empty. {% endcomment %}
+{% if result.text_unchanged %}
+<p class="mt-4 border border-rule bg-surface-2 px-4 py-2 font-mono text-[11px] text-ink-2">
+    The text is unchanged between these two versions.
+</p>
+{% endif %}
+
 {% comment %} Each version is a complete formatted result carrying its own
    in-force band + provenance (api.formatters._format_single_result). Layout
    forks by surface: the desktop master-detail (metadata_in_rail) enters a
@@ -168,6 +178,16 @@
         </button>
         <div x-show="showPrevious" x-cloak class="mt-1 space-y-3 border border-rule bg-surface-2 p-4 accordion-content">
             {% include "partials/_transition_version_body.html" with version=version metadata_in_rail=metadata_in_rail query_date=query_date %}
+        </div>
+        {% comment %} The same pair, on the comparison page. The disclosure above
+           is this surface's inline compare; the link is the page, which the
+           panes cannot be — redline floor, pairing basis, and a URL to send
+           somebody. Below lg the desktop banner toggle is not rendered, so
+           without this the narrow reader has no route to /compare/ at all.
+           Right-aligned, the same control-row idiom the diff/expand buttons
+           use. {% endcomment %}
+        <div class="mt-1 flex justify-end">
+            {% include "partials/_transition_compare_link.html" with compare_url=result.compare_url %}
         </div>
     </div>
     {% endif %}

@@ -55,4 +55,8 @@ urlpatterns = [
         kwargs={"division": ""},
     ),
     path("edition/<int:pk>/chain/", views.edition_chain, name="edition_chain"),
+    # Two version references in, one page out.  Query params rather than path
+    # segments because the two references are of equal standing and neither
+    # owns the URL — and because a reference itself contains slashes.
+    path("compare/", views.compare_versions, name="compare"),
 ]

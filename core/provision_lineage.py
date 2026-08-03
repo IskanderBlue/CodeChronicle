@@ -119,6 +119,13 @@ class LineageLink:
     #: Stamped by :func:`annotate_lineage_locks`, not the resolver (the
     #: resolver is user-agnostic).
     locked: bool = False
+    #: ``/compare/`` URL pairing this target with the version the reader is
+    #: on.  Stamped by ``core.compare.annotate_lineage_comparisons``, for the
+    #: same reason ``locked`` is stamped rather than resolved: the resolver
+    #: works from provisions and does not know which version is being read.
+    #: Empty on a locked link — that row already upsells, and a second
+    #: pricing link beside the first is noise.
+    compare_url: str = ""
 
 
 @dataclass

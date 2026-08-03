@@ -8,6 +8,7 @@ from .billing import (
     stripe_cancel,
     stripe_success,
 )
+from .compare import compare_versions
 from .demand import edition_request
 from .feedback import feedback_status, report_problem
 from .history import history
@@ -32,6 +33,7 @@ from .search import (
 )
 
 __all__ = [
+    "compare_versions",
     "create_checkout_session",
     "create_customer_portal_session",
     "data_sources",

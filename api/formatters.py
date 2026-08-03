@@ -11,6 +11,13 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple
 from api.band import parse_iso_date
 from api.search.engine import _ref_parts
 from config.code_metadata import get_code_display_name
+from core.compare import (
+    PreparedPair,
+    annotate_chain_comparisons,
+    annotate_lineage_comparisons,
+    prepared_pair,
+    version_ref,
+)
 from core.cross_refs import (
     annotate_tables,
     cited_by_map,
@@ -192,6 +199,51 @@ def _diff_html_content(
     old_result = _render_side(old_tokens, old_words, opcodes, is_old=True)
     new_result = _render_side(new_tokens, new_words, opcodes, is_old=False)
     return (old_result, new_result)
+
+
+def diff_similarity(old_html: str | None, new_html: str | None) -> float:
+    """How much of the two texts is shared, from 0.0 to 1.0.
+
+    The same words, tokenized the same way, that ``_diff_html_content``
+    diffs — so a caller deciding whether a redline is worth drawing measures
+    exactly what the redline would draw.  A separate pass rather than a
+    second return value, because the existing callers want the annotated
+    HTML and nothing else.
+
+    Returns 0.0 when either side is empty, which is also what
+    ``_diff_html_content`` treats as undiffable.
+    """
+    if not old_html or not new_html:
+        return 0.0
+    old_words = _diff_words(old_html)
+    new_words = _diff_words(new_html)
+    if not old_words or not new_words:
+        return 0.0
+    return difflib.SequenceMatcher(None, old_words, new_words).ratio()
+
+
+def _diff_words(html: str) -> list[str]:
+    """The words a redline of this body would compare, in order."""
+    return [t[0] for t in _tokenize_html_for_diff(html) if t[1] == "word"]
+
+
+def diff_is_empty(old_html: str | None, new_html: str | None) -> bool:
+    """True when a redline of these two bodies would mark nothing.
+
+    Not a string comparison: two versions can differ in tags, attributes and
+    whitespace and still read identically, and the redline already ignores all
+    three.  So this asks the question the redline answers.
+
+    The answer earns a line of copy on every comparison surface.  Without it a
+    reader who finds no highlight has to scan both columns to the end, twice,
+    to be sure the absence is the answer and not a miss.
+
+    False when either side is empty, matching ``_diff_html_content``: nothing
+    was compared, so nothing can be reported as unchanged.
+    """
+    if not old_html or not new_html:
+        return False
+    return _diff_words(old_html) == _diff_words(new_html)
 
 
 def _build_code_display_name(code_edition: str) -> str:
@@ -938,6 +990,30 @@ def _transition_pane_label(version: Dict[str, Any]) -> str:
     return str(reg_id or version.get("code_display_name") or "")
 
 
+def _transition_compare_url(
+    old_version: Dict[str, Any],
+    new_version: Dict[str, Any],
+) -> str:
+    """The /compare/ link for the pair this card already holds.
+
+    The card's inline panes and this link answer the same question two ways:
+    the panes show both texts in the results list, the page shows them with the
+    redline floor, the pairing basis and a URL to send somebody.  The pair is
+    the card's own two versions, so no ladder runs here.
+
+    Never gated: both editions have already passed the tier check, or neither
+    pane would be on screen.
+
+    Empty when either side carries no version object, which is what the
+    template tests before rendering the link.
+    """
+    earlier = old_version.get("version")
+    later = new_version.get("version")
+    if earlier is None or later is None:
+        return ""
+    return PreparedPair(version_ref(earlier), version_ref(later)).url
+
+
 def merge_transition_compare_results(
     formatted_results: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -1034,6 +1110,15 @@ def merge_transition_compare_results(
                 "result_type": "transition_compare",
                 "transition_context": transition_context,
                 "has_renderable_content": has_renderable_content,
+                # A transition pair whose text did not change is a real and
+                # common outcome — the provision was renumbered, or carried
+                # forward verbatim.  Say so, rather than leaving the reader to
+                # prove the absence by reading both panes.
+                "text_unchanged": diff_is_empty(
+                    old_version.get("html_content"),
+                    new_version.get("html_content"),
+                ),
+                "compare_url": _transition_compare_url(old_version, new_version),
                 "versions": [old_version, new_version],
             }
         )
@@ -1173,6 +1258,38 @@ def _attach_lineage(formatted: List[Dict[str, Any]], user: Any = None) -> None:
         lin = lineage.get(provision.pk) if provision is not None else None
         result["lineage_predecessors"] = lin.predecessors if lin else None
         result["lineage_successors"] = lin.successors if lin else None
+        _attach_compare_pair(result)
+
+
+def _attach_compare_pair(result: Dict[str, Any]) -> None:
+    """Stamp the comparison the "Compare versions" control opens.
+
+    Runs inside ``_attach_lineage`` because it needs the keys that function
+    has just written, and because the ladder is pure over data already on the
+    result — the version, this edition's chain, and the two lineage
+    directions.  So a page of results costs no query beyond the batched
+    lineage resolve that was happening anyway.
+
+    ``None`` when this version has no other version anywhere; the template
+    then renders no control rather than one that fails on click.
+    """
+    version = result.get("version")
+    if version is None:
+        result["compare_pair"] = None
+        return
+    chain = result.get("amendment_chain") or [version]
+    annotate_lineage_comparisons(
+        version,
+        result.get("lineage_predecessors"),
+        result.get("lineage_successors"),
+    )
+    annotate_chain_comparisons(version, chain)
+    result["compare_pair"] = prepared_pair(
+        version=version,
+        chain=chain,
+        predecessors=result.get("lineage_predecessors"),
+        successors=result.get("lineage_successors"),
+    )
 
 
 def format_search_results(

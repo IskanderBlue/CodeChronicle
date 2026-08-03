@@ -793,6 +793,129 @@ def test_diff_html_content_preserves_original_whitespace():
     assert "onlydwelling" in old_diff2  # no space inserted
 
 
+def test_diff_is_empty_ignores_markup_and_whitespace():
+    """The redline compares words, so the notice must compare words too.
+
+    A reload can re-wrap a paragraph or change a class without a regulation
+    touching the text.  Calling that "changed" would be a false alarm on the
+    one surface whose whole job is to say what changed.
+    """
+    assert formatters.diff_is_empty(
+        "<p>A fire separation shall be provided.</p>",
+        "<p class='x'>A fire separation\n   shall be provided.</p>",
+    )
+
+
+def test_diff_is_empty_is_false_when_one_word_changed():
+    assert not formatters.diff_is_empty(
+        "<p>A fire separation shall be provided.</p>",
+        "<p>A fire separation shall be installed.</p>",
+    )
+
+
+def test_diff_is_empty_is_false_when_a_side_is_empty():
+    """Nothing was compared, so nothing can be reported as unchanged."""
+    assert not formatters.diff_is_empty(None, "<p>text</p>")
+    assert not formatters.diff_is_empty("<p>text</p>", "")
+
+
+def test_transition_pair_states_that_the_text_did_not_change():
+    """A renumber carries text forward verbatim — the common transition pair."""
+    body = "<p>Smoke alarms shall be installed in each dwelling unit.</p>"
+    pair = _transition_pair(
+        old_id="9.10.18.6.",
+        new_id="9.10.18.7.",
+        old_clause=_StubClause("350/06"),
+        new_clause=_StubClause("332/12"),
+    )
+    for version in pair:
+        version["html_content"] = body
+    merged = [
+        r
+        for r in formatters.merge_transition_compare_results(pair)
+        if r.get("result_type") == "transition_compare"
+    ]
+    assert merged[0]["text_unchanged"] is True
+
+
+def test_transition_pair_does_not_claim_no_change_when_a_word_moved():
+    pair = _transition_pair(
+        old_id="9.10.18.6.",
+        new_id="9.10.18.7.",
+        old_clause=_StubClause("350/06"),
+        new_clause=_StubClause("332/12"),
+    )
+    pair[0]["html_content"] = "<p>Smoke alarms shall be installed in every unit.</p>"
+    pair[1]["html_content"] = "<p>Smoke alarms shall be installed in each unit.</p>"
+    merged = [
+        r
+        for r in formatters.merge_transition_compare_results(pair)
+        if r.get("result_type") == "transition_compare"
+    ]
+    assert merged[0]["text_unchanged"] is False
+
+
+@pytest.mark.django_db
+def test_transition_pair_links_to_the_comparison_page(db):
+    """The card's link is its own two versions, with no ladder in between.
+
+    The prepared-pair ladder takes the local comparison first, so on a
+    transition card it would open something other than the pair the card is
+    about.
+    """
+    code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    editions = {
+        year: CodeEdition.objects.create(
+            code=code, edition_id=str(year), year=year,
+            effective_date=date(year, 1, 1),
+        )
+        for year in (2006, 2012)
+    }
+    versions = {}
+    for year, provision_id in ((2006, "9.10.18.6."), (2012, "9.10.18.7.")):
+        provision = CodeEditionProvision.objects.create(
+            edition=editions[year], provision_id=provision_id,
+            level="article", division="B",
+        )
+        versions[year] = CodeEditionProvisionVersion.objects.create(
+            provision=provision, version=0, title="Smoke Alarms",
+            effective_date=date(year, 1, 1), html="<p>body</p>",
+        )
+
+    pair = _transition_pair(
+        old_id="9.10.18.6.",
+        new_id="9.10.18.7.",
+        old_clause=_StubClause("350/06"),
+        new_clause=_StubClause("332/12"),
+    )
+    pair[0]["version"] = versions[2012]
+    pair[1]["version"] = versions[2006]
+    merged = [
+        r
+        for r in formatters.merge_transition_compare_results(pair)
+        if r.get("result_type") == "transition_compare"
+    ]
+    assert merged[0]["compare_url"] == (
+        "/compare/?a=OBC_2006/B/9.10.18.6./v0&b=OBC_2012/B/9.10.18.7./v0"
+    )
+
+
+def test_transition_pair_omits_the_link_without_version_objects():
+    """No dead anchor: the template tests the same empty string."""
+    merged = [
+        r
+        for r in formatters.merge_transition_compare_results(
+            _transition_pair(
+                old_id="1.4.1.2.", new_id="1.4.1.2.",
+                old_clause=_StubClause("350/06"),
+                new_clause=_StubClause("332/12"),
+            )
+        )
+        if r.get("result_type") == "transition_compare"
+    ]
+    assert merged[0]["compare_url"] == ""
+
+
 def test_diff_html_content_returns_none_when_input_empty():
     assert formatters._diff_html_content(None, "<p>text</p>") == (None, None)
     assert formatters._diff_html_content("<p>text</p>", None) == (None, None)
