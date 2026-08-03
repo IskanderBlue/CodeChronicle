@@ -109,15 +109,20 @@ Paste a URL into the LinkedIn Post Inspector, and into a Slack message in a
 private channel. Both show what their crawler actually read. Check three
 shapes: the landing page, a provision permalink, and the pricing page.
 
-Slack: done, 2026-08-02. A pasted link shows a caption.
+Slack: done. A sent message shows the title, the description and the card
+image.
+
+**Read the sent message, not the compose box.** Slack draws a partial preview
+while you type — text only, no image — and it looks exactly like a broken
+card. Send the message before you judge the result.
 
 ## Done when
 
 - ~~Every page carries `og:` and `twitter:` tags with values from
   `core/seo.py`.~~ Done.
 - ~~A provision link pasted into Slack shows the provision number, the heading
-  and the window.~~ Done, 2026-08-02. The link renders with a caption.
-  `og:title` reads "3.2.5.7. Fire Department Access Routes — Ontario Building
-  Code 2006 (in force 31 December 2006 to 1 January 2009)".
+  and the window.~~ Done. A sent message renders the full card, image
+  included. `og:title` reads "1.1.1.1. Application — OBC 2006 (in force 31
+  December 2006 to 1 January 2014)".
 - ~~Locked pages carry a generic card that names no provision, with a test.~~
   Done (`test_a_locked_page_carries_a_generic_card`).
