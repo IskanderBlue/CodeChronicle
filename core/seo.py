@@ -62,6 +62,16 @@ DEFAULT_DESCRIPTION = (
 SOCIAL_IMAGE_PATH = "images/social-card.png"
 SOCIAL_IMAGE_ALT = DEFAULT_TITLE
 
+#: The card's real pixel size, declared in the tags so a crawler reserves the
+#: right space.  ``make_social_card`` crops the drawing to its own ink, so the
+#: height follows the copy; the command refuses to write a card that disagrees
+#: with these numbers rather than let the tags lie.  The card is deliberately
+#: wider than the 1.91:1 most guides quote — Slack, LinkedIn and Mail scale a
+#: card to the message width and keep its ratio, so a shorter card takes less
+#: of the conversation.
+SOCIAL_IMAGE_WIDTH = 1200
+SOCIAL_IMAGE_HEIGHT = 368
+
 
 def canonical_version_number(provision: CodeEditionProvision) -> int | None:
     """The version this provision's pages should point at. See module docstring."""

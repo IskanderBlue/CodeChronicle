@@ -10,7 +10,9 @@ from core.seo import (
     DEFAULT_TITLE,
     SITE_NAME,
     SOCIAL_IMAGE_ALT,
+    SOCIAL_IMAGE_HEIGHT,
     SOCIAL_IMAGE_PATH,
+    SOCIAL_IMAGE_WIDTH,
 )
 
 
@@ -34,6 +36,8 @@ def page_metadata(request: HttpRequest) -> dict[str, Any]:
         "default_description": DEFAULT_DESCRIPTION,
         "social_image_path": SOCIAL_IMAGE_PATH,
         "social_image_alt": SOCIAL_IMAGE_ALT,
+        "social_image_width": SOCIAL_IMAGE_WIDTH,
+        "social_image_height": SOCIAL_IMAGE_HEIGHT,
     }
 
 

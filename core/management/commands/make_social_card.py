@@ -20,15 +20,22 @@ from typing import Any
 from coloured_logger import Logger
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from core.models import CorpusCurrency
-from core.seo import SOCIAL_IMAGE_PATH
+from core.seo import SOCIAL_IMAGE_HEIGHT, SOCIAL_IMAGE_PATH, SOCIAL_IMAGE_WIDTH
 
 logger = Logger(__name__)
 
-#: Every crawler scales to this, and several crop anything else.
-WIDTH, HEIGHT = 1200, 630
+#: The canvas the card is drawn on.  It is taller than the card: the drawing
+#: is cropped to its own ink at the end, so the finished card carries no dead
+#: band above or below.  Slack, LinkedIn and Mail scale a card to the message
+#: width and keep its ratio, so a shorter card is simply a smaller block in
+#: the conversation — which is the point.
+WIDTH, WORK_HEIGHT = 1200, 630
+
+#: Paper left above and below the ink after the crop.
+PAD = 32
 
 #: The design tokens, as RGB.  Named for the role, matching base.html: paper,
 #: ink, and the one accent (oxblood).
@@ -63,10 +70,21 @@ TAGLINE = "The Ontario Building Code: dated, sourced, and searchable."
 #: meets the image alone can get back to the site.
 DOMAIN = "codechronicle.ca"
 
-#: Where the text block starts, and how wide it may run before it collides
-#: with the right edge.
-LEFT = 96
-TEXT_WIDTH = WIDTH - LEFT * 2
+#: The accent bar down the left edge, and the margins around the text block.
+#: LEFT is measured from the image edge, so the gap between the bar and the
+#: text is ``LEFT - SPINE``.
+SPINE = 18
+LEFT = 57
+RIGHT = 48
+TEXT_WIDTH = WIDTH - LEFT - RIGHT
+
+#: The vertical rhythm, on the working canvas.  Only the gaps between these
+#: matter; the crop decides where the card starts.
+Y_NAMEPLATE = 150
+Y_TAGLINE = 290
+Y_RULE = 367
+Y_SPAN = 403
+Y_LABEL = 449
 
 
 def _font(
@@ -108,8 +126,25 @@ def _fit(
     return _font(candidates, floor)
 
 
+def _crop_to_ink(image: Image.Image) -> Image.Image:
+    """Trim the paper above and below the drawing, leaving ``PAD`` of each.
+
+    Measuring ignores the spine.  The bar runs the full height, so a bounding
+    box over the whole image always returns the whole image and reports no
+    dead space at all.
+    """
+    body = image.crop((SPINE + 2, 0, image.width, image.height))
+    ink = ImageChops.difference(body, Image.new("RGB", body.size, PAPER))
+    box = ink.getbbox()
+    if box is None:  # pragma: no cover - only a blank card reaches this
+        return image
+    top = max(0, box[1] - PAD)
+    bottom = min(image.height, box[3] + PAD)
+    return image.crop((0, top, image.width, bottom))
+
+
 class Command(BaseCommand):
-    help = "Draw the 1200x630 social card into static/, from the corpus stamp."
+    help = "Draw the social card into static/, from the corpus stamp."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
@@ -136,41 +171,55 @@ class Command(BaseCommand):
                 "Load an edition and re-run to put the coverage back on it."
             )
 
-        image = Image.new("RGB", (WIDTH, HEIGHT), PAPER)
+        image = Image.new("RGB", (WIDTH, WORK_HEIGHT), PAPER)
         draw = ImageDraw.Draw(image)
 
         # The accent bar reads as the spine of a bound volume, which is the
-        # same figure the masthead uses.
-        draw.rectangle((0, 0, 18, HEIGHT), fill=OXBLOOD)
+        # same figure the masthead uses.  It runs the full height, so the crop
+        # keeps it whole whatever height the card ends up.
+        draw.rectangle((0, 0, SPINE, WORK_HEIGHT), fill=OXBLOOD)
 
         nameplate = _fit(draw, "CodeChronicle", SERIF_CANDIDATES, 96)
         tagline = _fit(draw, TAGLINE, SERIF_CANDIDATES, 40)
         mono = _fit(draw, span or label, MONO_CANDIDATES, 28)
 
-        draw.text((LEFT, 150), "CodeChronicle", font=nameplate, fill=INK)
-        draw.text((LEFT, 290), TAGLINE, font=tagline, fill=INK_3)
+        draw.text((LEFT, Y_NAMEPLATE), "CodeChronicle", font=nameplate, fill=INK)
+        draw.text((LEFT, Y_TAGLINE), TAGLINE, font=tagline, fill=INK_3)
 
-        draw.line((LEFT, 420, WIDTH - LEFT, 420), fill=RULE, width=2)
+        draw.line((LEFT, Y_RULE, WIDTH - RIGHT, Y_RULE), fill=RULE, width=2)
 
         if span:
-            draw.text((LEFT, 456), span.upper(), font=mono, fill=OXBLOOD)
+            draw.text((LEFT, Y_SPAN), span.upper(), font=mono, fill=OXBLOOD)
         if label:
-            draw.text((LEFT, 502), label.upper(), font=mono, fill=INK_3)
+            draw.text((LEFT, Y_LABEL), label.upper(), font=mono, fill=INK_3)
 
         # Right-aligned against the same margin the text block uses, so the
         # domain reads as a colophon rather than as another line of the block.
         domain_font = _fit(draw, DOMAIN, MONO_CANDIDATES, 24)
         draw.text(
-            (WIDTH - LEFT - draw.textlength(DOMAIN, font=domain_font), 502),
+            (WIDTH - RIGHT - draw.textlength(DOMAIN, font=domain_font), Y_LABEL),
             DOMAIN,
             font=domain_font,
             fill=INK_3,
         )
 
-        image.save(out, "PNG", optimize=True)
+        card = _crop_to_ink(image)
+        card.save(out, "PNG", optimize=True)
+
+        if card.size != (SOCIAL_IMAGE_WIDTH, SOCIAL_IMAGE_HEIGHT):
+            # The tags declare the size, and a crawler that is told the wrong
+            # one reserves the wrong space.  The copy decides the height here,
+            # so an edit to the tagline can move it — say so rather than ship
+            # a card that disagrees with its own tags.
+            raise CommandError(
+                f"the card came out {card.width}x{card.height}, but core.seo "
+                f"declares {SOCIAL_IMAGE_WIDTH}x{SOCIAL_IMAGE_HEIGHT}.  Update "
+                "SOCIAL_IMAGE_WIDTH/SOCIAL_IMAGE_HEIGHT to match, then re-run."
+            )
+
         logger.info(
             "wrote %s (%dx%d, %d bytes); span=%r label=%r",
-            out, WIDTH, HEIGHT, out.stat().st_size, span, label,
+            out, card.width, card.height, out.stat().st_size, span, label,
         )
 
     def _default_path(self) -> Path:

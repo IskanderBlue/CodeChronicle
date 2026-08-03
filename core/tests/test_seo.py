@@ -8,8 +8,11 @@ nothing else in this module matters if that breaks.
 
 import re
 from datetime import date
+from pathlib import Path
 
 import pytest
+from django.conf import settings
+from PIL import Image
 
 from core.models import (
     Code,
@@ -20,6 +23,9 @@ from core.models import (
 from core.seo import (
     DEFAULT_DESCRIPTION,
     DEFAULT_TITLE,
+    SOCIAL_IMAGE_HEIGHT,
+    SOCIAL_IMAGE_PATH,
+    SOCIAL_IMAGE_WIDTH,
     canonical_version_number,
     provision_page_meta,
 )
@@ -169,8 +175,18 @@ class TestSocialCard:
         """A crawler resolves neither a relative path nor an unknown size."""
         body = client.get("/terms/").content.decode()
         assert 'content="http://testserver/static/images/social-card.png">' in body
-        assert '<meta property="og:image:width" content="1200">' in body
-        assert '<meta property="og:image:height" content="630">' in body
+        assert f'"og:image:width" content="{SOCIAL_IMAGE_WIDTH}">' in body
+        assert f'"og:image:height" content="{SOCIAL_IMAGE_HEIGHT}">' in body
+
+    def test_the_declared_size_is_the_file_on_disk(self):
+        """The tags and the PNG are produced by different code at different
+        times — the command draws it, the template declares it.  A crawler
+        told the wrong size reserves the wrong space, and nothing else in the
+        suite would notice the two drifting apart."""
+        path = Path(settings.STATICFILES_DIRS[0]) / SOCIAL_IMAGE_PATH
+        assert path.exists(), f"the card is missing; run make_social_card ({path})"
+        with Image.open(path) as card:
+            assert card.size == (SOCIAL_IMAGE_WIDTH, SOCIAL_IMAGE_HEIGHT)
 
     def test_a_locked_page_carries_a_generic_card(self, client, provision, settings):
         """It names the edition, and it names no provision.
