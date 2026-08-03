@@ -1,15 +1,17 @@
 # Social preview cards (Open Graph)
 
-**Prefix:** `a-` — high priority. The code is done and a real crawler confirms
-it.
+**Complete 2026-08-03. Confirmed on Slack. Nothing is outstanding.**
 
-**Status 2026-08-02: shipped and confirmed on Slack.** Every page carries
-`og:` and `twitter:` tags, the static card is drawn and committed, and a locked
-page carries no card. A pasted link now shows a caption in Slack, which is the
-proof no test can give: Slack reads the page itself and renders from the tags
-alone. The LinkedIn Post Inspector is the one surface still unchecked, and it
-reads the same tags. The generated per-provision image (option 2 under "The
-image") is still open and is its own piece of work.
+Every page carries `og:` and `twitter:` tags, the static card is drawn and
+committed, and a locked page carries a generic card. A pasted link shows the
+title, the description and the image in Slack, which is the proof no test can
+give: Slack reads the page itself and renders from the tags alone.
+
+A generated card per provision was considered and **rejected**. The image as
+imagined would have shown the provision number, the heading and the in-force
+window, and `og:title` already carries all three. The version that shows what
+text cannot — a lineage strip, or the provision text itself — is parked in
+`tasks/maybe/per-provision-social-card.md` with its trigger.
 
 ## What shipped
 
@@ -48,61 +50,31 @@ image") is still open and is its own piece of work.
   **refuses to draw** a card that would overflow rather than write a clipped
   one. At four editions the staircase must become a single row of contiguous
   segments — the editions abut, so one row is faithful and its height is
-  constant. `tasks/b-social-card-single-row.md` holds the design.
+  constant. `tasks/c-social-card-single-row.md` holds the design.
 - `fonts/` holds the vendored faces, both OFL licences, and how they were
   made. They are build inputs; `collectstatic` never sees them.
-- Six tests in `core/tests/test_seo.py::TestSocialCard`, including the locked
-  page carrying no `og:` or `twitter:` string at all.
+- Eight tests in `core/tests/test_seo.py::TestSocialCard`, including the locked
+  page naming no provision in any tag that makes a claim. Seven more in
+  `core/tests/test_social_card.py` cover the drawing itself: the bands come
+  from the edition rows, the file matches the size the tags declare, and seven
+  editions raise rather than clip.
 
 The search page keeps a short tab label, "Search | CodeChronicle", and carries
 a longer sentence on its card. The two jobs differ: a tab is a label, and a
 forwarded link is a claim. Each string is written once, in the view.
 
-## The gap
+## Why this mattered
 
-`templates/base.html` carries **no** Open Graph or Twitter Card tags. Verified
-2026-08-01: zero `og:` properties anywhere in the templates.
+Before this, every link anybody sent — in email, in Slack, in Teams, on
+LinkedIn, in a text message — arrived as a bare URL with no title, no
+description and no image. A pasted link to a provision looked broken.
 
-So every link anybody sends — in email, in Slack, in Teams, on LinkedIn, in a
-text message — appears as a bare URL with no title, no description and no
-image. A pasted link to a provision looks like a broken link.
-
-This matters more here than on most sites, because the plan is that people
+That costs more here than on most sites, because the plan is that people
 **forward** these links: the proof article, the demo video chapters, a live
 search result sent to a colleague. Every one of those is a link somebody
-pastes somewhere, and right now every one of them lands badly.
+pastes somewhere.
 
-## What to add
-
-To `base.html`, beside the `meta_description` and `canonical` blocks that are
-already there, and overridable per page the same way:
-
-```
-og:type          article (provision pages) / website (everything else)
-og:title         the page title, without the " | CodeChronicle" tail
-og:description   the same string as meta_description — one source, not two
-og:url           the canonical URL
-og:site_name     CodeChronicle
-og:image         see below
-twitter:card     summary_large_image
-```
-
-Reuse the values `core/seo.py` already computes. Do not build a second title
-and a second description: two strings that mean the same thing will disagree
-within a month.
-
-## The image
-
-Two options. Do the first, and treat the second as a later improvement.
-
-1. **One static card**, 1200 x 630, in `static/`. The nameplate, the tagline,
-   and the coverage span. Good enough, and it ships today.
-2. **A generated card per provision** showing the provision number, the
-   heading and the in-force window. Much stronger — a forwarded link that
-   already shows "3.2.5.7., in force 2006 to 2009" does the persuading before
-   the click. Needs a rendering endpoint, so it is its own piece of work.
-
-## Watch out for
+## What the next person must not undo
 
 - **Do not resolve the static URL at import time.** The manifest does not
   exist during CI `check` or the entrypoint `migrate`. Resolve at request
@@ -116,21 +88,29 @@ Two options. Do the first, and treat the second as a later improvement.
   URL. Because every page shares one card, a fresh page URL does not give the
   image a fresh key. Only a new image URL does, and the filename is
   content-hashed, so the image itself must change.
+- **The server must send the card as `image/png`.** A `types` block inside an
+  nginx `location` **replaces** the inherited mime map rather than extending
+  it, and production served every `/static/` raster as
+  `application/octet-stream`. No crawler draws that. The deployed config comes
+  from `CodeChronicleTerraform/modules/compute/startup.sh`; the repo's
+  `nginx/nginx.conf` is drift. See `project_prod_nginx_source_of_truth`.
+- **Re-run `manage.py make_social_card` after loading an edition**, or the
+  bands on the card lag the corpus the masthead reports.
 
-## Verify
+## How it was verified
 
-Paste a URL into the LinkedIn Post Inspector, and into a Slack message in a
-private channel. Both show what their crawler actually read. Check three
-shapes: the landing page, a provision permalink, and the pricing page.
-
-Slack: done. A sent message shows the title, the description and the card
-image.
+Paste a URL into a Slack message in a private channel. Slack shows what its
+crawler actually read. Checked on the landing page, a provision permalink and
+the pricing page.
 
 **Read the sent message, not the compose box.** Slack draws a partial preview
 while you type — text only, no image — and it looks exactly like a broken
 card. Send the message before you judge the result.
 
-## Done when
+One crawler is enough. Every platform reads the same tags off the same
+templates, so a second inspector confirms the same thing a second time.
+
+## Done
 
 - ~~Every page carries `og:` and `twitter:` tags with values from
   `core/seo.py`.~~ Done.

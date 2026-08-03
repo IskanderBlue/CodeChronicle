@@ -79,5 +79,6 @@ you are.
 
 ## Related
 
-- `tasks/a-social-preview-cards.md` — without Open Graph tags, every link you
-  post here renders as a bare URL. Do that first, or the posts land badly.
+- `tasks/complete/a-social-preview-cards.md` — done. Every link you post here
+  carries a title, a description and a card image. Slack's crawler confirms
+  it, and LinkedIn reads the same tags.

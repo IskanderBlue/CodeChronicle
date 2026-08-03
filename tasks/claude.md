@@ -13,5 +13,10 @@ A prefix classifies why each card sits here and when to pick it up
 - `c-` — **low priority**, actionable now.
 
 One prefix per file. Finished cards move to `complete/`; superseded or
-deliberately-abandoned plans move to `obsolete/`. Subdirectories are not
-covered by this convention.
+deliberately-abandoned plans move to `obsolete/`; ideas whose case is not made
+move to `maybe/`. Subdirectories are not covered by this convention, so a card
+in one of them carries no prefix.
+
+A card in `maybe/` is not a backlog item. It says what would have to become
+true before the idea is worth picking up, so that the reasons for saying no
+survive and nobody re-argues them from scratch.
