@@ -93,3 +93,41 @@ class TestSitemap:
         final = next(i for i in sitemap.items() if i.provision.provision_id == "1.1.1.1.")
         assert sitemap.location(final) == "/provision/OBC_2006/B/1.1.1.1./v2/"
         assert sitemap.lastmod(final) == date(2009, 1, 1)
+
+
+@pytest.mark.django_db
+class TestProvisionSectionRenders:
+    """The section as a crawler receives it.
+
+    Every test above calls the sitemap's methods directly, so all of them
+    passed while ``/sitemap-provisions.xml`` returned 500 in production: the
+    worker ran out of memory building the page.  Rendering the real URL is the
+    only check that sees that.
+    """
+
+    def test_the_section_renders_the_provision_urls(self, client, obc_2006_edition):
+        response = client.get("/sitemap-provisions.xml")
+        assert response.status_code == 200
+        body = response.content.decode()
+        assert "/provision/OBC_2006/B/1.1.1.1./v2/" in body
+        assert "/provision/OBC_2006/B/1.1.1.2./v0/" in body
+
+    def test_the_row_count_does_not_drive_the_query_count(
+        self, client, obc_2006_edition, django_assert_max_num_queries
+    ):
+        """``location`` reads ``edition.code_name``, which reads ``code.code``.
+
+        With the join stopping at the edition that is one query per provision,
+        which is what killed the worker at corpus scale.  The bound is a
+        constant so a regression shows up as a failure here rather than as a
+        500 nobody sees.  The fixture holds two provisions and the section
+        renders in five queries, so the N+1 makes seven and trips this.
+        """
+        with django_assert_max_num_queries(6):
+            client.get("/sitemap-provisions.xml")
+
+    def test_the_provision_text_is_never_loaded(self, obc_2006_edition):
+        """A version row carries the whole provision text, and the sitemap
+        holds a page of rows at once.  Six short columns are all it needs."""
+        item = next(iter(ProvisionSitemap().items()))
+        assert "html" in item.get_deferred_fields()

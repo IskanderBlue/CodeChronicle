@@ -95,10 +95,28 @@ class ProvisionSitemap(Sitemap):
         # DISTINCT ON (provision) with a matching leading ORDER BY is the
         # Postgres way to take one row per group without a correlated subquery;
         # the ordering picks the highest version within each provision.
+        #
+        # Two things here are load-bearing on a one-gigabyte host, and the
+        # sitemap returned 500 without them because the worker was killed:
+        #
+        # * ``code`` must be joined as well as ``edition``.  ``location`` reads
+        #   ``edition.code_name``, which reads ``code.code``, so stopping the
+        #   join at the edition costs one query per provision.
+        # * ``only`` must exclude ``html``.  A version row carries the whole
+        #   provision text, and a sitemap page holds ``limit`` rows in memory
+        #   at once.  The sitemap needs six short columns and none of the text.
         return (
             CodeEditionProvisionVersion.objects
             .filter(provision__edition_id__in=free_tier_edition_ids())
-            .select_related("provision", "provision__edition")
+            .select_related("provision", "provision__edition", "provision__edition__code")
+            .only(
+                "version",
+                "effective_date",
+                "provision__division",
+                "provision__provision_id",
+                "provision__edition__edition_id",
+                "provision__edition__code__code",
+            )
             .order_by("provision_id", "-version")
             .distinct("provision_id")
         )
