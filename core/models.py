@@ -339,6 +339,15 @@ class EngagementEvent(models.Model):
         # returns 429 before any SearchHistory row is written, so without this
         # row a blocked visitor is indistinguishable from one who left.
         RATE_LIMIT_BLOCK = "rate_limit_block", "Rate limit block"
+        # A reader took something out of the product and put it in their own
+        # work.  ``context.kind`` is one of citation / provision_pdf /
+        # results_csv / comparison_pdf, and the citation kind also carries
+        # ``context.format``.  All four exports were built at once because we
+        # could not guess which one a consultant reaches for, and asking
+        # produces an opinion rather than a measurement — so the kind is the
+        # measurement, and an export nobody uses is removed rather than
+        # defended (``tasks/b-provision-exports.md``).
+        EXPORT = "export", "Export"
 
     user = models.ForeignKey(
         User,
@@ -1191,6 +1200,15 @@ class CodeEditionProvisionVersion(models.Model):
     # (``core.cross_refs.annotate_versions``).
     linked_html: str
     cross_ref_cites: list[dict[str, Any]]
+    # The page images cropped to this provision, for the printable surfaces
+    # only (``core.page_crops.build_crops``).  Not on the reading page: there
+    # a scan is shown whole with the region highlighted, because the reader
+    # wants to see the provision in its setting.
+    crops: list[dict[str, Any]]
+    # Whether the printable surfaces repeat this version's tables as their own
+    # figures (``core.print_options``).  False for an image-rendered version,
+    # whose scan already shows them.
+    show_tables: bool
     codeeditionprovisionversionclause_set: (
         "models.Manager[CodeEditionProvisionVersionClause]"
     )
@@ -1442,6 +1460,8 @@ class ProvisionVersionTable(models.Model):
     # within-edition citations linked (``core.cross_refs.annotate_tables``).
     linked_html: str
     linked_notes: str
+    # This table's images, cropped, on the printable surfaces only.
+    crops: list[dict[str, Any]]
 
     version = models.ForeignKey(
         CodeEditionProvisionVersion, on_delete=models.CASCADE, related_name="tables",

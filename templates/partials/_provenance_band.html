@@ -6,7 +6,8 @@
    carries From / Until / query-date / coverage + the verification status — it
    superseded the old From·rail·Until·Dur cells and the "✓ Covers" cell. When
    there's no rail (never-in-force, or no query date), a compact From/Until shows
-   instead. copy_text comes from api.formatters.
+   instead. Quoting this version is the "Cite" menu's job, in the rail's
+   trailing affordances — not a control of this band's own.
    NB: multi-line {# #} comments leak as literal text (tokenizer isn't
    re.DOTALL) — use {% comment %} for anything spanning lines.
 {% endcomment %}
@@ -15,7 +16,7 @@
    out against whatever is behind it. Without this the ring punched a
    page-coloured hole in a band-coloured field. Any element that paints a
    background and may contain a rail declares this once — see base.html. {% endcomment %}
-<div class="@container border border-secondary bg-secondary-soft [--backdrop:var(--secondary-soft)]" x-data="{ copied: false, cmOpen: false, cmOpenUntil: false }">
+<div class="@container border border-secondary bg-secondary-soft [--backdrop:var(--secondary-soft)]" x-data="{ cmOpen: false, cmOpenUntil: false }">
     <div class="flex flex-wrap items-stretch">
         {# Label cell — solid accent fill #}
         {% comment %} compare_pane: the side-by-side transition panes drop the
@@ -78,35 +79,24 @@
                reader is most likely to dispute, so it must not be the branch that
                drops the invitation. Same partial, so the wording cannot drift.
             {% endcomment %}
-            {% if allow_report and not in_legend %}
-            <span class="ml-auto self-center">
+            {% if not in_legend %}
+            <span class="ml-auto flex items-center gap-3 self-center">
+                {% include "partials/_export_citation.html" with code_edition=result.code_edition division=result.division provision_id=result.id version=result.version.version %}
+                {% if allow_report %}
                 {% include "partials/_report_problem.html" with code_edition=result.code_edition division=result.division provision_id=result.id version=result.version.version reg_id="" report_surface=report_surface %}
+                {% endif %}
             </span>
             {% endif %}
         </div>
         {% endif %}
 
-        {% comment %} Copy reference button — copy_text is built server-side in the
-           formatter (api.formatters._build_copy_text) so JS doesn't need
-           to know the provenance shape.
-
-           in_legend drops it, the same guard the rail uses: the verification
-           guide's examples are illustrative dates with no provision behind
-           them, so there is no reference to copy. Everything else in the band
-           renders from the rail geometry alone. {% endcomment %}
-        {% if not in_legend %}
-        <button type="button" title="Copy structured reference"
-            class="relative flex shrink-0 items-center border-l border-secondary/40 px-3 text-ink-3 hover:text-secondary"
-            data-copy-text="{{ result.copy_text }}"
-            @click.stop="
-                navigator.clipboard.writeText($el.dataset.copyText);
-                copied = true;
-                setTimeout(() => copied = false, 1500);
-            ">
-            <svg x-show="!copied" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-            <svg x-show="copied" x-cloak class="h-4 w-4 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        </button>
-        {% endif %}
+        {% comment %} The one-click copy icon that used to sit here is gone. It
+           produced one string and never said which of the several correct forms
+           it was, and it could not carry a retrieval date without claiming to be
+           a citation. Its string survives as the Reference entry in the "Cite"
+           menu (partials/_export_citation.html), which the rail's trailing
+           affordances open — one control for "how do I quote this", rather than
+           an icon here and a menu there. {% endcomment %}
     </div>
     {% if result.from_commencement %}
     {% include "partials/_commencement_modal.html" with commencement=result.from_commencement effective_date=result.version.effective_date %}

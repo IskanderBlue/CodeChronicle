@@ -14,8 +14,10 @@ rail's content, re-cut for two.
 from datetime import date
 from typing import Any
 
+from django.contrib.auth.views import redirect_to_login
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
+from django.urls import reverse
 
 from api.formatters import _diff_html_content, diff_is_empty, diff_similarity
 from core.access import edition_allowed
@@ -30,8 +32,10 @@ from core.compare import (
 from core.cross_refs import annotate_versions
 from core.events import record_event
 from core.models import CodeEditionProvisionVersion, EngagementEvent
+from core.page_crops import build_crops
 from core.permalinks import provision_permalink_url
-from core.seo import TITLE_SUFFIX
+from core.print_options import apply_tables_mode, resolve_tables_mode, toggle_query
+from core.seo import TITLE_SUFFIX, site_origin
 
 from .regulation import _locked_edition_response
 
@@ -80,13 +84,18 @@ def _missing(request: HttpRequest, message: str) -> HttpResponse:
     )
 
 
-def compare_versions(request: HttpRequest) -> HttpResponse:
+def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpResponse:
     """Compare the two versions named by ``?a=`` and ``?b=``.
 
     Both references use the permalink path form, so a reader builds a
     comparison by copying two URLs.  The pair is ordered by effective date
     before rendering, not by which parameter it arrived in: a comparison reads
     earlier-to-later whichever way round the reader named it.
+
+    ``for_print`` (the ``/compare/print/`` route) renders the same comparison
+    as an exhibit.  One view, because the printed comparison has to state the
+    same two windows, the same instruments and the same caveats as the page —
+    and a second assembly is how that stops being true.
     """
     ref_a = parse_version_ref(request.GET.get("a"))
     ref_b = parse_version_ref(request.GET.get("b"))
@@ -133,18 +142,33 @@ def compare_versions(request: HttpRequest) -> HttpResponse:
 
     cross_edition = earlier.provision.edition_id != later.provision.edition_id
 
-    # Engagement: a comparison was delivered.  After the gate, so a refusal
-    # counts as a LOCKED_CONTENT_VIEW and never also as value delivered — the
-    # two numbers are the numerator and the denominator of the same question.
-    # The object is the later version, because that is the one the reader was
-    # almost always looking at when they asked.  Non-fatal.
+    if for_print and not request.user.is_authenticated:
+        # Same line as the printable provision: a citation is open to
+        # everybody because it carries our URL out into the world; an exhibit
+        # is work product.
+        return redirect_to_login(request.get_full_path())
+
+    # Engagement.  After the gate, so a refusal counts as a
+    # LOCKED_CONTENT_VIEW and never also as value delivered — the two numbers
+    # are the numerator and the denominator of the same question.  The object
+    # is the later version, because that is the one the reader was almost
+    # always looking at when they asked.  Non-fatal.
+    #
+    # A print is an *export*, not a comparison view: counting it as both would
+    # inflate the comparison total with the readers who exported one, and the
+    # export counts have to be readable against it.
     record_event(
         request,
-        event_type=EngagementEvent.EventType.VERSION_COMPARISON,
+        event_type=(
+            EngagementEvent.EventType.EXPORT
+            if for_print
+            else EngagementEvent.EventType.VERSION_COMPARISON
+        ),
         object_type="CodeEditionProvisionVersion",
         object_id=later.pk,
         search_id=request.GET.get("search_id"),
         context={
+            **({"kind": "comparison_pdf"} if for_print else {}),
             "a": version_ref(earlier).path,
             "b": version_ref(later).path,
             "cross_edition": cross_edition,
@@ -185,10 +209,33 @@ def compare_versions(request: HttpRequest) -> HttpResponse:
         f"{side_a['edition_name']} compared with {side_b['edition_name']}"
     )
 
+    tables_separate = False
+    if for_print:
+        # Crops for the panes.  A pane falls back to the shared provision
+        # content when there is nothing to redline — an image-only version
+        # cannot be word-diffed — and that partial reads `version.crops` on a
+        # print surface.
+        for version in (earlier, later):
+            version.crops = build_crops(version.page_images)
+        # Same rule as the printable provision: a scanned page already shows
+        # its tables, so repeating them as figures prints each one twice.
+        tables_separate = apply_tables_mode(
+            [earlier, later], resolve_tables_mode(request.GET.get("tables"))
+        )
+
     return render(
         request,
-        "compare.html",
+        "compare_print.html" if for_print else "compare.html",
         {
+            "print_mode": for_print,
+            "tables_separate": tables_separate,
+            "tables_toggle_query": toggle_query(request.GET, tables_separate),
+            "retrieved": date.today(),
+            "site_origin": site_origin(request),
+            "comparison_path": (
+                f"{reverse('core:compare')}"
+                f"?a={side_a['ref']}&b={side_b['ref']}"
+            ),
             "side_a": side_a,
             "side_b": side_b,
             # The same two dicts as a list, because the twin header loops over

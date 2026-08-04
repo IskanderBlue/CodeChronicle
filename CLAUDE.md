@@ -251,6 +251,78 @@ document that changed. Full reasoning:
   (edition + `reg_id`) — and the queue resolves either back to a live URL at
   read time.
 
+## Exports
+
+Four ways to take something out of the product, all shipped at once and all
+instrumented, because we could not guess which one a code consultant reaches
+for. Each records an `EngagementEvent.EventType.EXPORT` with `context.kind`;
+`/insights/` shows the counts (`core.insights.export_counts`), and
+`tasks/b-exports-60-day-review.md` is the promise to read them on 3 October
+2026 and remove what nobody used.
+
+| Kind | Where |
+|---|---|
+| `citation` | The "Cite" menu in the attestation rail (`core/citations.py`) |
+| `provision_pdf` | `/provision/…/print/` — the `for_print` branch of `provision_permalink` |
+| `results_csv` | `core.views.exports.results_csv` |
+| `comparison_pdf` | `/compare/print/` — the `for_print` branch of `compare_versions` |
+
+Rules that hold across all four:
+
+- **The gate is the gate** (`core/access.py`), on the read path and the write
+  path both. A refusal must never also be counted as value delivered.
+- **The citation is open to everybody**; the other three need a free account.
+  A citation carries our URL into somebody else's document, which is the point
+  of it; the rest are work product.
+- **Every export states its retrieval date.**
+- **The window is stated in days actually governed.** The stored window is
+  half-open, so a citation that says "to" names the day *before* the end date.
+  `core.seo.last_governed_day` owns that conversion for the whole product —
+  the page title, the JSON-LD interval, the nav tooltips, the cross-reference
+  chips and the citations all call it, because three private copies gave three
+  answers. `core.citations.in_force_phrase` puts it in prose, and
+  `core.seo.effective_window` closes an open version at its edition's end.
+- **A citation links its own version, not the canonical one.** The canonical
+  rule concentrates crawler ranking on the highest version; a citation pins a
+  text to a date, and a link to a different text is the one failure an exhibit
+  cannot survive.
+
+Two citation formats, plus the incumbent: **Legal** (McGill Guide, for a
+factum), **Report** (practice form, and the one that carries the URL and the
+retrieval line), and **Reference** (the structured provenance block the band's
+copy icon produced before this work — folded into the same menu so one control
+answers "how do I quote this", and measured like the other two so it can lose).
+
+**Printing is the browser's job.** There is no PDF library and no headless
+browser on the server: the print pages render from the same partials the
+reading pages use — that is what stops an exhibit showing something the
+product does not — and a second layout engine would break exactly that. The
+two print pages share `templates/partials/_print_shell.html` and
+`_print_script.html`.
+
+**Scans are cropped to the provision** (`core/page_crops.py`). A page image is
+a whole scanned page and the bboxes mark the provision on it; on paper the rest
+of the page is somebody else's text. Two rules: a crop is its own bbox plus a
+small margin, **never** the union of a page's bboxes (these pages are set in
+two columns, and a union of two column regions is the whole page again); and
+**one scale for the whole provision** — the widest crop fills the printable
+width and the rest are drawn in proportion, so a narrow fragment does not print
+in giant type beside a wide table in tiny type. The crop is CSS; the only value
+CSS cannot supply is the wrapper's height, because CCM ships no image
+dimensions, so the print script reads each image's own proportions once it
+loads.
+
+**A scan already shows its tables**, so the printable surfaces do not repeat
+them as separate figures (`core/print_options.py`). CCM ships a table twice for
+a scanned edition — inside the page image, and again as a
+`ProvisionVersionTable` row — and on the reading page the second copy sits
+behind a disclosure, so nobody meets both. On paper both print, and an exhibit
+showing one table twice invites the question of which copy is the evidence. The
+decision is **per version**, not per page: an image-rendered version suppresses
+its table rows, an HTML-rendered one keeps them (there the tables are not in
+`version.html` and appear nowhere else). `?tables=on` / `?tables=off` override
+it, and the print page carries the link.
+
 ## Temporary Files
 
 Write throwaway scripts, debug helpers, and scratch files to `.tmp/` (gitignored). Never create them in the project root.

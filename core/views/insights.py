@@ -22,6 +22,7 @@ from core.insights import (
     collect_metrics,
     conversion_rates,
     edition_requests,
+    export_counts,
     feedback_reports,
     top_queries,
 )
@@ -56,6 +57,9 @@ def insights(request: HttpRequest) -> HttpResponse:
         "metrics": metrics,
         "rates": conversion_rates(metrics),
         "queries": top_queries(days=days),
+        # Which of the four exports readers actually take. The table decides
+        # what survives the sixty-day review.
+        "exports": export_counts(days=days),
         "requests": edition_requests(days=days),
         "reports": feedback_reports(days=days),
         # The status control renders one button per state, so the template

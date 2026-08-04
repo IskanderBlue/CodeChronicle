@@ -58,6 +58,13 @@
             {% endif %}
             {% if not in_legend %}
             <a href="{% url 'core:verification_guide' %}" target="_blank" rel="noopener" class="ui-disclosure" title="How to read this verification rail (opens in a new tab)">How to read this <span aria-hidden="true">&nearr;</span></a>
+            {% comment %} "Cite" replaces the band's one-click copy icon. It sits
+               here, after the explanation and before the dispute: read how the
+               claim is made, take the text into your own work, and say so if you
+               disagree. Same in_legend guard as its neighbours — the legend's
+               example rails carry illustrative dates with no provision behind
+               them, so there is nothing to cite. {% endcomment %}
+            {% include "partials/_export_citation.html" with code_edition=result.code_edition division=result.division provision_id=result.id version=result.version.version %}
             {% endif %}
             {% comment %} The dispute affordance, after the explanation: read how the
                claim is made, then say if you disagree with it. allow_report is opt-in

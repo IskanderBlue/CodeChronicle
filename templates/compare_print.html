@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% comment %}
+The comparison as an exhibit.
+
+The body is `partials/_compare_body.html` — the same file /compare/ renders, so
+the printed comparison states the same two windows, the same two regulations,
+the same pairing basis and the same caveats. That is the whole guarantee: a
+printed comparison that omitted a caveat the page carries would be evidence of
+something the product never said.
+
+Only the shell differs. This one adds the retrieval stamp, drops the site's
+navigation, and lets the panes stack rather than sit side by side: two columns
+of legal text on a sheet of paper is four inches of measure each, and a redline
+is unreadable at that width. The reader compares down the page instead, which
+is the same order the twin header already puts them in.
+
+Same engine as the printable provision: the browser. See
+regulation/provision_print.html for why there is no PDF library here.
+{% endcomment %}
+{% block content_width %}max-w-[900px]{% endblock %}
+{% block extra_head %}
+{% include "partials/_print_shell.html" %}
+<style>
+    @media print {
+        /* One column. The grid puts the two texts side by side on screen,
+           which a sheet of paper cannot afford: two columns of legal text on
+           Letter is four inches of measure each, and a redline is unreadable
+           at that width. */
+        .md\:grid-cols-2 { grid-template-columns: 1fr !important; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="px-4 py-6 sm:px-8">
+
+    {% include "partials/_print_controls.html" %}
+
+    <header class="border-b-[3px] border-double border-rule pb-3">
+        <p class="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">Comparison</p>
+        <p class="mt-1 text-[12px] text-ink">
+            Retrieved {{ retrieved|date:"Y-m-d" }} from
+            <span class="break-all">{{ site_origin }}{{ comparison_path }}</span>
+        </p>
+    </header>
+
+    {% include "partials/_compare_body.html" %}
+</div>
+{% endblock %}
+{% block extra_js %}
+{% include "partials/_print_script.html" %}
+{% endblock %}

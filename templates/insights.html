@@ -209,6 +209,48 @@ move" is asked of all of them at once.
     {% endif %}
   </section>
 
+  {% comment %} ── Which exports readers take ──
+     Four exports shipped at once because we could not guess which one a code
+     consultant reaches for, and asking produces an opinion rather than a
+     measurement. This table is the measurement. A kind with no rows still
+     shows, reading zero: a missing line would be read as "not built yet",
+     which is the opposite of the finding. {% endcomment %}
+  <section class="mt-8 border border-rule bg-surface-2 p-5">
+    <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Exports</h2>
+    <p class="mt-1 text-sm text-ink-2">What readers took away with them. After sixty days, an export nobody used is removed rather than defended.</p>
+    <table class="mt-4 w-full text-left">
+      <thead>
+        <tr class="border-b border-rule">
+          <th class="py-1.5 pr-4 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Export</th>
+          <th class="w-24 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">{{ days }} days</th>
+          <th class="w-24 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">All time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in exports %}
+        <tr class="border-t border-rule-2">
+          <td class="py-1.5 pr-4">
+            <span class="font-mono text-[11px] text-ink">{{ row.label }}</span>
+            <span class="block font-serif text-sm text-ink-3">{{ row.description }}</span>
+          </td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-2">{{ row.window|intcomma }}</td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-3">{{ row.total|intcomma }}</td>
+        </tr>
+        {% comment %} The citation formats, indented under their kind. A factum
+           and a report body take different strings, and one of the two may
+           turn out to be nobody's. {% endcomment %}
+        {% for fmt in row.formats %}
+        <tr>
+          <td class="py-0.5 pl-4 pr-4 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">{{ fmt.format }}</td>
+          <td class="py-0.5 text-right font-mono text-[10px] text-ink-3">{{ fmt.window|intcomma }}</td>
+          <td class="py-0.5 text-right font-mono text-[10px] text-ink-3">{{ fmt.total|intcomma }}</td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
   {# ── Free keyword research. What people actually typed. ── #}
   <section class="mt-8 border border-rule bg-surface-2 p-5">
     <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Most-repeated queries</h2>

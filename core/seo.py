@@ -103,19 +103,45 @@ def canonical_version_number(provision: CodeEditionProvision) -> int | None:
     )["top"]
 
 
+def last_governed_day(end: date | None) -> date | None:
+    """The last day a text governed, from a half-open window end.
+
+    The stored window is ``effective <= d < ineffective``, so the end date is
+    the first day the text did **not** apply.  Every surface that writes "to"
+    means the day before it.  One function, because the conversion was written
+    three times and one of the three was wrong.
+
+    ``None`` stays ``None``: an open window has no last day, and today's date
+    is not a substitute — the edition may have been superseded without this
+    provision changing.
+    """
+    if end is None:
+        return None
+    return end - timedelta(days=1)
+
+
 def _date_phrase(effective: date | None, ineffective: date | None) -> str:
     """How long this version stood, in prose.
 
     An open-ended window says "from", not "to today": the edition may have been
     superseded without this provision changing, and claiming currency for a
     historical text is the one error this product cannot afford.
+
+    The end is the last day governed, not the stored date.  See
+    :func:`last_governed_day`.
     """
     if effective is None:
         return ""
     start = effective.strftime("%d %B %Y").lstrip("0")
-    if ineffective is None:
+    last = last_governed_day(ineffective)
+    if last is None:
         return f"in force from {start}"
-    end = ineffective.strftime("%d %B %Y").lstrip("0")
+    if last < effective:
+        # Zero-duration or inverted window: a real link in the amendment chain
+        # that governed no day.  A range is the wrong shape for it, and a
+        # backwards one ("to" a day before "from") reads as a data fault.
+        return "never in force"
+    end = last.strftime("%d %B %Y").lstrip("0")
     return f"in force {start} to {end}"
 
 
@@ -268,9 +294,9 @@ def temporal_coverage(start: date, end: date | None) -> str:
       may have been superseded without this provision changing, and an end of
       "today" claims a currency nobody checked.
     """
-    if end is None:
+    last_day = last_governed_day(end)
+    if last_day is None:
         return f"{start.isoformat()}/.."
-    last_day = end - timedelta(days=1)
     if last_day < start:
         # Zero-duration or inverted window (``never_in_force``): the version is
         # a real link in the amendment chain but governed no day, and an
@@ -279,15 +305,24 @@ def temporal_coverage(start: date, end: date | None) -> str:
     return f"{start.isoformat()}/{last_day.isoformat()}"
 
 
-def _base_regulation(edition: CodeEdition) -> Regulation | None:
-    """The instrument that enacted this edition, if it is loaded."""
+def base_regulation(edition: CodeEdition) -> Regulation | None:
+    """The instrument that enacted this edition, if it is loaded.
+
+    Public because :mod:`core.citations` names the same instrument: a citation
+    and the JSON-LD block must not disagree about which regulation enacted an
+    edition.
+    """
     return Regulation.objects.filter(
         edition=edition, role=Regulation.Role.BASE
     ).first()
 
 
-def _amending_regulations(version: CodeEditionProvisionVersion) -> list[Regulation]:
+def amending_regulations(version: CodeEditionProvisionVersion) -> list[Regulation]:
     """The instruments that produced this version, in apply order.
+
+    Public because the printable provision states the same instruments in its
+    header.  An exhibit and the machine-readable block must name the same
+    regulations, or one of them is wrong.
 
     Empty for a base v0, which is correct: nothing amended it.  It is also
     empty when CCM shipped no contributing clause (the base-enactment gap), and
@@ -402,7 +437,7 @@ def provision_jsonld(
     if canonical_version is None:
         return mark_safe("")
 
-    base_reg = _base_regulation(edition)
+    base_reg = base_regulation(edition)
     start, end = effective_window(version, edition)
     heading = (version.title or "").strip()
     canonical_path = provision_permalink_url(
@@ -435,7 +470,7 @@ def provision_jsonld(
             _regulation_node(base_reg, origin) if base_reg else None
         ),
         "legislationChangedBy": [
-            _regulation_node(reg, origin) for reg in _amending_regulations(version)
+            _regulation_node(reg, origin) for reg in amending_regulations(version)
         ],
         "url": f"{origin}{canonical_path}",
     }

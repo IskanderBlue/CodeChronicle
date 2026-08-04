@@ -31,11 +31,31 @@ from core.seo import (
     SOCIAL_IMAGE_PATH,
     SOCIAL_IMAGE_WIDTH,
     canonical_version_number,
+    last_governed_day,
     provision_jsonld,
     provision_page_meta,
     regulation_jsonld,
+    temporal_coverage,
 )
 from core.sitemaps import ProvisionSitemap
+
+
+class TestLastGovernedDay:
+    """The one conversion three modules share.
+
+    The stored window is half-open, so every surface that writes "to" means
+    the day before the stored end.  The conversion was written three times,
+    and one of the three printed the stored date — a page title that claimed
+    a text applied on the first day it did not.
+    """
+
+    def test_it_names_the_day_before_the_stored_end(self):
+        assert last_governed_day(date(2009, 1, 1)) == date(2008, 12, 31)
+
+    def test_an_open_window_has_no_last_day(self):
+        # Not today's date: the edition may have been superseded without this
+        # provision changing, and "to today" claims a currency nobody checked.
+        assert last_governed_day(None) is None
 
 
 @pytest.fixture
@@ -75,7 +95,9 @@ class TestProvisionPageMeta:
         assert "3.2.5.7." in title
         assert "Fire Department Access Routes" in title
         assert "2006" in title
-        assert "in force 31 December 2006 to 1 January 2009" in title
+        # The stored end is 1 January 2009, the first day this text did *not*
+        # apply.  The title names the last day it did.
+        assert "in force 31 December 2006 to 31 December 2008" in title
 
     def test_description_fits_the_search_result_snippet(self, provision):
         version = provision.versions.get(version=0)
@@ -89,6 +111,33 @@ class TestProvisionPageMeta:
         meta = provision_page_meta(provision, version)
         assert "in force from 1 January 2012" in meta["meta_title"]
         assert " to " not in meta["meta_title"]
+
+    def test_the_title_and_the_json_ld_name_the_same_last_day(self, provision):
+        """One window, two surfaces, one conversion.
+
+        The prose window and ``temporalCoverage`` are built from the same
+        half-open dates.  They disagreed for as long as each did its own
+        arithmetic, so the property is that they cannot.
+        """
+        version = provision.versions.get(version=0)
+        title = provision_page_meta(provision, version)["meta_title"]
+        assert "31 December 2008" in title
+        assert temporal_coverage(
+            version.effective_date, version.ineffective_date
+        ).endswith("/2008-12-31")
+
+    def test_a_version_that_governed_no_day_is_not_given_a_backwards_range(
+        self, provision
+    ):
+        """A zero-duration window is a real link in the amendment chain.
+
+        Subtracting the day would print "to" a date before "from", which reads
+        as a data fault rather than as what it is.
+        """
+        version = provision.versions.get(version=1)
+        version.ineffective_date = version.effective_date
+        version.save()
+        assert "never in force" in provision_page_meta(provision, version)["meta_title"]
 
     def test_an_untitled_version_still_produces_usable_metadata(self, provision):
         version = provision.versions.get(version=1)

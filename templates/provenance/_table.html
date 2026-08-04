@@ -8,7 +8,11 @@
    hold for the loaded data.
 
    Context: `table` (ProvisionVersionTable). {% endcomment %}
-<figure class="border border-rule bg-surface-2 overflow-hidden" x-data="{ open: false }">
+{% comment %} Open by default when printing. A table is collapsed on screen
+   because a page of them buries the text; on paper there is no disclosure to
+   click, so a collapsed table would simply be missing from the exhibit — and a
+   table is often the substance of the provision. {% endcomment %}
+<figure class="border border-rule bg-surface-2 overflow-hidden" x-data="{ open: {% if print_mode %}true{% else %}false{% endif %} }">
     <figcaption class="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 cursor-pointer select-none"
                 :class="{ 'border-b border-rule': open }"
                 role="button" tabindex="0" :aria-expanded="open"
@@ -24,7 +28,11 @@
     </figcaption>
     <div class="p-3" x-show="open" x-cloak>
         {% if table.images %}
+        {% if print_mode %}
+        {% include "partials/_document_crops.html" with crops=table.crops alt_text=table.table_id %}
+        {% else %}
         {% include "partials/_document_images.html" with entries=table.images alt_text=table.table_id container_class="table-container max-w-none provision-table-html" %}
+        {% endif %}
         {% elif table.html %}
         {% comment %} `linked_html` / `linked_notes` are the same strings with
            within-edition citations linked (core.cross_refs.annotate_tables);

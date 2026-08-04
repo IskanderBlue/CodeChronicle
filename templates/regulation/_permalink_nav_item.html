@@ -1,7 +1,10 @@
 {% comment %} One neighbour provision in the permalink hierarchy nav.
 
    `item`: {provision_id, title, versions:[{version, title, effective_date,
-   ineffective_date, never_in_force, url}]}.  `glyph`: the direction mark for
+   last_day, never_in_force, url}]}.  `last_day` is the last day the version
+   governed, already converted from the half-open window end by the view —
+   printing the stored end date would name the first day the text did not
+   apply.  `glyph`: the direction mark for
    the gutter — the pager passes an arrow back or forward, the parent group an
    arrow up, the children group an arrow down.  All four groups render through
    this partial, so every row in the nav is built the same way.
@@ -33,7 +36,7 @@
     {% if item.versions|length == 1 %}
         {% with v=item.versions.0 %}
         <a href="{{ v.url }}" class="flex min-w-0 items-baseline gap-1.5 ui-cite"
-           title="{{ item.provision_id }}{% if v.title %} &mdash; {{ v.title }}{% endif %} &middot; v{{ v.version }}, {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">
+           title="{{ item.provision_id }}{% if v.title %} &mdash; {{ v.title }}{% endif %} &middot; v{{ v.version }}, {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.last_day %} to {{ v.last_day|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">
             <span class="shrink-0 font-mono font-semibold">{{ item.provision_id }}</span>
             {% if v.title %}<span class="min-w-0 truncate italic">{{ v.title }}</span>{% endif %}
         </a>
@@ -46,7 +49,7 @@
         <ul class="pnav-versions">
             {% for v in item.versions %}
             <li><a href="{{ v.url }}" class="font-mono text-[11px] ui-cite"
-                   title="v{{ v.version }}{% if v.title %} &mdash; {{ v.title }}{% endif %} &middot; {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.ineffective_date %} to {{ v.ineffective_date|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">{% if v.never_in_force %}never in force{% else %}{{ v.effective_date|date:'j M Y' }}{% endif %}</a></li>
+                   title="v{{ v.version }}{% if v.title %} &mdash; {{ v.title }}{% endif %} &middot; {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.last_day %} to {{ v.last_day|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">{% if v.never_in_force %}never in force{% else %}{{ v.effective_date|date:'j M Y' }}{% endif %}</a></li>
             {% endfor %}
         </ul>
     {% else %}

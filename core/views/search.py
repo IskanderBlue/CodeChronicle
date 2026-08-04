@@ -676,6 +676,14 @@ def search_results(request):
         {
             "success": True,
             "results": result["results"],
+            # Echoed back so the CSV form can re-post the search that produced
+            # this list.  The raw query, not the parsed parameters: the export
+            # re-runs the pipeline rather than exporting a snapshot, so it must
+            # be handed the same input, and the relevance floor is read from
+            # the reader's own stored preference at the other end.
+            "export_query": query,
+            "export_date": date_override or "",
+            "export_province": province_override or "",
             "meta": {"applicable_codes": result["applicable_codes"]},
             # Same editions as meta.applicable_codes, as prose. The meta key
             # keeps the raw code_names because the JSON API publishes them;

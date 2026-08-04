@@ -32,6 +32,12 @@ urlpatterns = [
     # Reader reports — "this looks wrong" on a specific text.
     path("report/", views.report_problem, name="report_problem"),
     path("report/<int:pk>/status/", views.feedback_status, name="feedback_status"),
+    # Exports — the four ways to take something out of the product.  The
+    # target is the same ``?v=OBC_2006/B/3.2.5.7./v0`` reference /compare/
+    # takes, so a reader who copied a URL has already produced it.
+    path("export/citation/", views.citation_panel, name="citation_panel"),
+    path("export/results.csv", views.results_csv, name="results_csv"),
+    path("export/record/", views.record_export, name="record_export"),
     path("viewer/edition-nav/", views.viewer_edition_nav, name="viewer_edition_nav"),
     path("viewer/edition-dates/", views.viewer_edition_dates, name="viewer_edition_dates"),
     path("viewer/section-content/", views.viewer_section_content, name="viewer_section_content"),
@@ -54,9 +60,30 @@ urlpatterns = [
         name="provision_permalink_no_division",
         kwargs={"division": ""},
     ),
+    # The exhibit: the same provision, laid out to print. A route rather than a
+    # query parameter, because it is a different document and not a mode of the
+    # reading page — and because a printed page's URL should say what it is.
+    path(
+        "provision/<str:code_edition>/<str:division>/<str:provision_id>/v<int:version>/print/",
+        views.provision_permalink,
+        name="provision_print",
+        kwargs={"for_print": True},
+    ),
+    path(
+        "provision/<str:code_edition>/<str:provision_id>/v<int:version>/print/",
+        views.provision_permalink,
+        name="provision_print_no_division",
+        kwargs={"division": "", "for_print": True},
+    ),
     path("edition/<int:pk>/chain/", views.edition_chain, name="edition_chain"),
     # Two version references in, one page out.  Query params rather than path
     # segments because the two references are of equal standing and neither
     # owns the URL — and because a reference itself contains slashes.
     path("compare/", views.compare_versions, name="compare"),
+    path(
+        "compare/print/",
+        views.compare_versions,
+        name="compare_print",
+        kwargs={"for_print": True},
+    ),
 ]

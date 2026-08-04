@@ -1,0 +1,49 @@
+{% comment %} The two jobs a printable page needs from the browser.
+
+   First: a crop's wrapper needs a height, and a height needs the image's own
+   proportions. CCM ships no dimensions with page_images, so they are read here
+   as each image loads. The wrapper is w x imgW wide and h x imgH tall, so its
+   aspect ratio is the ratio of those.
+
+   Second: printing before the images have reported their proportions prints a
+   gap where the provision should be, so the button waits for them. A reader
+   who presses Ctrl-P on a finished page is fine either way; the button exists
+   for the reader who presses it the moment the page appears.
+{% endcomment %}
+<script>
+    (function () {
+        function size(box) {
+            var img = box.querySelector("img");
+            if (!img || !img.naturalWidth || !img.naturalHeight) return;
+            var w = parseFloat(box.dataset.cropW);
+            var h = parseFloat(box.dataset.cropH);
+            if (!w || !h) return;
+            box.style.aspectRatio = (w * img.naturalWidth) / (h * img.naturalHeight);
+        }
+        Array.prototype.slice.call(document.querySelectorAll(".doc-crop"))
+            .forEach(function (box) {
+                var img = box.querySelector("img");
+                if (!img) return;
+                if (img.complete) size(box);
+                else img.addEventListener("load", function () { size(box); });
+            });
+
+        var button = document.querySelector("[data-print-button]");
+        if (!button) return;
+        button.addEventListener("click", function () {
+            var pending = Array.prototype.slice.call(document.images)
+                .filter(function (i) { return !i.complete; });
+            if (!pending.length) { window.print(); return; }
+            button.disabled = true;
+            var left = pending.length;
+            pending.forEach(function (img) {
+                var done = function () {
+                    left -= 1;
+                    if (left === 0) { button.disabled = false; window.print(); }
+                };
+                img.addEventListener("load", done);
+                img.addEventListener("error", done);
+            });
+        });
+    })();
+</script>

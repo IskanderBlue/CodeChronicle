@@ -1,0 +1,111 @@
+{% comment %} The body of a comparison: the twin header, the timeline, the
+   pairing basis, the verdicts and the two panes.
+
+   One file, included by both /compare/ and its printable form. A printed
+   comparison that stated its two windows differently from the page, or
+   omitted a caveat the page carries, would be evidence of something the
+   product never said — so there is one body and two shells around it.
+{% endcomment %}
+
+    {% comment %} Twin header — both windows, both regulations, in full. A
+       comparison whose two sides are not fully identified is an assertion
+       rather than evidence. {% endcomment %}
+    <h1 class="font-mono text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+        Comparing versions
+    </h1>
+
+    <div class="mt-3 divide-y divide-rule border-y border-rule">
+        {% for side in sides %}
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-sm">
+            <span class="font-mono text-[11px] font-semibold text-secondary">{{ side.label }}</span>
+            <a href="{{ side.url }}" class="ui-cite font-mono text-xs font-semibold">
+                {% if side.provision.division %}{{ side.provision.division }} &middot; {% endif %}{{ side.provision.provision_id }}
+                <span class="font-normal">v{{ side.version.version }}</span>
+            </a>
+            <span class="text-ink-2">{{ side.edition_name }}</span>
+            <span class="font-mono text-xs text-ink-3">
+                {% if side.version.never_in_force %}
+                never in force
+                {% else %}
+                in force {{ side.version.effective_date|date:"Y-m-d" }}
+                {% if side.version.ineffective_date %}&rarr; {{ side.version.ineffective_date|date:"Y-m-d" }}{% else %}&rarr; still{% endif %}
+                {% endif %}
+            </span>
+            <span class="font-mono text-xs text-ink-3">
+                {% if side.regulation %}O. Reg. {{ side.regulation.reg_id }}{% else %}base{% endif %}
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% include "partials/_version_timeline.html" with timeline=timeline %}
+
+    {% comment %} The pairing basis. Stated only when the two sides are
+       different provisions: within one provision the succession is the
+       statute's own, and that silence is what teaches the reader what this
+       line means when it does appear. {% endcomment %}
+    {% if basis.state == 'mapped' %}
+    <p class="mt-3 border-l-2 border-secondary bg-secondary-soft px-3 py-2 text-sm text-ink-2">
+        <span class="font-semibold">These are counterparts, not the same provision.</span>
+        CodeChronicle maps {{ side_a.edition_name }} {{ side_a.provision.provision_id }}
+        {% if basis.verb %}({{ basis.verb }}){% endif %}
+        to {{ side_b.edition_name }} {{ side_b.provision.provision_id }}.
+        The legislature did not enact them as a pair.
+    </p>
+    {% elif basis.state == 'unmapped' %}
+    <p class="mt-3 border-l-2 border-amended bg-surface-2 px-3 py-2 text-sm text-ink-2">
+        <span class="font-semibold">CodeChronicle does not pair these two provisions.</span>
+        You asked for {{ side_a.provision.provision_id }} beside
+        {{ side_b.provision.provision_id }}, and no mapping links them. Read the
+        comparison as two texts you chose, not as one provision over time.
+    </p>
+    {% endif %}
+
+    {% comment %} The verdict, stated before the panes. A redline marks what
+       changed, so a pair with nothing marked looks exactly like a read the
+       reader has not finished. Nobody should have to scan both columns twice
+       to be sure. See api.formatters.diff_is_empty — it compares the words the
+       redline compares, so tags and whitespace do not count as a change.
+    {% endcomment %}
+    {% if text_unchanged %}
+    <p class="mt-3 border-l-2 border-rule bg-surface-2 px-3 py-2 text-sm text-ink-2">
+        <span class="font-semibold">The text is unchanged.</span>
+        These two versions read word for word alike, so nothing below is
+        marked as changed.
+    </p>
+    {% endif %}
+
+    {% comment %} The fallback for two texts too different to redline. A
+       default, not a verdict: the floor is a judgement and the reader can
+       overrule it. {% endcomment %}
+    {% if redline_suppressed %}
+    <p class="mt-3 flex flex-wrap items-baseline gap-x-2 border-l-2 border-rule bg-surface-2 px-3 py-2 text-sm text-ink-2">
+        <span>These texts share about {{ similarity_pct }}% of their words. A redline would mark
+        nearly all of both, so they are shown side by side.</span>
+        <a href="{{ force_redline_url }}" class="ui-link">Show the redline anyway</a>
+    </p>
+    {% endif %}
+
+    {% if redline and not old_diff %}
+    <p class="mt-3 border-l-2 border-rule bg-surface-2 px-3 py-2 text-sm text-ink-2">
+        One of these versions has no extracted text, so there is nothing to
+        redline. Both are shown as they are held.
+    </p>
+    {% endif %}
+
+    {% comment %} The two texts. Stacked below md — a side-by-side redline is
+       unreadable at phone width. {% endcomment %}
+    <div class="mt-4 grid gap-4 md:grid-cols-2">
+        {% include "provenance/_compare_pane.html" with version=side_a.version diff=old_diff pinned_pk=0 role="Earlier" %}
+        {% include "provenance/_compare_pane.html" with version=side_b.version diff=new_diff pinned_pk=0 role="Later" %}
+    </div>
+
+    {% comment %} The legend explains a contrast that is only there when
+       something changed. On an unchanged pair every word is dimmed, and the
+       legend would invite the reader to look for a distinction that is not
+       drawn. {% endcomment %}
+    {% if redline and old_diff and not text_unchanged %}
+    <p class="mt-3 font-mono text-[10px] text-ink-3">
+        Changed text stands out &middot; unchanged is dimmed
+    </p>
+    {% endif %}

@@ -1,0 +1,24 @@
+{% comment %} The on-screen controls of a printable page, and the only thing the
+   print stylesheet hides that a reader would miss.
+
+   Two of them. The print button waits for the images, because a crop with no
+   measured image has no height yet and would print as a gap. The tables
+   toggle decides whether a version's tables print again as their own figures:
+   a scanned page already shows them, so the default for an image-rendered
+   version is not to repeat them — see core.print_options for why that is a
+   default and not a rule.
+
+   The toggle is a link, not a checkbox: it re-renders the page, and a control
+   that reloads should look like one. `tables_toggle_query` is built in the
+   view so the comparison's two version references survive the flip.
+{% endcomment %}
+<div class="print-hide print-hint mb-6 border border-rule px-4 py-3">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-[12px] text-ink-2">This page is laid out for printing. Use your browser's print dialog and choose <strong>Save as PDF</strong>.</p>
+        <button type="button" data-print-button class="ui-btn shrink-0">Print or save as PDF</button>
+    </div>
+    <p class="mt-2 border-t border-rule pt-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+        <a href="?{{ tables_toggle_query }}" class="ui-link"><span class="print-toggle-mark{% if tables_separate %} is-on{% endif %}" aria-hidden="true"></span>Repeat tables as separate figures</a>
+        {% if not tables_separate %}<span> &mdash; off, because the page images already show them</span>{% endif %}
+    </p>
+</div>

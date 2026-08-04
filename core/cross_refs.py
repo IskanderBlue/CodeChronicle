@@ -39,6 +39,7 @@ from core.models import (
     natural_provision_key,
 )
 from core.permalinks import provision_permalink_url
+from core.seo import last_governed_day
 
 #: Tag spans, excluded from surface-text matching (same shape as the splitter
 #: ``api.formatters.highlight_terms`` uses, which is why the two compose).
@@ -221,7 +222,10 @@ def _window_title(slice_: dict[str, Any]) -> str:
         return f"v{slice_['version']}"
     if end is not None and end <= start:
         return f"v{slice_['version']} — never in force"
-    tail = f" to {format_date(end, 'j M Y')}" if end else " onward"
+    # The last day governed, not the stored end: the window is half-open, so
+    # the stored date is the first day this text did not apply.
+    last = last_governed_day(end)
+    tail = f" to {format_date(last, 'j M Y')}" if last else " onward"
     return f"v{slice_['version']} — in force {format_date(start, 'j M Y')}{tail}"
 
 

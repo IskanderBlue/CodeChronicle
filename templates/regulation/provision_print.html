@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% comment %}
+The exhibit: one provision, at one version, on paper.
+
+It extends base.html rather than standing alone, for two reasons.  The content
+comes from the same partials the reading page uses, so the exhibit cannot show
+something the product does not — that is the rule this export is built to.  And
+the footer already carries the line this document must carry: "Not legal advice
+· Citation-grade reference · Verify against official consolidation".  Printing
+the site's own words rather than a second copy of them is the only way the two
+cannot drift.
+
+There is no PDF engine here.  The browser is the engine: this page prints, and
+the reader chooses "Save as PDF".  A second layout engine could render
+something the site cannot, which defeats the point of reusing the partials, and
+a headless browser on the server would cost half a gigabyte in every deploy
+image to produce a file the reader's own browser already makes.
+
+The header states everything an exhibit needs to stand on its own: the
+edition, the provision, the window it governed, the instrument behind it, and
+when this copy was taken. All of it is printed as text — never as chrome that
+a print stylesheet might drop.
+{% endcomment %}
+{% block canonical %}{% if canonical_path %}<link rel="canonical" href="{{ site_origin }}{{ canonical_path }}">{% endif %}{% endblock %}
+{% block content_width %}max-w-[900px]{% endblock %}
+{% block extra_head %}
+{% include "partials/_print_shell.html" %}
+<style>
+    /* The header's label/value pairs. A component class, not
+       `grid-cols-[auto_1fr]`: an arbitrary Tailwind utility does not exist
+       until a build rescans this file, and until then the grid silently
+       collapses to one column and every label sits above its value. */
+    .print-facts {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        column-gap: 1rem;
+        row-gap: 0.25rem;
+        margin-top: 0.75rem;
+        font-size: 12px;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="px-4 py-6 sm:px-8">
+
+    {% include "partials/_print_controls.html" %}
+
+    <header class="border-b-[3px] border-double border-rule pb-4">
+        <p class="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">
+            {{ code_display_name }}{% if division %} &middot; Division {{ division }}{% endif %}
+        </p>
+        <h1 class="mt-2 font-serif text-[26px] leading-tight text-ink">
+            <span class="font-mono font-semibold">{{ provision_id }}</span>{% if provision_title %} <span class="italic">&mdash; {{ provision_title }}</span>{% endif %}
+        </h1>
+
+        {% comment %} The window, stated in the days it actually governed. The
+           stored end is half-open, so the last day is the day before it; this
+           string comes from core.citations, which owns that conversion, rather
+           than from a date filter here that would get it wrong quietly. {% endcomment %}
+        <dl class="print-facts">
+            <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">In force</dt>
+            <dd class="text-ink">{{ window_phrase }}</dd>
+
+            <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Version</dt>
+            <dd class="text-ink">{{ version_number }} of {{ provision_id }}</dd>
+
+            {% if base_reg %}
+            <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Enacted by</dt>
+            <dd class="text-ink">O. Reg. {{ base_reg.reg_id }}</dd>
+            {% endif %}
+
+            {% comment %} Absent for a base v0, which is correct: nothing amended
+               it. Also absent when CCM shipped no contributing clause, and the
+               two are treated the same way — an omitted line costs less than a
+               citation nobody verified. {% endcomment %}
+            {% if amending_regs %}
+            <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Amended by</dt>
+            <dd class="text-ink">{% for reg in amending_regs %}O. Reg. {{ reg.reg_id }}{% if not forloop.last %}, {% endif %}{% endfor %}</dd>
+            {% endif %}
+
+            <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Retrieved</dt>
+            <dd class="text-ink">{{ retrieved|date:"Y-m-d" }} from <span class="break-all">{{ site_origin }}{{ version_path }}</span></dd>
+        </dl>
+    </header>
+
+    <div class="mt-4">
+        {% include "partials/_viewer_section_content.html" %}
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+{% include "partials/_print_script.html" %}
+{% endblock %}

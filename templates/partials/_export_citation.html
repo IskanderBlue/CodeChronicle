@@ -1,0 +1,54 @@
+{% comment %}
+"Cite" — the way a reader takes this provision into their own document.
+
+Replaces the band's one-click copy icon.  That button produced one string and
+never said which; a citation has more than one correct form, so choosing is
+part of the job and a menu is the honest control.  The old string is still
+here, as the Reference entry, so nothing a reader relied on has gone.
+
+Expects the four parts of a version reference:
+  code_edition, division, provision_id, version
+
+The panel is fetched on the first click, not rendered with the page: a results
+page draws up to a hundred cards and almost nobody cites from more than one,
+so the strings are built for the card that was asked about.  The trigger sits
+on the panel itself and targets "this", so nothing here needs an id: a
+provision id contains dots, a dot in a CSS selector means a class, and one
+page can render this partial twice for the same version (the wide band and
+the narrow banner both include it), so no id built from the target would be
+both selectable and unique.  htmx sees the teleported panel through its
+mutation observer, the same way it sees the report dialog's form.
+
+The dialog teleports to body, like the report dialog and the commencement
+modal, because the band and the rail clip a fixed overlay.  Alpine state stays
+in this scope, so several cards on one page never share a flag.
+{% endcomment %}
+<span x-data="{ citeOpen: false }">
+    <button type="button" class="ui-disclosure" @click.stop="citeOpen = true"
+            :aria-expanded="citeOpen"
+            title="Copy a citation for this version">Cite <span class="ui-caret"></span></button>
+    <template x-teleport="body">
+        <div x-show="citeOpen" x-cloak
+             class="fixed inset-0 z-50 flex items-center justify-center p-4"
+             @keydown.escape.window="citeOpen = false"
+             role="dialog" aria-modal="true" aria-label="Cite this provision">
+            <div class="absolute inset-0 bg-black/40" @click="citeOpen = false"></div>
+            {% comment %}
+            The dialog paints --surface, so it re-declares --backdrop: anything
+            inside that knocks a ring out of its background has to knock it out
+            against this fill, not the page's.  Same contract as the band.
+            {% endcomment %}
+            <div class="relative max-h-[85vh] w-full max-w-xl overflow-y-auto border border-rule bg-surface p-5 shadow-xl [--backdrop:var(--surface)]"
+                 @click.stop>
+                <button type="button" @click="citeOpen = false" aria-label="Close"
+                    class="absolute right-3 top-3 cursor-pointer text-ink-3 hover:text-ink">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                </button>
+                <div hx-get="{% url 'core:citation_panel' %}?v={{ code_edition }}/{{ division }}/{{ provision_id }}/v{{ version }}"
+                     hx-trigger="intersect once" hx-target="this" hx-swap="innerHTML">
+                    <p class="text-[12px] italic text-ink-3">Building the citations&hellip;</p>
+                </div>
+            </div>
+        </div>
+    </template>
+</span>

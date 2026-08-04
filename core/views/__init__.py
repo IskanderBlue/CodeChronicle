@@ -10,6 +10,7 @@ from .billing import (
 )
 from .compare import compare_versions
 from .demand import edition_request
+from .exports import citation_panel, record_export, results_csv
 from .feedback import feedback_status, report_problem
 from .history import history
 from .insights import insights
@@ -33,6 +34,7 @@ from .search import (
 )
 
 __all__ = [
+    "citation_panel",
     "compare_versions",
     "create_checkout_session",
     "create_customer_portal_session",
@@ -47,7 +49,9 @@ __all__ = [
     "pricing",
     "privacy_policy",
     "provision_permalink",
+    "record_export",
     "regulation_detail",
+    "results_csv",
     "report_problem",
     "search_page",
     "search_results",

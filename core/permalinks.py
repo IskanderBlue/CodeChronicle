@@ -28,3 +28,23 @@ def provision_permalink_url(
         "core:provision_permalink_no_division",
         args=[code_name, provision_id, version],
     )
+
+
+def provision_print_url(
+    code_name: str, division: str, provision_id: str, version: int
+) -> str:
+    """Reverse the printable form of a provision permalink.
+
+    Same empty-division split as :func:`provision_permalink_url`, and here for
+    the same reason: the rule about division-less editions is one rule, and a
+    second copy of it is a second thing to get wrong.
+    """
+    if division:
+        return reverse(
+            "core:provision_print",
+            args=[code_name, division, provision_id, version],
+        )
+    return reverse(
+        "core:provision_print_no_division",
+        args=[code_name, provision_id, version],
+    )

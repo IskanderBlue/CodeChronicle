@@ -1,0 +1,77 @@
+{% comment %} Everything the two printable pages share: the crop geometry's CSS
+   and the one script that gives a crop its height.
+
+   One file because the two exhibits — a provision and a comparison — must
+   crop a scan the same way. Two copies of this would drift, and the drift
+   would show up as one export cropping correctly and the other printing a
+   gap, which nobody notices until an exhibit is already filed.
+
+   A page that includes this adds its own @media print rules for whatever is
+   particular to it (the comparison collapses its two columns, for instance).
+{% endcomment %}
+<style>
+    /* ── Page-image crops ───────────────────────────────────────────────
+       Geometry comes from core.page_crops; this only places it. The wrapper
+       clips, the image inside is positioned by percentages of the wrapper,
+       and the wrapper's aspect ratio is set by the script below once the
+       image reports its own proportions. Nothing here computes a crop. */
+    .doc-crops { margin-top: 0.75rem; }
+    .doc-crop-figure {
+        margin: 0 0 0.75rem 0;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    .doc-crop {
+        position: relative;
+        overflow: hidden;
+        width: 100%;
+        border: 1px solid var(--rule);
+    }
+    .doc-crop > img {
+        position: absolute;
+        max-width: none;
+    }
+    .doc-crop-figure > figcaption {
+        margin-top: 2px;
+        font-family: ui-monospace, monospace;
+        font-size: 9px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+    }
+
+    .print-hint { break-after: avoid; page-break-after: avoid; }
+
+    /* The state marker on the tables toggle: a filled box reads as "on" at a
+       glance, where a word needs reading. */
+    .print-toggle-mark {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        margin-right: 5px;
+        border: 1px solid currentColor;
+        vertical-align: baseline;
+    }
+    .print-toggle-mark.is-on { background: currentColor; }
+
+    @media print {
+        /* The site's navigation is not part of an exhibit. The footer stays:
+           it carries the "not legal advice" line these documents must carry.
+           `body > header` and not `header` — each print page's own <header>
+           is its masthead, and a bare element selector hid that too. */
+        body > header, .print-hide, .flash-messages { display: none !important; }
+        footer a { display: none !important; }
+        main { flex-grow: 0 !important; }
+        /* The reading measure is for reading. An exhibit uses the sheet: a
+           crop is drawn as a fraction of the column it sits in, so a narrow
+           column throws away resolution the scan actually has. */
+        main > div {
+            max-width: none !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+        table, figure, .doc-crop-figure { break-inside: avoid; page-break-inside: avoid; }
+        a { text-decoration: none; color: inherit; }
+    }
+</style>

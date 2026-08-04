@@ -152,6 +152,24 @@ Edition names are display prose resolved in the view — the raw code_name
         {% for name in applicable_code_names %}{{ name }}{% if not forloop.last %} &rarr; {% endif %}{% endfor %}
     </span>
     {% endif %}
+
+    {% comment %} The result set as a spreadsheet, for somebody auditing a
+       building against a date. The form re-posts the query, date and province
+       this list was built from; the relevance floor is the reader's stored
+       one, so the server reads it back rather than the page restating it. The
+       export re-runs the same pipeline, which is what keeps it honest — an
+       export that quietly contains more than the screen showed is worse than
+       no export. Signed-in readers only: a citation carries our URL into
+       somebody else's document, a result set is work product. {% endcomment %}
+    {% if results and user.is_authenticated %}
+    <form method="post" action="{% url 'core:results_csv' %}" class="ml-auto">
+        {% csrf_token %}
+        <input type="hidden" name="query" value="{{ export_query }}">
+        <input type="hidden" name="date" value="{{ export_date }}">
+        <input type="hidden" name="province" value="{{ export_province }}">
+        <button type="submit" class="ui-action !text-[11px] !tracking-[0.04em]" title="Download these results as a CSV — one row per result, with the dates, the score and a link">CSV</button>
+    </form>
+    {% endif %}
 </div>
 
 {% comment %}

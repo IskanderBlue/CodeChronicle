@@ -1,0 +1,73 @@
+{% comment %} The citation menu's contents, fetched by core.views.exports.citation_panel.
+
+   Three strings for one provision version, because a factum and the body of a
+   consultant's report are different documents and no single string serves
+   both.  Each is shown in full rather than described: a reader decides which
+   one is theirs by reading it, not by trusting a label.
+
+   Each copy is a real form post, not a fetch: the post records the export
+   (that is the whole point of shipping four of them), and a form carries the
+   CSRF token the way every other write on this site does.  hx-swap="none"
+   because there is nothing to draw — the clipboard already has the string and
+   the tick is local Alpine state.
+
+   The clipboard write reads data-copy-text rather than the element's own
+   text, the same way the band's copy button always has: the visible string is
+   wrapped and indented for reading, and a reader pasting into a report wants
+   the string, not the layout.
+{% endcomment %}
+<div class="space-y-4" x-data="{ copied: '' }">
+    <div>
+        <h2 class="font-serif text-[18px] leading-tight text-ink">Cite this provision</h2>
+        <p class="mt-1 text-[12px] text-ink-3">Every form names the version you are reading and the day you retrieved it.</p>
+    </div>
+
+    {% for c in citations %}
+    <form hx-post="{% url 'core:record_export' %}" hx-swap="none">
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="citation">
+        <input type="hidden" name="format" value="{{ c.kind }}">
+        <input type="hidden" name="v" value="{{ version_ref }}">
+        <div class="border border-rule p-3 [--backdrop:var(--surface)]">
+            <p class="flex items-baseline justify-between gap-3">
+                <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">{{ c.label }}</span>
+                <button type="submit" class="ui-action shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]" data-copy-text="{{ c.text }}" @click="navigator.clipboard.writeText($el.dataset.copyText); copied = '{{ c.kind }}'; setTimeout(() => copied = '', 1500)"><span x-show="copied !== '{{ c.kind }}'">Copy</span><span x-show="copied === '{{ c.kind }}'" x-cloak class="text-secondary">Copied</span></button>
+            </p>
+            <p class="mt-0.5 text-[11px] italic text-ink-3">{{ c.note }}</p>
+            <p class="mt-2 select-all break-words text-[12px] leading-snug text-ink">{{ c.text }}</p>
+        </div>
+    </form>
+    {% endfor %}
+
+    {% comment %} The incumbent.  The band's copy button produced this block
+       long before the citation formats existed; it is a provenance dump
+       rather than a citation — the base regulation, the amending clause, the
+       next amendment — and a reader pasting into working notes may still want
+       it.  It sits in the same menu so that one control answers "how do I
+       quote this", and it is measured like the other two so it can lose.
+    {% endcomment %}
+    <form hx-post="{% url 'core:record_export' %}" hx-swap="none">
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="citation">
+        <input type="hidden" name="format" value="reference">
+        <input type="hidden" name="v" value="{{ version_ref }}">
+        <div class="border border-rule p-3 [--backdrop:var(--surface)]">
+            <p class="flex items-baseline justify-between gap-3">
+                <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">Reference</span>
+                <button type="submit" class="ui-action shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]" data-copy-text="{{ reference_text }}" @click="navigator.clipboard.writeText($el.dataset.copyText); copied = 'reference'; setTimeout(() => copied = '', 1500)"><span x-show="copied !== 'reference'">Copy</span><span x-show="copied === 'reference'" x-cloak class="text-secondary">Copied</span></button>
+            </p>
+            <p class="mt-0.5 text-[11px] italic text-ink-3">The provenance block, for working notes</p>
+            <pre class="mt-2 select-all whitespace-pre-wrap break-words font-mono text-[11px] leading-snug text-ink">{{ reference_text }}</pre>
+        </div>
+    </form>
+
+    {% comment %} The exhibit. Not a citation format, so it sits below them
+       rather than among them, but the reader who wants one often wants the
+       other. It opens in a new tab because it replaces the page with a
+       print-ready layout, and a reader who came here to copy a string has not
+       finished with the page they were reading. {% endcomment %}
+    <p class="border-t border-rule pt-3 text-[12px] text-ink-2">
+        <a href="{{ print_url }}" target="_blank" rel="noopener" class="ui-link">Print this version as an exhibit <span aria-hidden="true">&nearr;</span></a>
+        {% if print_needs_sign_in %}<span class="text-ink-3"> &mdash; free account required</span>{% endif %}
+    </p>
+</div>

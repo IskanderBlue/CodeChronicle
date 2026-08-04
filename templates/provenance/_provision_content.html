@@ -6,9 +6,20 @@
 {% comment %} Page images first when present.  These are the authoritative artefact
    for versions sourced from gazette PDFs (base v0 of non-elaws editions,
    pre-elaws amendments, etc.). {% endcomment %}
+{% comment %} `print_mode` is the export surface (regulation/provision_print.html).
+   It shows the marked region of each page and nothing else: a whole page carries
+   the neighbouring provisions, and an exhibit that shows more than it quotes
+   invites the argument it exists to close.  The reading page shows the page whole
+   with the region highlighted, which is the right choice there — the reader wants
+   to see the provision in its setting.  `version.crops` is attached by the print
+   view (core.page_crops.build_crops); no other surface sets it. {% endcomment %}
 {% if version.page_images %}
 <div class="mt-3">
+    {% if print_mode %}
+    {% include "partials/_document_crops.html" with crops=version.crops alt_text=version.title %}
+    {% else %}
     {% include "partials/_document_images.html" with entries=version.page_images alt_text=version.title highlights_default=1 %}
+    {% endif %}
 </div>
 {% endif %}
 
@@ -42,13 +53,28 @@
 {# Provenance & legal notes for this version (no permalink — already here). #}
 {% include "partials/_version_notes.html" with version=version %}
 
-{# Tables hang off the version. #}
+{% comment %} Tables hang off the version.
+
+   On a print surface they are suppressed when this version renders from page
+   images: a scanned page already contains whatever was printed on it, tables
+   included, so repeating them as figures prints each table twice and leaves
+   the reader of an exhibit to work out which copy is the evidence. An
+   HTML-rendered version keeps them — there the tables are not in the body and
+   appear nowhere else. `show_tables` is stamped per version by
+   core.print_options; the reading page never sets it and never suppresses,
+   because there the tables sit behind a disclosure a reader opens on purpose.
+{% endcomment %}
 {% with version.tables.all as tables %}
 {% if tables %}
+{% comment %} Nested rather than one `and`/`or` condition: a Django template
+   has no parentheses, so the flat form reads as though it might group the
+   other way. {% endcomment %}
+{% if not print_mode or version.show_tables %}
 <div class="mt-4 space-y-3">
     {% for table in tables %}
     {% include "provenance/_table.html" with table=table %}
     {% endfor %}
 </div>
+{% endif %}
 {% endif %}
 {% endwith %}

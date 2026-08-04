@@ -1048,10 +1048,10 @@ def test_permalink_nav_row_puts_each_version_on_its_own_row():
         {"glyph": "↓", "item": {
             "provision_id": "1.10.2.4.", "title": "Time Periods", "versions": [
                 {"version": 0, "effective_date": date(2011, 1, 1),
-                 "ineffective_date": date(2016, 1, 1), "never_in_force": False,
+                 "last_day": date(2015, 12, 31), "never_in_force": False,
                  "url": "/x/v0/"},
                 {"version": 1, "effective_date": date(2016, 1, 1),
-                 "ineffective_date": date(2014, 1, 1), "never_in_force": True,
+                 "last_day": date(2013, 12, 31), "never_in_force": True,
                  "url": "/x/v1/"},
             ]}},
     )
@@ -1068,14 +1068,16 @@ def test_permalink_nav_chip_title_says_never_in_force():
         "regulation/_permalink_nav_item.html",
         {"item": {"provision_id": "1.10.2.4.", "versions": [
             {"version": 0, "effective_date": date(2011, 1, 1),
-             "ineffective_date": date(2016, 1, 1), "never_in_force": False,
+             "last_day": date(2015, 12, 31), "never_in_force": False,
              "url": "/x/v0/"},
             {"version": 1, "effective_date": date(2016, 1, 1),
-             "ineffective_date": date(2014, 1, 1), "never_in_force": True,
+             "last_day": date(2013, 12, 31), "never_in_force": True,
              "url": "/x/v1/"},
         ]}},
     )
-    assert "in force 1 Jan 2011 to 1 Jan 2016" in html
+    # The view hands the partial the last day governed, not the stored
+    # (exclusive) end date, and the tooltip prints what it is given.
+    assert "in force 1 Jan 2011 to 31 Dec 2015" in html
     # The chips name the same provision at different versions, so the date is
     # the link text and the hover leads with the version it points at.
     assert "v1 &middot; never in force" in html

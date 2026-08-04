@@ -500,6 +500,62 @@ def feedback_reports(limit: int = 50, days: int = DEFAULT_WINDOW_DAYS) -> list[d
     return [_feedback_dict(row) for row in rows]
 
 
+#: The four exports, and what each row of the table is called.  The order is
+#: cheapest-first, which is also the order they were argued for in
+#: ``tasks/b-provision-exports.md``.
+EXPORT_KINDS: tuple[tuple[str, str, str], ...] = (
+    ("citation", "Citation", "A string copied into somebody else's document."),
+    ("provision_pdf", "Provision", "One provision at one date, laid out to print."),
+    ("results_csv", "Results CSV", "A result set for auditing a building against a date."),
+    ("comparison_pdf", "Comparison", "Two versions and the pairing, laid out to print."),
+)
+
+
+def export_counts(days: int = DEFAULT_WINDOW_DAYS) -> list[dict[str, Any]]:
+    """How often each export was taken, in the window and all time.
+
+    The reason all four exports shipped at once.  We could not guess which one
+    a code consultant reaches for, and asking produces an opinion rather than
+    a measurement — so this table is the measurement, and after sixty days an
+    export nobody used is removed rather than defended.
+
+    A kind with no rows still gets a row here, reading zero.  A missing line
+    would be read as "not built yet", which is the opposite of the finding.
+
+    The citation kinds are broken out by format for the same reason: a factum
+    and a report body take different strings, and one of the two may turn out
+    to be nobody's.
+    """
+    since = timezone.now() - timedelta(days=days)
+    events = EngagementEvent.objects.filter(
+        event_type=EngagementEvent.EventType.EXPORT
+    )
+    rows: list[dict[str, Any]] = []
+    for kind, label, description in EXPORT_KINDS:
+        of_kind = events.filter(context__kind=kind)
+        row: dict[str, Any] = {
+            "kind": kind,
+            "label": label,
+            "description": description,
+            "window": of_kind.filter(timestamp__gte=since).count(),
+            "total": of_kind.count(),
+            "formats": [],
+        }
+        if kind == "citation":
+            row["formats"] = [
+                {
+                    "format": fmt,
+                    "window": of_kind.filter(
+                        context__format=fmt, timestamp__gte=since
+                    ).count(),
+                    "total": of_kind.filter(context__format=fmt).count(),
+                }
+                for fmt in ("legal", "report", "reference")
+            ]
+        rows.append(row)
+    return rows
+
+
 def top_queries(limit: int = 15, days: int = DEFAULT_WINDOW_DAYS) -> list[dict[str, Any]]:
     """The most-repeated search text in the window.
 

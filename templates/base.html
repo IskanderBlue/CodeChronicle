@@ -816,7 +816,10 @@
        pattern): square, no shadow, body in readable ink-2, state signalled by
        the redline border — strike (red) for errors, insert (green) otherwise. {% endcomment %}
     {% if messages %}
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
+    {% comment %} `flash-messages` is a hook, not a style: the printable
+       provision hides it, because "Successfully signed in" is not part of an
+       exhibit. {% endcomment %}
+    <div class="flash-messages max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
         {% for message in messages %}
         <div class="border-l-[3px] bg-surface-2 px-4 py-3 font-sans text-sm text-ink-2 {% if message.tags == 'error' %}border-strike{% else %}border-insert{% endif %}">
             {{ message }}

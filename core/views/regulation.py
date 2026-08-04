@@ -6,6 +6,8 @@ import re
 from datetime import date
 from typing import Any
 
+from django.contrib.auth.views import redirect_to_login
+from django.db.models import prefetch_related_objects
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -16,6 +18,7 @@ from api.formatters import (
     select_commencement_record,
 )
 from core.access import edition_allowed
+from core.citations import in_force_phrase
 from core.compare import (
     annotate_chain_comparisons,
     annotate_lineage_comparisons,
@@ -33,7 +36,9 @@ from core.models import (
     RegulationClause,
     natural_provision_key,
 )
+from core.page_crops import build_crops
 from core.permalinks import provision_permalink_url
+from core.print_options import apply_tables_mode, resolve_tables_mode, toggle_query
 from core.provision_lineage import (
     annotate_lineage_locks,
     annotate_lineage_titles,
@@ -41,6 +46,9 @@ from core.provision_lineage import (
 )
 from core.seo import (
     TITLE_SUFFIX,
+    amending_regulations,
+    base_regulation,
+    last_governed_day,
     provision_jsonld,
     provision_page_meta,
     regulation_jsonld,
@@ -289,7 +297,10 @@ def _related_links(
                 "version": v.version,
                 "title": v.title,
                 "effective_date": v.effective_date,
-                "ineffective_date": v.ineffective_date,
+                # The last day this version governed.  The row's tooltip says
+                # "to", and the stored end is the first day the text did not
+                # apply, so the template must not print that date.
+                "last_day": last_governed_day(v.ineffective_date),
                 "never_in_force": v.never_in_force,
                 "url": provision_permalink_url(
                     code_name, provision.division, provision.provision_id, v.version
@@ -329,7 +340,7 @@ def _sibling_link(
             "version": chosen.version,
             "title": chosen.title,
             "effective_date": chosen.effective_date,
-            "ineffective_date": chosen.ineffective_date,
+            "last_day": last_governed_day(chosen.ineffective_date),
             "never_in_force": chosen.never_in_force,
             "url": provision_permalink_url(
                 code_name, provision.division, provision.provision_id, chosen.version
@@ -846,12 +857,82 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     })
 
 
+def _print_response(
+    request: HttpRequest,
+    *,
+    matched: CodeEditionProvision,
+    target_version: CodeEditionProvisionVersion,
+    sections: list[dict[str, Any]],
+    code_name: str,
+    division: str,
+    provision_id: str,
+    version: int,
+) -> HttpResponse:
+    """Render the subtree as an exhibit.
+
+    Everything the header states is sourced, never guessed: the window comes
+    from :func:`core.citations.in_force_phrase` (which closes an open version
+    at the edition's end and states the last day actually governed), and the
+    instruments come from :mod:`core.seo`, which already refuses to fall back
+    to the edition's base regulation when CCM shipped no contributing clause.
+
+    The crops are attached to the version and table rows here rather than
+    computed in a template filter, so the geometry stays in one testable place
+    and the shared content partials only place what they are handed.
+    """
+    edition = matched.edition
+    version_rows = [v for s in sections for v in s["active_versions"]]
+    # Prefetch, then mutate the prefetched rows.  Without this,
+    # ``version.tables.all()`` in the content partial issues a fresh query and
+    # returns fresh instances — the crops attached to the objects here would
+    # be attached to objects nobody renders, and every table would print as an
+    # empty frame.
+    prefetch_related_objects(version_rows, "tables")
+    for version_row in version_rows:
+        version_row.crops = build_crops(version_row.page_images)
+        for table in version_row.tables.all():
+            table.crops = build_crops(table.images)
+
+    # A scanned page already shows its tables, so repeating them as their own
+    # figures prints the same table twice.  Suppressed by default for an
+    # image-rendered version, and still the reader's call — see
+    # core.print_options.
+    tables_mode = resolve_tables_mode(request.GET.get("tables"))
+    tables_separate = apply_tables_mode(version_rows, tables_mode)
+
+    return render(request, "regulation/provision_print.html", {
+        "print_mode": True,
+        "tables_separate": tables_separate,
+        "tables_toggle_query": toggle_query(request.GET, tables_separate),
+        "edition": edition,
+        "code_display_name": f"{edition.code.code} {edition.edition_id}".strip(),
+        "division": division,
+        "provision_id": provision_id,
+        "provision_title": target_version.title,
+        "version_number": version,
+        "window_phrase": in_force_phrase(target_version, edition),
+        "base_reg": base_regulation(edition),
+        "amending_regs": amending_regulations(target_version),
+        "retrieved": date.today(),
+        "site_origin": site_origin(request),
+        "version_path": provision_permalink_url(
+            code_name, division, provision_id, version
+        ),
+        "sections": sections,
+        "active_node_id": provision_id,
+        "active_provision_id": provision_id,
+        "transition_active": False,
+        **provision_page_meta(matched, target_version),
+    })
+
+
 def provision_permalink(
     request: HttpRequest,
     code_edition: str,
     division: str,
     provision_id: str,
     version: int,
+    for_print: bool = False,
 ) -> HttpResponse:
     """A standalone view of one provision *at a specific version*.
 
@@ -860,6 +941,13 @@ def provision_permalink(
     no query date in this context, so the in-force / coverage chrome is
     omitted; the matched provision is pinned to the linked version and its
     descendants are shown as they read on that version's effective date.
+
+    ``for_print`` (set by the ``/print/`` route) renders the same provision as
+    an exhibit: same subtree, same partials, no navigation, page images cropped
+    to the provision.  One view rather than two, because the guarantee this
+    export makes is that a printed provision cannot show something the page
+    does not — and two assemblies of the same subtree is exactly how that
+    guarantee would quietly stop being true.
     """
     code, _, edition_id = code_edition.partition("_")
     matched = get_object_or_404(
@@ -877,51 +965,79 @@ def provision_permalink(
     anchor_date = target_version.effective_date
     code_name = matched.edition.code_name
 
-    # Engagement: a user opened a specific provision version, typically via a
-    # regulation-clause link.  Pinned to the exact linked version.  Non-fatal.
-    record_event(
-        request,
-        event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
-        object_type="CodeEditionProvisionVersion",
-        object_id=target_version.pk,
-        search_id=request.GET.get("search_id"),
-        context={
-            "code": matched.edition.code.code,
-            "edition_id": matched.edition.edition_id,
-            "division": division,
-            "provision_id": provision_id,
-            "version": version,
-            "surface": "permalink",
-        },
-    )
+    if for_print and not request.user.is_authenticated:
+        # The citation string is open to everybody — it carries our URL into
+        # somebody else's document, which is the point of it.  The exhibit is
+        # work product, and it is the natural moment to ask for an account.
+        return redirect_to_login(request.get_full_path())
+
+    # Engagement.  A print request is an *export*, not a view: recording both
+    # would double-count the same reader in the view totals and make the export
+    # counts unreadable against them.
+    if for_print:
+        record_event(
+            request,
+            event_type=EngagementEvent.EventType.EXPORT,
+            object_type="CodeEditionProvisionVersion",
+            object_id=target_version.pk,
+            search_id=request.GET.get("search_id"),
+            context={
+                "kind": "provision_pdf",
+                "division": division,
+                "provision_id": provision_id,
+                "code_edition": code_name,
+            },
+        )
+    else:
+        record_event(
+            request,
+            event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
+            object_type="CodeEditionProvisionVersion",
+            object_id=target_version.pk,
+            search_id=request.GET.get("search_id"),
+            context={
+                "code": matched.edition.code.code,
+                "edition_id": matched.edition.edition_id,
+                "division": division,
+                "provision_id": provision_id,
+                "version": version,
+                "surface": "permalink",
+            },
+        )
 
     # Hierarchical navigation: up to the parent, down to the direct children.
     # Each neighbour links to every version whose in-force window overlaps the
     # pinned version's, so a long-lived parent can point at several child
     # versions (and vice-versa).
+    # The exhibit has no navigation — there is nowhere to click on paper — so
+    # the nav queries are skipped rather than computed and dropped.
     nav_up: list[dict[str, Any]] = []
-    if matched.parent_id:
+    if matched.parent_id and not for_print:
         parent = (
             CodeEditionProvision.objects
             .prefetch_related("versions")
             .get(pk=matched.parent_id)
         )
         nav_up.append(_related_links(parent, target_version, code_name))
-    child_provisions = (
-        CodeEditionProvision.objects
-        .filter(parent_id=matched.pk, edition=matched.edition, division=division)
-        .prefetch_related("versions")
-    )
-    nav_down = [
-        _related_links(child, target_version, code_name)
-        for child in sorted(child_provisions, key=lambda p: _natural_key(p.provision_id))
-    ]
+    nav_down: list[dict[str, Any]] = []
+    if not for_print:
+        child_provisions = (
+            CodeEditionProvision.objects
+            .filter(parent_id=matched.pk, edition=matched.edition, division=division)
+            .prefetch_related("versions")
+        )
+        nav_down = [
+            _related_links(child, target_version, code_name)
+            for child in sorted(
+                child_provisions, key=lambda p: _natural_key(p.provision_id)
+            )
+        ]
 
     # Sibling pager: previous / next provision under the same parent, in
     # natural order, each shown as it reads on the pinned date.
     nav_prev: dict[str, Any] | None = None
     nav_next: dict[str, Any] | None = None
-    if matched.parent_id:
+    if matched.parent_id and not for_print:
         siblings = sorted(
             CodeEditionProvision.objects
             .filter(parent_id=matched.parent_id, edition=matched.edition, division=division)
@@ -988,6 +1104,18 @@ def provision_permalink(
             "active_versions": prov_versions,
             "is_active": prov.pk == matched.pk,
         })
+
+    if for_print:
+        return _print_response(
+            request,
+            matched=matched,
+            target_version=target_version,
+            sections=sections,
+            code_name=code_name,
+            division=division,
+            provision_id=provision_id,
+            version=version,
+        )
 
     return render(request, "regulation/provision_permalink.html", {
         "edition": matched.edition,

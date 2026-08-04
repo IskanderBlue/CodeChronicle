@@ -1,0 +1,43 @@
+{% comment %} A provision's page images, cropped to the provision.
+
+   The export form of partials/_document_images.html.  On screen a scan is
+   shown whole with the provision highlighted, because a reader wants to see
+   it in its setting.  In an exhibit the setting is somebody else's text, so
+   this shows the marked region and nothing else.
+
+   Expects: crops (core.page_crops.build_crops), alt_text.
+
+   The crop is CSS, not a processed image: an overflow-hidden wrapper with the
+   whole page positioned inside it, all offsets in percentages so they hold at
+   any printed size.  Percentages resolve against the wrapper — left against
+   its width, top against its height — which is why the two offsets are
+   divided by different numbers upstream.
+
+   The wrapper's aspect ratio is the one value CSS cannot supply: it needs the
+   image's own proportions and CCM ships no dimensions with page_images.  The
+   script below reads them off each image as it loads.  Until then the wrapper
+   has no height and the crop is invisible rather than wrong — a half-laid-out
+   exhibit is worse than one that appears a moment later.
+
+   break-inside: avoid keeps a crop off a sheet boundary.  Do NOT put these in
+   a scroll box: a max-height that clips on screen clips in print too, and
+   prints the top of a provision as though it were all of it.
+{% endcomment %}
+<div class="doc-crops">
+    {% for crop in crops %}
+    {% if crop.full %}
+    <figure class="doc-crop-figure" style="width: {{ crop.width_pct }}%">
+        <img src="/{{ crop.image }}" alt="{{ alt_text }}" class="w-full">
+        <figcaption>Page {{ crop.page }}</figcaption>
+    </figure>
+    {% else %}
+    <figure class="doc-crop-figure" style="width: {{ crop.width_pct }}%">
+        <div class="doc-crop" data-crop-w="{{ crop.w }}" data-crop-h="{{ crop.h }}">
+            <img src="/{{ crop.image }}" alt="{{ alt_text }}"
+                 style="width: {{ crop.image_width_pct }}%; left: {{ crop.offset_left_pct }}%; top: {{ crop.offset_top_pct }}%">
+        </div>
+        <figcaption>Page {{ crop.page }}</figcaption>
+    </figure>
+    {% endif %}
+    {% endfor %}
+</div>
