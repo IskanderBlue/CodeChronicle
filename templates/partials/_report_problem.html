@@ -19,7 +19,11 @@ including scope, so several reports on one search page never share a flag.
 The panel inside is a separate partial: HTMX swaps it in place on submit, so
 the ask, the thanks and the error are one file and cannot drift apart.
 {% endcomment %}
-<span x-data="{ reportOpen: false }">
+{% comment %} `ui-state`: this span holds Alpine state and the teleport
+   template, and must not be a box. See base.html for the full reason — as a
+   box it put "This looks wrong" about a pixel below its neighbours in the
+   rail's trailing group. {% endcomment %}
+<span class="ui-state" x-data="{ reportOpen: false }">
     <button type="button" class="ui-disclosure" @click.stop="reportOpen = true"
             :aria-expanded="reportOpen"
             title="Tell us this text looks wrong">This looks wrong <span class="ui-caret"></span></button>

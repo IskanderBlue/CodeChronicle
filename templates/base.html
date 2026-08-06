@@ -338,6 +338,22 @@
            .ui-action: nothing happens on click, and conflating the two is the
            confusion that class exists to prevent. */
         .ui-note { border-bottom: 1px dotted rgb(var(--ink-3)); cursor: help; }
+        /* A wrapper that carries Alpine state and an x-teleport template and
+           nothing else — the cite menu and the reader-report trigger both
+           have one. It must not be a box. As a box it becomes the flex item,
+           and the .ui-disclosure inside it then sits on a text line box whose
+           baseline is lower than that box's centre: the row centres the
+           wrapper, the button hangs off the baseline, and the two triggers
+           printed 2.5px below their neighbours in the rail, which are
+           .ui-disclosure elements directly. `display: contents` removes the
+           wrapper from layout, so every affordance in the group is the same
+           kind of flex item. Not the Tailwind `contents` utility: this file's
+           rules are unlayered and would beat it anyway.
+
+           Keep the trigger's own label OUT of this comment. A style block
+           ships to every page, and core/tests/test_feedback.py asserts the
+           label is absent from the surfaces that do not offer a report. */
+        .ui-state { display: contents; }
         /* Selected state for a ghost-button group (the /insights/ report-status
            control). It lives here, and not as `border-secondary text-secondary`
            on the element, because .ui-btn-ghost sets colour and border in this

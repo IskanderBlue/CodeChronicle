@@ -34,7 +34,10 @@ The dialog teleports to body, like the report dialog and the commencement
 modal, because the band and the rail clip a fixed overlay.  Alpine state stays
 in this scope, so several cards on one page never share a flag.
 {% endcomment %}
-<span x-data="{ citeOpen: false, citeWired: false, openCite() { this.citeOpen = true; if (this.citeWired) return; this.citeWired = true; this.$nextTick(() => { if (window.htmx) htmx.process(this.$refs.citePanel) }) } }">
+{% comment %} `ui-state`: the wrapper must not be a box — see base.html. Same
+   shape and same fix as the report trigger; both sat a pixel low beside their
+   neighbours in the rail's trailing group. {% endcomment %}
+<span class="ui-state" x-data="{ citeOpen: false, citeWired: false, openCite() { this.citeOpen = true; if (this.citeWired) return; this.citeWired = true; this.$nextTick(() => { if (window.htmx) htmx.process(this.$refs.citePanel) }) } }">
     <button type="button" class="ui-disclosure" @click.stop="openCite()"
             :aria-expanded="citeOpen"
             title="Copy a citation for this version">Cite <span class="ui-caret"></span></button>
