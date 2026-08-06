@@ -902,6 +902,10 @@ def _print_response(
     return render(request, "regulation/provision_print.html", {
         "print_mode": True,
         "tables_separate": tables_separate,
+        # Whether the page decided, or the reader did.  The control explains
+        # itself only in the first case: a reader who asked for this state
+        # does not need to be told why it holds.
+        "tables_by_default": tables_mode is None,
         "tables_toggle_query": toggle_query(request.GET, tables_separate),
         "edition": edition,
         "code_display_name": f"{edition.code.code} {edition.edition_id}".strip(),

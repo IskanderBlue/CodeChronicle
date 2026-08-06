@@ -222,6 +222,7 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
     )
 
     tables_separate = False
+    tables_mode = resolve_tables_mode(request.GET.get("tables"))
     if for_print:
         # Crops for the panes.  A pane falls back to the shared provision
         # content when there is nothing to redline — an image-only version
@@ -231,9 +232,7 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
             version.crops = build_crops(version.page_images)
         # Same rule as the printable provision: a scanned page already shows
         # its tables, so repeating them as figures prints each one twice.
-        tables_separate = apply_tables_mode(
-            [earlier, later], resolve_tables_mode(request.GET.get("tables"))
-        )
+        tables_separate = apply_tables_mode([earlier, later], tables_mode)
 
     return render(
         request,
@@ -241,6 +240,9 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
         {
             "print_mode": for_print,
             "tables_separate": tables_separate,
+            # Whether the page decided, or the reader did.  The control
+            # explains itself only in the first case — see the print controls.
+            "tables_by_default": tables_mode is None,
             "tables_toggle_query": toggle_query(request.GET, tables_separate),
             "retrieved": date.today(),
             "site_origin": site_origin(request),
@@ -275,7 +277,7 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
             # written as that file's name; on screen the reading title stands.
             "meta_title": (
                 exhibit_title(
-                    f"comparison {side_a['edition_name']} "
+                    f"Comparison {side_a['edition_name']} "
                     f"{side_a['provision'].provision_id} v{side_a['version'].version} "
                     f"vs {side_b['edition_name']} "
                     f"{side_b['provision'].provision_id} v{side_b['version'].version}",

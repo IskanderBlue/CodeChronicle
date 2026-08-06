@@ -27,6 +27,7 @@ from core.models import (
 from core.seo import (
     DEFAULT_DESCRIPTION,
     DEFAULT_TITLE,
+    SITE_NAME,
     SOCIAL_IMAGE_HEIGHT,
     SOCIAL_IMAGE_PATH,
     SOCIAL_IMAGE_WIDTH,
@@ -67,6 +68,15 @@ class TestExhibitTitle:
         identity — stripping them would be the one edit that loses the
         subject."""
         assert "3.2.5.7." in exhibit_title("OBC 2006 3.2.5.7. v0", date(2026, 8, 6))
+
+    def test_does_not_spend_the_leading_words_on_the_site_name(self):
+        """A filename is read in a folder listing, where the first words are
+        the ones that sort and the ones a narrow column keeps. Every exhibit
+        would share the site name, so it distinguishes nothing and pushes the
+        subject out of view."""
+        title = exhibit_title("OBC 2006 3.2.5.7. v0", date(2026, 8, 6))
+        assert SITE_NAME not in title
+        assert title.startswith("OBC 2006")
 
     def test_collapses_the_gaps_a_removal_leaves(self):
         assert "  " not in exhibit_title("OBC 2006 — 3.2.5.7.", date(2026, 8, 6))

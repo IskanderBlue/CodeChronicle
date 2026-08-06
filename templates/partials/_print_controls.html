@@ -25,6 +25,10 @@
     </div>
     <p class="mt-2 border-t border-rule pt-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">
         <a href="?{{ tables_toggle_query }}" class="ui-link"><span class="print-toggle-mark{% if tables_separate %} is-on{% endif %}" aria-hidden="true"></span>Repeat tables as separate figures</a>
-        {% if not tables_separate %}<span> &mdash; off, because the page images already show them</span>{% endif %}
+        {% comment %} The reason, only when the page is the one that decided.
+           A reader who set ?tables=off asked for this state and does not need
+           to be told why it holds — repeating the default's reasoning back at
+           them reads as the control ignoring what they chose. {% endcomment %}
+        {% if not tables_separate and tables_by_default %}<span> &mdash; off, because the page images already show them</span>{% endif %}
     </p>
 </div>

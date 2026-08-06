@@ -137,7 +137,44 @@
             padding-right: 0 !important;
         }
         h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
-        table, figure, .doc-crop-figure { break-inside: avoid; page-break-inside: avoid; }
+        table, .doc-crop-figure { break-inside: avoid; page-break-inside: avoid; }
+        /* ── A table figure must be allowed to break ─────────────────────
+           `figure` used to be in the rule above, and a table figure IS a
+           <figure> — the only one on these pages that is not a single crop.
+           Its body can be fourteen page-crops, far taller than a sheet, and
+           `break-inside: avoid` on a box that cannot fit does not keep it
+           whole: it pushes the whole box to a fresh page first. Then the
+           first crop, which avoids breaking for real, would not fit in what
+           was left of that page and moved on again — so the caption printed
+           alone on a sheet with the table starting on the next one.
+
+           Allowing the break puts the caption directly under the provision
+           text where it belongs, and the crops follow from the next page.
+           The crops keep their own avoid rule; that one is right, because a
+           crop is one image and does fit. */
+        figure { break-inside: auto; }
+        /* And once it breaks, its panel must not paint the gap. The tinted
+           fill marks where a collapsed disclosure begins and ends, which is a
+           screen job — on paper the disclosure is always open, and the fill's
+           only remaining effect is to paint a large solid rectangle wherever
+           the first crop did not fit on the sheet.
+
+           The border goes the same way, but by colour, NOT by `border: 0` —
+           and this is the part to be careful with. The crops are scaled to
+           the width of the body they sit in, and each one is already just
+           under a sheet tall. Removing this figure's padding and border
+           widened that body by 26px, which made every crop taller than a
+           page; a crop that cannot fit breaks in half however firmly it is
+           told not to, and the exhibit went from 16 sheets to 26, each scan
+           split across two. `transparent` keeps the 1px in the layout and
+           only stops it painting. Measured, not guessed.
+
+           The caption keeps its own rule — the figcaption carries border-b
+           whenever the disclosure is open, and on paper it always is. */
+        figure:not(.doc-crop-figure) {
+            background: none !important;
+            border-color: transparent !important;
+        }
         a { text-decoration: none; color: inherit; }
     }
 </style>

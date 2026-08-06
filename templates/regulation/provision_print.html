@@ -62,7 +62,11 @@ a print stylesheet might drop.
             <dd class="text-ink">{{ window_phrase }}</dd>
 
             <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Version</dt>
-            <dd class="text-ink">{{ version_number }} of {{ provision_id }}</dd>
+            {% comment %} The number alone. The provision id is the <h1> three
+               lines above and the running head of the whole sheet, so
+               repeating it here says nothing the reader has not just read.
+            {% endcomment %}
+            <dd class="text-ink">{{ version_number }}</dd>
 
             {% if base_reg %}
             <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Enacted by</dt>

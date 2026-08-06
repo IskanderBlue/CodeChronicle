@@ -401,6 +401,32 @@ class TestThePrintableProvision:
         forced = client.get(_print_url(), {"tables": "on"}).content.decode()
         assert "Water supply" in forced
 
+    def test_the_control_explains_the_default_but_not_the_readers_own_choice(
+        self, client, corpus
+    ):
+        """The reason is the page's, so it is stated only where the page chose.
+
+        A reader who set ``?tables=off`` asked for this state. Repeating the
+        default's reasoning back at them reads as the control ignoring what
+        they chose, and it can be untrue as well — an HTML-rendered version
+        turned off by hand has no page images to appeal to.
+        """
+        version = CodeEditionProvisionVersion.objects.get(
+            provision__provision_id="3.2.5.7."
+        )
+        ProvisionVersionTable.objects.create(
+            version=version, table_id="Table-3.2.5.7.", caption="Water supply",
+            html="<table><tr><td>x</td></tr></table>",
+        )
+        User.objects.create_user(email="r@example.com", password="testpass")
+        client.login(email="r@example.com", password="testpass")
+
+        reason = "the page images already show them"
+        # Off because the reader said so, on a version with no page images.
+        chosen = client.get(_print_url(), {"tables": "off"}).content.decode()
+        assert "Water supply" not in chosen
+        assert reason not in chosen
+
     def test_an_html_provision_still_prints_its_tables(self, client, corpus):
         version = CodeEditionProvisionVersion.objects.get(
             provision__provision_id="3.2.5.7."

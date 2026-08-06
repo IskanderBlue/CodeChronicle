@@ -82,12 +82,18 @@ def exhibit_title(subject: str, retrieved: date) -> str:
     one: two exhibits of the same provision taken months apart are different
     documents, and a folder holding both must be able to say which is which.
 
+    The site name is NOT in it.  A filename is read in a folder listing, where
+    the leading words are the ones that sort and the ones that survive a narrow
+    column; spending them on a name every exhibit shares pushes the provision
+    and the date out of sight.  Whoever opens the file meets the site name on
+    the first page.
+
     This only reaches a reader who prints through the browser's own "Save as
     PDF" destination.  A print-driver PDF (Windows' "Microsoft Print to PDF")
     opens its Save dialog empty whatever the page says, because it is a
     printer and not a download.
     """
-    name = f"{SITE_NAME} {subject} - retrieved {retrieved.isoformat()}"
+    name = f"{subject} - retrieved {retrieved.isoformat()}"
     return " ".join(_FILENAME_UNSAFE.sub(" ", name).split())
 
 
