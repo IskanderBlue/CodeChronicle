@@ -472,6 +472,70 @@
             padding-left: 8px;
         }
 
+        /* Provenance rail rows (_provenance_rail.html). The citation on the
+           left, its controls in a track on the right. Every row in the rail
+           wears it — the base regulation, each amendment, the next version —
+           so the reader finds a control where the last row kept it.
+
+           Before this, each row laid itself out and the results disagreed.
+           The base row put `v0 →` and `compare` side by side on one line; an
+           amendment row put `v1 →` at the end of its first line and `compare`
+           at the end of its second, because the two lines were two separate
+           flex rows. Measured in the 19rem rail, `v0 →` started 50px left of
+           `v1 →` directly under it. The controls are the same control, so a
+           reader scanning down the chain re-found them on every row.
+
+           The track is `auto`, not a width: `compare` is the widest label in
+           it, so every row that offers one sizes to the same track without
+           anybody writing the number down. Rows are baseline-aligned, so the
+           first control sits on the citation's own line.
+
+           THREE columns, and the middle one is the source link. A citation
+           runs to whatever length the instrument needs — "O. Reg. 332/12,
+           cl. 4.2.1.1(1)" is longer than the rail is wide — and with `ext`
+           trailing the prose it fell to a second line on the long ones and
+           not on the short ones, so the same link sat in a different place on
+           each row. `ext` now has a column of its own and the citation
+           truncates into the space it is given, with the whole of it in the
+           hover. Truncating a citation costs something: the clause number is
+           the tail, so it is the part that goes. It buys a rail a reader can
+           scan down one column at a time, which the wrapping did not. */
+        .prov-row {
+            display: grid;
+            /* The control track has a floor because one row's label is not
+               like the others': "current" marks the row the reader is on and
+               is wider than "compare". Left to size itself, that one row's
+               track grew and pulled its `ext` link 13px out of the column
+               every other row keeps it in — the same raggedness this grid
+               exists to remove, reintroduced by the one row a reader looks
+               at first. The floor is the widest label, so no row is now the
+               widest. */
+            grid-template-columns: minmax(0, 1fr) auto minmax(3.5rem, auto);
+            align-items: baseline; column-gap: 8px;
+        }
+        /* The citation cell. Truncation is on each LINE, not the cell: text
+           overflow needs a block box of its own, and this cell holds the
+           citation and its in-force date as two. */
+        .prov-cite { grid-column: 1; min-width: 0; }
+        .prov-cite > p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .prov-ext { grid-column: 2; white-space: nowrap; }
+        .prov-actions {
+            grid-column: 3;
+            display: flex; flex-direction: column; align-items: flex-end;
+            gap: 2px; white-space: nowrap;
+        }
+        /* The row the reader is on. The highlight bleeds OUTWARD — the padding
+           that gives the fill its breathing room is cancelled by an equal
+           negative margin — so the citation keeps the indent every other row
+           has. Padded alone it stepped 6px right, and the one row a reader is
+           looking for was the one row out of line.
+
+           A component class, and not `-mx-1.5 px-1.5`: a negative-margin
+           utility is not in the built stylesheet until a build rescans the
+           templates, so in dev the padding applied and the pull did not. Same
+           reason .pnav-row lives here. */
+        .prov-row-current { margin-left: -6px; margin-right: -6px; padding: 2px 6px; }
+
         /* ── Verification "attestation rail" ───────────────────────────────
            Replaces the consolidation line in the provenance band. ALL % come
            precomputed from core.verification.rail_geometry (result.rail); this

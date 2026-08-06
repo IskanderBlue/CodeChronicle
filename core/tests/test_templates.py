@@ -1019,10 +1019,11 @@ class TestNeverInForceRail:
             "amendment_chain": [v0, v1],
             "next_version": v1,
         })
-        assert "Never in force" in html        # chain row for v1
-        assert "(never in force)" in html      # Next row
+        # Both rows say it the same way: the chain row for v1, and the Next
+        # row, which used to phrase it as a trailing parenthetical.
+        assert html.count("Never in force") == 2
         assert "In force 2016-01-01" not in html
-        assert "not in force until" not in html
+        assert "not in force until" not in html.lower()
 
     def test_operating_next_version_keeps_the_date(self, chain):
         v0, v1 = chain
@@ -1034,7 +1035,9 @@ class TestNeverInForceRail:
             "next_version": v1,
         })
         assert "In force 2013-01-01" in html
-        assert "(not in force until 2013-01-01)" in html
+        # The Next row's own second line, which reads like the chain's dates
+        # above it rather than as a parenthetical trailing the citation.
+        assert "Not in force until 2013-01-01" in html
         assert "Never in force" not in html
 
 

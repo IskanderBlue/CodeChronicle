@@ -24,6 +24,11 @@
    no way to ask for the cross-edition one. Empty on a locked link, which
    already upsells — a second pricing link beside the first is noise.
 {% endcomment %}
-<p>
-    <span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition.code.code }} {{ link.edition.edition_id }}{% endif %} &middot;</span> {{ link.verb }} {% if link.locked %}<a href="{% url 'core:pricing' %}" @click.stop class="text-ink-3 hover:text-secondary" title="{% if link.title %}{{ link.title }} &middot; {% endif %}Available on Pro">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }} &mdash; Pro</a>{% else %}<a href="{{ link.url }}" @click.stop class="ui-cite" title="{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}{% if link.title %} &mdash; {{ link.title }}{% endif %}">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}</a>{% endif %}{% if link.compare_url %} <a href="{{ link.compare_url }}" @click.stop class="ui-cite font-mono text-[10px]" title="Compare this counterpart with the version you are reading">compare</a>{% endif %}
-</p>
+{% comment %} `prov-row` (base.html), the same shape the chain rows take, so
+   this row's compare link sits in the control track the rest of the rail put
+   its own in. Trailing the prose it landed wherever the sentence happened to
+   end, which on a wrapping row was the middle of the rail. {% endcomment %}
+<div class="prov-row">
+    <p class="min-w-0"><span class="text-ink-3">{% if link.same_edition %}This edition{% else %}{{ link.edition.code.code }} {{ link.edition.edition_id }}{% endif %} &middot;</span> {{ link.verb }} {% if link.locked %}<a href="{% url 'core:pricing' %}" @click.stop class="text-ink-3 hover:text-secondary" title="{% if link.title %}{{ link.title }} &middot; {% endif %}Available on Pro">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }} &mdash; Pro</a>{% else %}<a href="{{ link.url }}" @click.stop class="ui-cite" title="{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}{% if link.title %} &mdash; {{ link.title }}{% endif %}">{% if link.provision.division and link.provision.division != result.division %}Div. {{ link.provision.division }} {% endif %}{{ link.provision.provision_id }}</a>{% endif %}</p>
+    {% if link.compare_url %}<span class="prov-actions"><a href="{{ link.compare_url }}" @click.stop class="ui-cite font-mono text-[10px]" title="Compare this counterpart with the version you are reading">compare</a></span>{% endif %}
+</div>
