@@ -52,6 +52,19 @@ this page states each string once.
                indent from every other row, which is what made the column look
                ragged. The pager rows carry no heading of their own, so their
                arrows are the only thing naming the direction. {% endcomment %}
+            {% comment %} The top of the ladder, above the pager because it is
+               the furthest rung out. "Within" climbs one parent at a time and
+               stops at a root, which used to leave a reader inside Division B
+               with no way out of it; from the edition page the divisions are
+               listed and the neighbouring editions sit beside it. {% endcomment %}
+            {% if nav_edition %}
+            <div class="pnav-row border-b border-rule pb-3 text-[13px]">
+                <span class="shrink-0 font-mono text-[11px] text-ink-3">&uarr;</span>
+                <a href="{{ nav_edition.url }}" class="min-w-0 truncate ui-cite font-mono font-semibold"
+                   title="Contents of {{ nav_edition.label }}, and the editions either side of it">{{ nav_edition.label }}</a>
+            </div>
+            {% endif %}
+
             {% if nav_prev or nav_next %}
             <div class="space-y-1.5 border-b border-rule pb-3 text-[13px]">
                 {% if nav_prev %}{% include "regulation/_permalink_nav_item.html" with item=nav_prev glyph="←" %}{% endif %}
@@ -89,20 +102,45 @@ this page states each string once.
             <div class="mt-3 border border-rule">
                 {% include "partials/_viewer_section_content.html" %}
             </div>
-            {% comment %} Fan-in for the pinned version: which provisions pointed
-               here while it stood.  Not in the printed code — only a
-               whole-edition citation index can answer it. {% endcomment %}
+            {% comment %} Fan-in for the pinned version, below lg only. On lg+
+               it is in the rail — see there for why. {% endcomment %}
             {% if cited_by %}
-            <div class="px-4">
+            <div class="px-4 lg:hidden">
                 {% include "partials/_cross_ref_list.html" with entries=cited_by label="Cited by" %}
             </div>
             {% endif %}
+
+            {% comment %} The exhibit. Last, because it acts on everything above
+               it — the same place /compare/ puts its own print link, and the
+               same words. It was only ever inside the Cite menu here, two
+               clicks and a lazy load down, which is a strange place to keep
+               one of the four exports we measure. {% endcomment %}
+            <p class="mt-6 border-t border-rule pt-3 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+                <a href="{{ print_url }}" target="_blank" rel="noopener" class="ui-link">Print this version <span aria-hidden="true">&nearr;</span></a>{% if print_needs_sign_in %} <span>&mdash; free account required</span>{% endif %}
+            </p>
         </div>
 
         {# Col 3 — provenance metadata rail (lg+ only; folded into the banner on mobile) #}
-        {% if provenance %}
+        {% if provenance or cited_by %}
         <div class="hidden lg:block lg:sticky lg:top-4">
+            {% if provenance %}
             {% include "partials/_provenance_rail.html" with result=provenance compare_enabled=True allow_compare=True %}
+            {% endif %}
+            {% comment %} Fan-in for the pinned version: which provisions pointed
+               here while it stood. Not in the printed code — only a
+               whole-edition citation index can answer it.
+
+               In the rail rather than under the text, because the text is the
+               one thing on this page with no bounded height: a scan runs for
+               pages and a one-line clause does not, so a reader who wanted
+               "Cited by" had to hunt for it at a different depth on every
+               provision. The rail is a fixed place. It is also the right
+               company — everything else in the rail is a fact ABOUT this
+               version rather than the version itself, and the fan-in is
+               exactly that. {% endcomment %}
+            {% if cited_by %}
+            {% include "partials/_cross_ref_list.html" with entries=cited_by label="Cited by" %}
+            {% endif %}
         </div>
         {% endif %}
     </div>

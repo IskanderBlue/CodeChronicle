@@ -24,7 +24,12 @@ from .pages import (
     user_settings,
     verification_guide,
 )
-from .regulation import edition_chain, provision_permalink, regulation_detail
+from .regulation import (
+    edition_chain,
+    edition_contents,
+    provision_permalink,
+    regulation_detail,
+)
 from .search import (
     search_page,
     search_results,
@@ -40,6 +45,7 @@ __all__ = [
     "create_customer_portal_session",
     "data_sources",
     "edition_chain",
+    "edition_contents",
     "edition_request",
     "feedback_status",
     "history",

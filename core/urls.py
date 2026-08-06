@@ -76,6 +76,15 @@ urlpatterns = [
         kwargs={"division": "", "for_print": True},
     ),
     path("edition/<int:pk>/chain/", views.edition_chain, name="edition_chain"),
+    # The edition's contents — the top of the navigation ladder. Keyed by the
+    # same ``OBC_2006`` reference the provision permalinks use, not by a pk:
+    # a reader who can read one URL can read the other. Declared after the
+    # ``<int:pk>`` route above so a numeric first segment still reaches it.
+    path(
+        "edition/<str:code_edition>/",
+        views.edition_contents,
+        name="edition_contents",
+    ),
     # Two version references in, one page out.  Query params rather than path
     # segments because the two references are of equal standing and neither
     # owns the URL — and because a reference itself contains slashes.

@@ -30,6 +30,16 @@ def provision_permalink_url(
     )
 
 
+def edition_contents_url(code_name: str) -> str:
+    """The contents page of one edition, e.g. ``OBC_2006``.
+
+    Named the same way a provision permalink names its edition, because the
+    two are rungs of one ladder: a reader climbs out of a provision into this
+    page and back down into another.
+    """
+    return reverse("core:edition_contents", args=[code_name])
+
+
 def provision_print_url(
     code_name: str, division: str, provision_id: str, version: int
 ) -> str:

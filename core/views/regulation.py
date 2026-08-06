@@ -8,7 +8,7 @@ from typing import Any
 
 from django.contrib.auth.views import redirect_to_login
 from django.db.models import prefetch_related_objects
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
@@ -37,7 +37,11 @@ from core.models import (
     natural_provision_key,
 )
 from core.page_crops import build_crops
-from core.permalinks import provision_permalink_url
+from core.permalinks import (
+    edition_contents_url,
+    provision_permalink_url,
+    provision_print_url,
+)
 from core.print_options import apply_tables_mode, resolve_tables_mode, toggle_query
 from core.provision_lineage import (
     annotate_lineage_locks,
@@ -310,6 +314,50 @@ def _related_links(
             for v in versions
         ],
     }
+
+
+def _edition_roots(edition: CodeEdition) -> list[CodeEditionProvision]:
+    """The top of one edition's structure, in reading order.
+
+    A root is a provision with no parent.  What that *is* differs by edition
+    and the difference is real, not a defect: OBC 2006 and 2012 carry a
+    division-level provision (``A`` / ``B`` / ``C``) that owns the parts,
+    while OBC 1997 has no division at all and its twelve parts are the roots.
+    So this returns divisions for one edition and parts for another, and the
+    ladder above it must not assume which.
+
+    Provisions with a blank ``level`` are excluded.  Six of them exist in
+    OBC 2012 Division B (``Table-1.3.1.2.``, ``3.2.4.22(13)`` and four more):
+    no parent, no children, no level.  They are loose rows rather than a rung
+    of the structure, and listing them beside A, B and C would say the corpus
+    has nine divisions.  They are unreachable by navigation either way — a
+    CCM question, not one this page can answer.
+    """
+    roots = (
+        CodeEditionProvision.objects
+        .filter(edition=edition, parent__isnull=True)
+        .exclude(level="")
+        .prefetch_related("versions")
+    )
+    return sorted(roots, key=lambda p: (p.division, _natural_key(p.provision_id)))
+
+
+def _sibling_editions(edition: CodeEdition) -> list[CodeEdition]:
+    """Every edition of the same code that a reader can actually open.
+
+    Loaded editions only.  The corpus carries a placeholder row for each
+    consolidation of an edition (``OBC 2006_v07`` and some sixty more) and a
+    row for every code we intend to hold but do not yet — all of them with
+    zero provisions.  A pager offering those would be a list of empty rooms,
+    so the test is whether the edition has any structure, which is the same
+    thing as whether it can be navigated.
+    """
+    return list(
+        CodeEdition.objects
+        .filter(code=edition.code, provisions__isnull=False)
+        .distinct()
+        .order_by("effective_date")
+    )
 
 
 def _sibling_link(
@@ -1046,15 +1094,28 @@ def provision_permalink(
 
     # Sibling pager: previous / next provision under the same parent, in
     # natural order, each shown as it reads on the pinned date.
+    #
+    # A root has no parent, and its siblings are the edition's other roots —
+    # Division A beside B beside C, or Part 1 beside Part 2 in an edition with
+    # no divisions.  Note the division filter is dropped there, deliberately:
+    # everywhere else in the tree ``division`` scopes the query, but at the
+    # root crossing divisions is the whole point of the row.
     nav_prev: dict[str, Any] | None = None
     nav_next: dict[str, Any] | None = None
-    if matched.parent_id and not for_print:
-        siblings = sorted(
-            CodeEditionProvision.objects
-            .filter(parent_id=matched.parent_id, edition=matched.edition, division=division)
-            .prefetch_related("versions"),
-            key=lambda p: _natural_key(p.provision_id),
-        )
+    if not for_print:
+        if matched.parent_id:
+            siblings = sorted(
+                CodeEditionProvision.objects
+                .filter(
+                    parent_id=matched.parent_id,
+                    edition=matched.edition,
+                    division=division,
+                )
+                .prefetch_related("versions"),
+                key=lambda p: _natural_key(p.provision_id),
+            )
+        else:
+            siblings = _edition_roots(matched.edition)
         pks = [p.pk for p in siblings]
         if matched.pk in pks:
             idx = pks.index(matched.pk)
@@ -1142,6 +1203,14 @@ def provision_permalink(
         "nav_down": nav_down,
         "nav_prev": nav_prev,
         "nav_next": nav_next,
+        # The top of the ladder, reachable from any depth. "Within" climbs one
+        # parent at a time and stops at a root, which left a reader inside
+        # Division B with no way out of it; this row is the way out, and from
+        # there the editions sit side by side.
+        "nav_edition": {
+            "label": f"{matched.edition.code.code} {matched.edition.edition_id}".strip(),
+            "url": edition_contents_url(code_name),
+        },
         "provenance": _provenance_result(
             matched, target_version, code_name, division, provision_id, request.user
         ),
@@ -1152,6 +1221,12 @@ def provision_permalink(
         # Fan-in: the provisions that pointed *here* while this version stood.
         # Not in the printed code — only a whole-edition index can answer it.
         "cited_by": cited_by(target_version, matched, code_name),
+        # The exhibit, linked from the foot of the page as well as from the
+        # Cite menu.  Inside the menu it was two clicks and a lazy load deep,
+        # which is a strange place to keep one of the four measured exports —
+        # /compare/ has offered the same link in the open all along.
+        "print_url": provision_print_url(code_name, division, provision_id, version),
+        "print_needs_sign_in": not request.user.is_authenticated,
         # Search-engine metadata: a per-page title, description and canonical
         # URL. Built in core.seo rather than in the template because the
         # canonical rule is shared with the sitemap and must not be restated.
@@ -1164,6 +1239,78 @@ def provision_permalink(
         "jsonld": provision_jsonld(
             matched, target_version, origin=site_origin(request)
         ),
+    })
+
+
+def edition_contents(request: HttpRequest, code_edition: str) -> HttpResponse:
+    """One edition's structure: its roots, and the editions either side of it.
+
+    The top of the navigation ladder.  A provision page climbs to its parent,
+    and a parent to its parent, but a root had nowhere left to go — so a
+    reader inside Division B could not reach Division C, and no page in the
+    product listed an edition's own contents.
+
+    Two moves from here.  **Down**, into the roots — divisions in OBC 2006 and
+    2012, parts in OBC 1997, whichever that edition holds.  **Sideways**, into
+    the neighbouring editions, which is an edition-level move and needs no
+    provision mapping: the rail already answers "where did *this provision*
+    go", from mapping rows and never from a matching number, and that question
+    is not this one.
+
+    ``code_edition`` is the ``OBC_2006`` form the provision permalinks use.
+    """
+    if "_" not in code_edition:
+        raise Http404("Unknown edition")
+    system_code, edition_id = code_edition.split("_", 1)
+    edition = get_object_or_404(
+        CodeEdition.objects.select_related("code"),
+        code__code=system_code,
+        edition_id=edition_id,
+    )
+    # The gate, before anything is read. An edition's contents is the shape of
+    # the edition, which is content.
+    if not edition_allowed(request.user, edition.code_name):
+        return _locked_edition_response(request, edition, surface="edition_contents")
+
+    roots = _edition_roots(edition)
+    # Each root as it last read. A contents page is not pinned to a date — the
+    # reader has not chosen one yet — so it links the highest version, which is
+    # the same rule core.seo uses to pick a canonical URL.
+    entries = []
+    for root in roots:
+        versions = sorted(root.versions.all(), key=lambda v: v.version)
+        if not versions:
+            continue
+        newest = versions[-1]
+        entries.append({
+            "provision_id": root.provision_id,
+            "division": root.division,
+            "level": root.get_level_display(),
+            "title": newest.title,
+            "url": provision_permalink_url(
+                code_edition, root.division, root.provision_id, newest.version
+            ),
+        })
+
+    siblings = _sibling_editions(edition)
+    return render(request, "regulation/edition_contents.html", {
+        "edition": edition,
+        "code_display_name": f"{edition.code.code} {edition.edition_id}".strip(),
+        # The last day this edition governed, not the stored end — that is the
+        # first day it did not.  core.seo owns the conversion for the product.
+        "last_day": last_governed_day(edition.ineffective_date),
+        "entries": entries,
+        "editions": [
+            {
+                "label": f"{e.code.code} {e.edition_id}".strip(),
+                "effective_date": e.effective_date,
+                "last_day": last_governed_day(e.ineffective_date),
+                "url": edition_contents_url(f"{e.code.code}_{e.edition_id}"),
+                "is_current": e.pk == edition.pk,
+            }
+            for e in siblings
+        ],
+        "meta_title": f"{edition.code.code} {edition.edition_id} — contents{TITLE_SUFFIX}",
     })
 
 

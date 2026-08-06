@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% comment %}
+An edition's contents: what it holds, and the editions either side of it.
+
+The top of the navigation ladder. Every other structural page climbs one
+parent at a time and a root has no parent, so before this page a reader
+inside Division B could not reach Division C, and nothing in the product
+listed an edition's own structure.
+
+Two moves, and they are different in kind. DOWN is structural — the roots of
+this edition, whatever this edition uses for roots. SIDEWAYS is an edition
+move, not a provision move: it asks "show me the 2012 code", which needs no
+mapping. The rail on a provision page answers the other question — "where did
+THIS provision go" — from mapping rows and never from a matching number, and
+the two must not be confused for each other.
+{% endcomment %}
+{% block content %}
+<div class="mx-auto max-w-4xl px-4 py-8">
+
+    <div class="border-b border-rule pb-4">
+        {% comment %} No code-level eyebrow. The masthead already names the
+           code, and the heading below repeats it — a third copy on one screen
+           says nothing the reader has not read twice. {% endcomment %}
+        <h1 class="font-serif text-[28px] leading-tight text-ink">
+            <span class="font-mono font-semibold">{{ code_display_name }}</span>
+            <span class="italic text-ink-2">&mdash; contents</span>
+        </h1>
+        {% comment %} The window in the days it actually governed. `last_day`
+           is converted in the view: the stored end is the first day the
+           edition did NOT apply, and printing it raw names the wrong day.
+        {% endcomment %}
+        <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">
+            In force {{ edition.effective_date|date:"j F Y" }}{% if last_day %} to {{ last_day|date:"j F Y" }}{% else %} onward{% endif %}
+        </p>
+    </div>
+
+    {% comment %} Sideways. Every loaded edition of this code, the current one
+       marked rather than removed — a reader wants to see where they are in
+       the sequence, and a list with a hole in it is harder to read than one
+       with a mark on it. {% endcomment %}
+    {% if editions|length > 1 %}
+    <div class="mt-6">
+        <p class="mb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">Editions</p>
+        <div class="flex flex-wrap gap-x-4 gap-y-2">
+            {% for e in editions %}
+            {% if e.is_current %}
+            <span class="font-mono text-[13px] font-semibold text-ink">{{ e.label }}
+                <span class="font-normal text-ink-3">&middot; this one</span>
+            </span>
+            {% else %}
+            <a href="{{ e.url }}" class="ui-cite font-mono text-[13px]">{{ e.label }}
+                <span class="font-normal text-ink-3">&middot; {{ e.effective_date|date:"Y" }}{% if e.last_day %}&ndash;{{ e.last_day|date:"Y" }}{% else %}&ndash;{% endif %}</span>
+            </a>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% comment %} Down. The roots, whatever this edition calls them: OBC 2006
+       and 2012 open into three divisions, OBC 1997 into twelve parts. Each
+       row names its own level rather than the page assuming one, because the
+       difference is a fact about the edition and not a defect to smooth over.
+
+       Each links the root's highest version — a contents page is not pinned
+       to a date, so it takes the same version the canonical rule takes.
+    {% endcomment %}
+    <div class="mt-6">
+        <p class="mb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">Contents</p>
+        {% if entries %}
+        <ul class="divide-y divide-rule border-y border-rule">
+            {% for entry in entries %}
+            <li class="py-2.5">
+                <a href="{{ entry.url }}" class="flex flex-wrap items-baseline gap-x-3 gap-y-1 ui-cite">
+                    <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">{{ entry.level }}</span>
+                    <span class="font-mono text-[15px] font-semibold">{{ entry.provision_id }}</span>
+                    {% if entry.title %}<span class="font-serif italic text-ink-2">{{ entry.title }}</span>{% endif %}
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="font-serif text-sm italic text-ink-3">
+            This edition holds no structure yet.
+        </p>
+        {% endif %}
+    </div>
+
+    <p class="mt-6 border-t border-rule pt-3 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+        <a href="{% url 'core:edition_chain' edition.pk %}" class="ui-link">Amendment chain for this edition</a>
+    </p>
+</div>
+{% endblock %}
