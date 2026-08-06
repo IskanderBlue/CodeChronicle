@@ -55,13 +55,79 @@
     .print-toggle-mark.is-on { background: currentColor; }
 
     @media print {
+        /* ── The browser's own header and footer ────────────────────────
+           A printed page carries the document title and URL across the top
+           and "1/3" and a timestamp across the bottom, both truncated to
+           fit. The URL is one this page already states in full and unbroken
+           in its retrieval line, so the stamped copy adds nothing.
+
+           There is no way to remove it from here. It is the print dialog's
+           "Headers and footers" checkbox, and a page is deliberately not
+           allowed to strip what the browser stamps.
+
+           An `@page { margin }` under Chrome's stamping threshold was tried
+           and does NOT work: it suppresses the stamp when the margin is
+           passed programmatically (CDP `Page.printToPDF`), which is what
+           made it look promising, but the print DIALOG sizes its stamp band
+           from its own Margins control, and on "Default" it stamps whatever
+           `@page` says. Do not try it again — the CDP result does not
+           generalise to the dialog. Removing the stamp for real needs the
+           PDF generated server-side. */
+
         /* The site's navigation is not part of an exhibit. The footer stays:
            it carries the "not legal advice" line these documents must carry.
            `body > header` and not `header` — each print page's own <header>
            is its masthead, and a bare element selector hid that too. */
         body > header, .print-hide, .flash-messages { display: none !important; }
         footer a { display: none !important; }
-        main { flex-grow: 0 !important; }
+
+        /* ── Block flow, not flex ────────────────────────────────────────
+           The screen layout is a flex column pinned to `min-h-screen`, with
+           the footer held down by `mt-auto`. On paper that is a trap: 100vh
+           resolves to ONE page, so the footer is placed at the bottom of the
+           first page's box while the text carries on flowing underneath it —
+           the disclaimer prints on top of the provision, which is the one
+           thing an exhibit cannot do.
+
+           Flex and grid have no dependable fragmentation across pages in
+           Chrome. Block boxes do. So the print sheet goes back to block flow
+           and lets pagination work; `min-height` is dropped for the same
+           reason (a page-tall minimum on a four-page document is a page of
+           white space, not a floor).
+
+           This replaces an earlier `main { flex-grow: 0 }`, which treated the
+           symptom from the wrong side: it stopped main claiming the slack,
+           which only handed the slack to `mt-auto` sooner. */
+        body {
+            display: block !important;
+            min-height: 0 !important;
+        }
+        main { display: block !important; }
+        footer {
+            margin-top: 1.5rem !important;
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        /* The footer's three columns are a screen arrangement. Printed, the
+           links are gone and the remaining two are laid out by
+           `justify-between` across the full sheet — which puts a gulf between
+           them, wraps each mid-phrase, and centres the middle one's overflow
+           so "MMXXVI" and "CONSOLIDATION" end up under neither the words they
+           continue nor anything else.
+
+           Stacked and left-aligned, each line starts where its own text
+           starts and both fit without wrapping, so there is no orphan to
+           align in the first place. */
+        footer > div {
+            display: block !important;
+            padding-top: 0.5rem !important;
+            padding-bottom: 0.5rem !important;
+        }
+        footer > div > span {
+            display: block;
+            text-align: left !important;
+        }
+        footer > div > span + span { margin-top: 2px; }
         /* The reading measure is for reading. An exhibit uses the sheet: a
            crop is drawn as a fraction of the column it sits in, so a narrow
            column throws away resolution the scan actually has. */

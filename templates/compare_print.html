@@ -22,11 +22,19 @@ regulation/provision_print.html for why there is no PDF library here.
 {% include "partials/_print_shell.html" %}
 <style>
     @media print {
-        /* One column. The grid puts the two texts side by side on screen,
-           which a sheet of paper cannot afford: two columns of legal text on
-           Letter is four inches of measure each, and a redline is unreadable
-           at that width. */
-        .md\:grid-cols-2 { grid-template-columns: 1fr !important; }
+        /* One column, and block flow rather than a one-column grid. The grid
+           puts the two texts side by side on screen, which a sheet of paper
+           cannot afford: two columns of legal text on Letter is four inches
+           of measure each, and a redline is unreadable at that width.
+
+           Collapsing to `grid-template-columns: 1fr` gave the right column
+           count and the wrong pagination — Chrome does not split a grid item
+           across pages, so a pane taller than the space left pushed whole and
+           left the rest of the sheet blank. Block boxes fragment; grid items
+           do not. `gap` goes with the grid, so the panes carry their own
+           space. */
+        .md\:grid-cols-2 { display: block !important; }
+        .md\:grid-cols-2 > * + * { margin-top: 1rem; }
     }
 </style>
 {% endblock %}

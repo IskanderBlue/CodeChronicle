@@ -1,9 +1,9 @@
 """Citation strings a reader pastes into their own document.
 
 The cheapest export, and the only one that travels: a citation lands in a
-report we never see, and it has to stand on its own there.  Two formats,
-because a factum and a consultant's report are different documents and no
-single string serves both:
+report we never see, and it has to stand on its own there.  Three formats,
+because a factum, a consultant's report and a set of working notes are
+different documents and no single string serves them:
 
 * **Legal** follows the McGill Guide, the style Canadian legal writing (and
   the college guides written for construction students) uses for a
@@ -14,8 +14,16 @@ single string serves both:
   body of a report: the edition, the division, the level and number, the
   heading, and the window it governed.  It carries the retrieval line, so the
   URL travels with the sentence somebody actually pastes.
+* **Reference** answers a different question from the other two — not "how do
+  I cite this" but "why does this text say what it says".  It is the only
+  format that names the amending instrument and the amendment still to come,
+  which is what a reader reconciling against e-Laws needs.  It is a record
+  rather than a sentence, so it stays multi-line and keeps ISO dates beside
+  the regulation numbers; it names the provision with the same pinpoint
+  Report uses, because one provision with two spellings in one dialog is the
+  error this module exists to prevent.
 
-Three rules hold for both:
+Three rules hold for all of them:
 
 * **Nothing is invented.**  A qualifier we cannot source is dropped, the same
   way ``core.seo`` drops an unsourced JSON-LD property.  In particular we do
@@ -38,6 +46,7 @@ valid when a reader follows it years later.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
@@ -46,10 +55,11 @@ from core.models import CodeEdition, CodeEditionProvision, CodeEditionProvisionV
 from core.permalinks import provision_permalink_url
 from core.seo import base_regulation, effective_window, last_governed_day
 
-#: The two formats, in the order the control offers them.  ``kind`` is what
+#: The three formats, in the order the control offers them.  ``kind`` is what
 #: the engagement event records, so the 60-day review can retire one.
 LEGAL = "legal"
 REPORT = "report"
+REFERENCE = "reference"
 
 
 @dataclass(frozen=True)
@@ -62,6 +72,10 @@ class Citation:
     #: never met the McGill Guide needs to be told which button is theirs.
     note: str
     text: str
+    #: Whether the string's own line breaks carry meaning.  Legal and Report
+    #: are sentences and wrap to the dialog; Reference is a record whose lines
+    #: are its structure, so the panel draws it in a ``<pre>``.
+    preformatted: bool = False
 
 
 def _long_date(day: date) -> str:
@@ -133,18 +147,52 @@ def in_force_phrase(
     return _window_phrase(start, end, never_in_force=version.never_in_force)
 
 
+def _headline(
+    edition_label: str, provision: CodeEditionProvision, heading: str
+) -> str:
+    """``OBC 2006, Div. A, Article 1.1.2.4. — Application of Part 9``.
+
+    Report opens with it and Reference opens with it.  One function, because
+    the two used to disagree — Reference said ``Div A, S 1.1.2.4.`` for what
+    is an Article, which is both a third spelling of one provision and the
+    wrong level name.
+    """
+    head = f"{edition_label}, {_short_pinpoint(provision)}"
+    return f"{head} — {heading}" if heading else head
+
+
+def _retrieval_line(retrieved: date, url: str) -> str:
+    """``Retrieved 2026-08-06 from <url>``.
+
+    ISO here, in both formats that carry it, because a retrieval stamp is a
+    record of when we looked and not part of the sentence's claim.  Every
+    export states one: a historical text with no retrieval date becomes an
+    undated claim the moment it leaves the site.
+    """
+    return f"Retrieved {retrieved.isoformat()} from {url}"
+
+
 def build_citations(
     provision: CodeEditionProvision,
     version: CodeEditionProvisionVersion,
     *,
     origin: str,
     retrieved: date | None = None,
+    provenance_lines: Sequence[str] = (),
 ) -> list[Citation]:
     """The citation strings for one provision version.
 
     ``origin`` is ``core.seo.site_origin(request)`` — scheme and host, so the
     URL in the citation is absolute.  ``retrieved`` defaults to today; it is a
     parameter so a test can pin it.
+
+    ``provenance_lines`` is the amendment chain from
+    ``api.formatters.provenance_lines`` — base regulation, amending clause,
+    next amendment.  It arrives as a parameter rather than being rebuilt here
+    because the caller has already loaded that chain, and because a second
+    derivation of it would be a second thing to get wrong.  Empty means no
+    chain is known, and Reference then carries the heading and the retrieval
+    line alone rather than claiming provenance it does not have.
 
     The URL names **this version**, not the canonical one.  The card asked for
     the canonical URL, and that is right for a crawler: the canonical rule
@@ -191,14 +239,20 @@ def build_citations(
 
     # ── Report ──────────────────────────────────────────────────────────
     heading = (version.title or "").strip()
-    report = f"{edition_label}, {_short_pinpoint(provision)}"
-    if heading:
-        report = f"{report} — {heading}"
+    headline = _headline(edition_label, provision, heading)
     report = (
-        f"{report} "
+        f"{headline} "
         f"({_window_phrase(start, end, never_in_force=version.never_in_force)}). "
-        f"Retrieved {retrieved.isoformat()} from {url}"
+        f"{_retrieval_line(retrieved, url)}"
     )
+
+    # ── Reference ───────────────────────────────────────────────────────
+    # The same provision, named the same way, then the chain that produced
+    # this text and the stamp that lets somebody else find it again.  The
+    # window is deliberately absent: Report states it in prose, and the
+    # chain's own dates say when each step took effect, which is the more
+    # exact answer to the question this format is for.
+    reference = "\n".join([headline, *provenance_lines, _retrieval_line(retrieved, url)])
 
     return [
         Citation(
@@ -212,5 +266,12 @@ def build_citations(
             label="Report",
             note="For the body of a report, with the retrieval line",
             text=report,
+        ),
+        Citation(
+            kind=REFERENCE,
+            label="Reference",
+            note="The amendment chain, for working notes",
+            text=reference,
+            preformatted=True,
         ),
     ]

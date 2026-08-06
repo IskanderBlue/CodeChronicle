@@ -54,7 +54,11 @@
         <p class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3">
             Every version &middot; {{ timeline.editions|join:" &rarr; " }}
         </p>
-        <p class="font-mono text-[10px] text-ink-3">
+        {% comment %} An affordance, not evidence: on paper there is nothing
+           to click, and an instruction that cannot be followed is noise in an
+           exhibit. The axis itself stays — which versions exist and when is a
+           fact the printed comparison should carry. {% endcomment %}
+        <p class="print-hide font-mono text-[10px] text-ink-3">
             Click in a row to move that side
         </p>
     </div>

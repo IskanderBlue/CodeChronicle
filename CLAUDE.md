@@ -281,7 +281,14 @@ Rules that hold across all four:
   the page title, the JSON-LD interval, the nav tooltips, the cross-reference
   chips and the citations all call it, because three private copies gave three
   answers. `core.citations.in_force_phrase` puts it in prose, and
-  `core.seo.effective_window` closes an open version at its edition's end.
+  `core.seo.effective_window` supplies the window. That window is **the
+  version's own**: CCM computes these dates and lets a window run past its
+  edition on purpose, because a transition overlap is two editions' versions
+  in force at once. The edition's end is a fallback for a **null** end only,
+  where a version would otherwise read as open-ended and open-ended reads as
+  current. Eight loaded versions run past their edition; CCM's
+  `tasks/future/a-verify-windows-past-edition-end.md` asks it to confirm each
+  one is a real overlap rather than an unclipped window.
 - **A citation links its own version, not the canonical one.** The canonical
   rule concentrates crawler ranking on the highest version; a citation pins a
   text to a date, and a link to a different text is the one failure an exhibit

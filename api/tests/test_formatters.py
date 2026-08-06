@@ -446,9 +446,19 @@ def test_added_provision_attributes_its_introducing_reg(monkeypatch):
     # Base reg is the introducing amendment, not the edition base 403/97.
     assert res["base_regulation"].reg_id == "593/99"
     assert res["is_added"] is True
-    # Copy text: one dated "Added by" line, no "Base:" duplicate of the same reg.
-    assert "Added by: O. Reg. 593/99, cl. 3 (2000-03-05)" in res["copy_text"]
-    assert "Base: O. Reg." not in res["copy_text"]
+
+    # Provenance chain: one dated "Added by" line, no "Base:" duplicate of the
+    # same reg.  Asserted on the lines themselves rather than on a joined
+    # string, so a label that stops starting its own line fails here.
+    lines = formatters.provenance_lines(
+        version=v0,
+        most_recent_clause=v0.last_contributing_clause,
+        base_regulation=res["base_regulation"],
+        next_version=None,
+        is_added=res["is_added"],
+    )
+    assert "Added by: O. Reg. 593/99, cl. 3 (2000-03-05)" in lines
+    assert not any(line.startswith("Base: O. Reg.") for line in lines)
 
 
 @pytest.mark.django_db

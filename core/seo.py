@@ -31,6 +31,7 @@ carries — the machine-readable form of the in-force window. See
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -59,6 +60,36 @@ SITE_NAME = "CodeChronicle"
 #: card already prints the site name on its own line and a headline that
 #: repeats it wastes the only line a reader skims.
 TITLE_SUFFIX = f" | {SITE_NAME}"
+
+#: Characters Windows forbids in a filename, plus the ones that read badly in
+#: one.  A printable page has no ``Content-Disposition`` to carry a name — the
+#: browser builds the default from ``document.title`` — so a title that keeps
+#: these produces a mangled name or an empty Save box.  ``TITLE_SUFFIX``'s own
+#: pipe is the first offender.
+_FILENAME_UNSAFE = re.compile(r'[\\/:*?"<>|—·]')
+
+
+def exhibit_title(subject: str, retrieved: date) -> str:
+    """The ``<title>`` for a printable page, shaped to be a filename.
+
+    The reading pages end their title with ``| CodeChronicle``.  That is right
+    for a browser tab and wrong for a saved exhibit: the pipe is illegal in a
+    Windows filename, and an em dash and a middot are legal but ugly in one.
+    A printed page is a file somebody keeps, so its title is written as the
+    name of that file.
+
+    The retrieval date is in the name for the same reason every export states
+    one: two exhibits of the same provision taken months apart are different
+    documents, and a folder holding both must be able to say which is which.
+
+    This only reaches a reader who prints through the browser's own "Save as
+    PDF" destination.  A print-driver PDF (Windows' "Microsoft Print to PDF")
+    opens its Save dialog empty whatever the page says, because it is a
+    printer and not a download.
+    """
+    name = f"{SITE_NAME} {subject} - retrieved {retrieved.isoformat()}"
+    return " ".join(_FILENAME_UNSAFE.sub(" ", name).split())
+
 
 #: The title and description a page carries when it says nothing of its own.
 #: Both the ``<title>`` and the social card read them, so a page cannot
@@ -120,8 +151,12 @@ def last_governed_day(end: date | None) -> date | None:
     return end - timedelta(days=1)
 
 
-def _date_phrase(effective: date | None, ineffective: date | None) -> str:
+def _date_phrase(effective: date | None, end: date | None) -> str:
     """How long this version stood, in prose.
+
+    ``end`` is the half-open window end from :func:`effective_window`, not the
+    version's raw ``ineffective_date``.  The title and the JSON-LD state one
+    window on one page, so they read it from one place.
 
     An open-ended window says "from", not "to today": the edition may have been
     superseded without this provision changing, and claiming currency for a
@@ -133,7 +168,7 @@ def _date_phrase(effective: date | None, ineffective: date | None) -> str:
     if effective is None:
         return ""
     start = effective.strftime("%d %B %Y").lstrip("0")
-    last = last_governed_day(ineffective)
+    last = last_governed_day(end)
     if last is None:
         return f"in force from {start}"
     if last < effective:
@@ -141,8 +176,8 @@ def _date_phrase(effective: date | None, ineffective: date | None) -> str:
         # that governed no day.  A range is the wrong shape for it, and a
         # backwards one ("to" a day before "from") reads as a data fault.
         return "never in force"
-    end = last.strftime("%d %B %Y").lstrip("0")
-    return f"in force {start} to {end}"
+    finish = last.strftime("%d %B %Y").lstrip("0")
+    return f"in force {start} to {finish}"
 
 
 def _truncate(text: str, limit: int = MAX_DESCRIPTION) -> str:
@@ -167,7 +202,7 @@ def provision_page_meta(
     edition = provision.edition
     code_label = f"{get_code_display_name(edition.code.code)} {edition.edition_id}".strip()
     heading = (version.title or "").strip()
-    dates = _date_phrase(version.effective_date, version.ineffective_date)
+    dates = _date_phrase(*effective_window(version, edition))
 
     title_parts = [provision.provision_id]
     if heading:
@@ -251,14 +286,24 @@ def effective_window(
 ) -> tuple[date, date | None]:
     """The days this version actually governed, half-open ``[start, end)``.
 
-    The version's own ``ineffective_date`` is not the whole story.  A few
-    provisions outlive their edition and carry no end date at all, so reading
-    the version alone reports a 2006 text as open-ended — which reads as
-    current.  The edition's end closes it.  Whichever end comes first wins;
-    ``None`` means genuinely open.
+    **The version's own end wins whenever it has one.**  CCM computes these
+    dates and deliberately lets a window run past its edition — the contract
+    (``tasks/complete/provenance/ccm-output-contract.md``) extends the old
+    version's end to the overlap end during a transition, and the search's
+    in-force filter runs at the version level for exactly that reason.  To
+    take the earlier of the two ends here would delete that overlap.
+
+    The edition's end is a **fallback for a null**, nothing more.  A version
+    with no ``ineffective_date`` in a superseded edition reads as open-ended,
+    and open-ended reads as current; telling the world a 2006 text is the law
+    is the worst error this product can make.
+
+    ``None`` means genuinely open: neither the version nor its edition has
+    ended.
     """
-    ends = [d for d in (version.ineffective_date, edition.ineffective_date) if d]
-    return version.effective_date, min(ends) if ends else None
+    if version.ineffective_date is not None:
+        return version.effective_date, version.ineffective_date
+    return version.effective_date, edition.ineffective_date
 
 
 def legal_force(

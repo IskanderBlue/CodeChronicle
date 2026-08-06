@@ -269,23 +269,16 @@ def _code_order_key(value: str) -> Tuple[Any, ...]:
     return tuple(key)
 
 
-def _build_copy_text(
+def provenance_lines(
     *,
-    code_edition: str,
-    division: str,
-    provision_id: str,
-    title: str,
     version: Any,
     most_recent_clause: Any,
     base_regulation: Any,
     next_version: Any,
     is_added: bool = False,
-) -> str:
-    """Reference string for the clipboard copy button.
+) -> list[str]:
+    """The amendment chain, one line each: base, what amended it, what is next::
 
-    Per ``tasks/provenance/4-display.md`` §"Copy Button"::
-
-        OBC 1997, Div B, S 3.1.4.7. -- Fire Separations
         Base: O. Reg. 403/97
         Amended by: O. Reg. 22/98, cl. 1.(1) (1998-04-06)
         Next amendment: O. Reg. 152/99 (1999-04-01) -- not in force at query date
@@ -294,12 +287,20 @@ def _build_copy_text(
     the amending clause when the provision has been amended, otherwise the base
     regulation. The base reg is always shown for provenance, labelled ``Base:``
     (undated unless it is itself the operative one).
-    """
-    code_display = _build_code_display_name(code_edition).strip() or code_edition
-    div_label = f"Div {division}, " if division else ""
-    header = f"{code_display}, {div_label}S {provision_id} -- {title}".strip()
 
-    lines = [header]
+    The chain only, with no heading above it.  The Reference citation
+    (:mod:`core.citations`) is the one surface that prints it, and it names the
+    provision with the same pinpoint helper the other citation formats use —
+    so the chain is written once here and the provision is named once there.
+    This function used to be the tail of ``_build_copy_text``, whose own
+    heading said ``Div A, S 1.1.2.4.`` for an Article; that heading is gone
+    rather than fixed, because the citation module already had a correct one.
+
+    Dates here stay ISO on purpose.  They sit beside regulation numbers and
+    clause ids in a block a reader scans as a record; the long-form spelling
+    belongs to the prose formats, which are pasted into sentences.
+    """
+    lines: list[str] = []
     in_force = (
         version.effective_date.isoformat()
         if version and version.effective_date else None
@@ -350,7 +351,7 @@ def _build_copy_text(
                 f"Next amendment: O. Reg. {reg.reg_id}{date_part} "
                 "-- not in force at query date"
             )
-    return "\n".join(lines)
+    return lines
 
 
 def _join_terms(terms: Sequence[str]) -> str:
@@ -618,18 +619,6 @@ def _format_single_result(
     if html_content and terms:
         html_content = highlight_terms(html_content, terms)
 
-    copy_text = _build_copy_text(
-        code_edition=code_edition,
-        division=result.get("division", ""),
-        provision_id=str(result.get("id", "")),
-        title=result.get("title", "No title"),
-        version=version,
-        most_recent_clause=most_recent_clause,
-        base_regulation=base_regulation,
-        next_version=next_version,
-        is_added=is_added,
-    )
-
     # Commencement provenance for the band's two edges, so every version can
     # show why it started AND ended — amended or not.
     #
@@ -724,7 +713,6 @@ def _format_single_result(
         "amendment_chain": all_versions,
         "appendix_notes": appendix_notes,
         "transition_provision_version": transition_provision_version,
-        "copy_text": copy_text,
         # Attestation rail — the per-(provision, query-date) verification status
         # (rank + geometry), rendered by _attestation_rail.html in place of the
         # consolidation line. None when there's no rail to draw (never-in-force /

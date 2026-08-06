@@ -843,7 +843,12 @@
         <div class="flex flex-col gap-2 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <span>CodeChronicle &middot; Established MMXXVI</span>
             <span class="sm:text-center">Not legal advice &middot; Citation-grade reference &middot; Verify against official consolidation</span>
-            <span class="flex items-center gap-3">
+            {% comment %} `print-hide`: an exhibit keeps the footer for the
+               "not legal advice" line, but site navigation is not part of it.
+               The class hides the separators with the links — hiding only the
+               anchors left three floating middots on the printed page.
+            {% endcomment %}
+            <span class="print-hide flex items-center gap-3">
                 {% comment %} `about` is the landing page without the
                    redirect-when-signed-in, so this link works for every
                    reader (see core.views.landing). {% endcomment %}

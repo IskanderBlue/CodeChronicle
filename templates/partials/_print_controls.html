@@ -14,7 +14,13 @@
 {% endcomment %}
 <div class="print-hide print-hint mb-6 border border-rule px-4 py-3">
     <div class="flex flex-wrap items-center justify-between gap-3">
-        <p class="text-[12px] text-ink-2">This page is laid out for printing. Use your browser's print dialog and choose <strong>Save as PDF</strong>.</p>
+        {% comment %} The "Headers and footers" line earns its space: the
+           browser stamps the page URL and title across every sheet, truncated
+           to fit, and this page already states that URL in full in its
+           retrieval line. No CSS can turn the stamp off — it is the reader's
+           checkbox — so saying so is the only fix available from here.
+        {% endcomment %}
+        <p class="text-[12px] text-ink-2">This page is laid out for printing. Use your browser's print dialog and choose <strong>Save as PDF</strong>. Turn off <strong>Headers and footers</strong> there — the browser stamps a truncated copy of this page's URL on every sheet, and the retrieval line above already carries it in full.</p>
         <button type="button" data-print-button class="ui-btn shrink-0">Print or save as PDF</button>
     </div>
     <p class="mt-2 border-t border-rule pt-2 font-mono text-[11px] tracking-[0.04em] text-ink-3">

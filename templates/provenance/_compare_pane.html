@@ -7,9 +7,15 @@
    content (image-only versions can't be word-diffed). {% endcomment %}
 <div class="border border-rule bg-panel">
     <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-rule px-4 py-2">
+        {% comment %} `regulation` and `regulation_is_origin` come from the
+           caller (core.views.compare._side), not from re-deriving the clause
+           here: the twin header above states the same instrument, and two
+           derivations of one fact is how the two came to disagree — the
+           header naming a regulation while the pane said only "base".
+        {% endcomment %}
         <p class="font-mono text-xs font-semibold text-ink">
             v{{ version.version }}
-            {% with cl=version.last_contributing_clause %}{% if cl %}<span class="ml-1 font-normal text-ink-3">O. Reg. {{ cl.regulation.reg_id }}</span>{% else %}<span class="ml-1 font-normal text-ink-3">base</span>{% endif %}{% endwith %}
+            <span class="ml-1 font-normal text-ink-3">{% if regulation %}O. Reg. {{ regulation.reg_id }}{% if regulation_is_origin %} &middot; base{% endif %}{% else %}base{% endif %}</span>
         </p>
         <span class="font-mono text-[10px] text-ink-3">
             {{ role }}{% if version.pk == pinned_pk %} &middot; <span class="text-secondary">viewing</span>{% endif %}{% if not version.never_in_force %} &middot; {{ version.effective_date|date:"Y-m-d" }}{% endif %}

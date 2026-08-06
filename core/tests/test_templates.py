@@ -406,7 +406,6 @@ def test_transition_compare_renders_per_version_band_and_provenance():
             "amendment_chain": [version_obj],
             "next_version": None,
             "clause": None,
-            "copy_text": f"{edition_name} ref",
             "transition_context": {"is_primary": is_primary},
         }
 
@@ -865,7 +864,6 @@ def _band(result_extra: dict[str, Any], **context: Any) -> str:
             effective_date=date(2014, 1, 1),
             ineffective_date=date(2025, 1, 1),
         ),
-        "copy_text": "x",
     }
     return render_to_string(
         "partials/_provenance_band.html",

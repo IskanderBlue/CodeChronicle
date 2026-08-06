@@ -31,8 +31,12 @@
                 {% if side.version.ineffective_date %}&rarr; {{ side.version.ineffective_date|date:"Y-m-d" }}{% else %}&rarr; still{% endif %}
                 {% endif %}
             </span>
+            {% comment %} The instrument, always named. "base" on its own said
+               which category the version was in and withheld the number,
+               which is the fact a reader takes away. The qualifier stays
+               after it: enacting and amending are different acts. {% endcomment %}
             <span class="font-mono text-xs text-ink-3">
-                {% if side.regulation %}O. Reg. {{ side.regulation.reg_id }}{% else %}base{% endif %}
+                {% if side.regulation %}O. Reg. {{ side.regulation.reg_id }}{% if side.regulation_is_origin %} &middot; base{% endif %}{% else %}base &mdash; regulation not recorded{% endif %}
             </span>
         </div>
         {% endfor %}
@@ -96,8 +100,8 @@
     {% comment %} The two texts. Stacked below md — a side-by-side redline is
        unreadable at phone width. {% endcomment %}
     <div class="mt-4 grid gap-4 md:grid-cols-2">
-        {% include "provenance/_compare_pane.html" with version=side_a.version diff=old_diff pinned_pk=0 role="Earlier" %}
-        {% include "provenance/_compare_pane.html" with version=side_b.version diff=new_diff pinned_pk=0 role="Later" %}
+        {% include "provenance/_compare_pane.html" with version=side_a.version diff=old_diff pinned_pk=0 role="Earlier" regulation=side_a.regulation regulation_is_origin=side_a.regulation_is_origin %}
+        {% include "provenance/_compare_pane.html" with version=side_b.version diff=new_diff pinned_pk=0 role="Later" regulation=side_b.regulation regulation_is_origin=side_b.regulation_is_origin %}
     </div>
 
     {% comment %} The legend explains a contrast that is only there when

@@ -1,6 +1,6 @@
 # Social card: draw the editions as one row
 
-**Prefix:** `b-` — medium priority, actionable now, but deliberately deferred.
+**Prefix:** `c-` — low priority, actionable now, but deliberately deferred.
 
 **Trigger: the next edition load.** `make_social_card` refuses to draw a card
 that would overflow, so the failure is a loud `CommandError`, not a clipped

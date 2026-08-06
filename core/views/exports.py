@@ -35,7 +35,7 @@ from django.views.decorators.http import require_POST
 
 from config.code_metadata import edition_display_name
 from core.access import edition_allowed
-from core.citations import LEGAL, REPORT, build_citations
+from core.citations import LEGAL, REFERENCE, REPORT, build_citations
 from core.compare import parse_version_ref, resolve_version_ref
 from core.events import record_event
 from core.models import EngagementEvent
@@ -53,12 +53,12 @@ EXPORT_KINDS = frozenset(
     {"citation", "provision_pdf", "results_csv", "comparison_pdf"}
 )
 
-#: The citation formats, plus the incumbent.  ``reference`` is the structured
-#: provenance block the band's copy button has always produced; it predates
-#: this card and is folded into the same menu rather than left beside it, so
-#: one control answers "how do I quote this" instead of two.  It is measured
-#: like the other two and can lose.
-CITATION_FORMATS = frozenset({LEGAL, REPORT, "reference"})
+#: The citation formats.  ``reference`` is the structured provenance block the
+#: band's copy button has always produced; it predates this card and is folded
+#: into the same menu rather than left beside it, so one control answers "how
+#: do I quote this" instead of two.  It is measured like the other two and can
+#: lose.
+CITATION_FORMATS = frozenset({LEGAL, REPORT, REFERENCE})
 
 
 def _version_from_request(request: HttpRequest) -> Any:
@@ -92,11 +92,9 @@ def citation_panel(request: HttpRequest) -> HttpResponse:
     if not edition_allowed(request.user, edition.code_name):
         return _locked_edition_response(request, edition, surface="citation")
 
-    citations = build_citations(
-        provision, version, origin=site_origin(request), retrieved=date.today()
-    )
-    # The incumbent structured reference, taken from the same builder the band
-    # uses, so the menu entry and the old copy button cannot drift apart.
+    # The amendment chain Reference prints.  It comes from the resolver the
+    # reading surfaces already use, so the menu cannot state a chain the page
+    # behind it does not.
     provenance = _provenance_result(
         provision,
         version,
@@ -105,12 +103,18 @@ def citation_panel(request: HttpRequest) -> HttpResponse:
         provision.provision_id,
         user=request.user,
     )
+    citations = build_citations(
+        provision,
+        version,
+        origin=site_origin(request),
+        retrieved=date.today(),
+        provenance_lines=provenance["provenance_lines"],
+    )
     return render(
         request,
         "partials/_citation_panel.html",
         {
             "citations": citations,
-            "reference_text": provenance["copy_text"],
             "version_ref": request.GET.get("v", ""),
             # The exhibit lives one click from the citation, because both
             # answer "take this into my own work" and a reader looking for one

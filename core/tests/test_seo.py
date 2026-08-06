@@ -31,6 +31,7 @@ from core.seo import (
     SOCIAL_IMAGE_PATH,
     SOCIAL_IMAGE_WIDTH,
     canonical_version_number,
+    exhibit_title,
     last_governed_day,
     provision_jsonld,
     provision_page_meta,
@@ -38,6 +39,37 @@ from core.seo import (
     temporal_coverage,
 )
 from core.sitemaps import ProvisionSitemap
+
+
+class TestExhibitTitle:
+    """A printable page's title is the name the saved file gets.
+
+    The browser has no ``Content-Disposition`` to read on a print, so it
+    builds the default name from ``document.title``. A title that keeps a
+    character the filesystem rejects is a title the reader has to retype.
+    """
+
+    def test_drops_every_character_a_filename_cannot_hold(self):
+        title = exhibit_title(
+            'comparison A/B: "x" <y> | z * ? \\ w — v · u', date(2026, 8, 6)
+        )
+        assert not set(title) & set('\\/:*?"<>|—·')
+
+    def test_states_the_retrieval_date(self):
+        """Two exhibits of one provision months apart are different
+        documents, and a folder holding both must say which is which."""
+        assert exhibit_title("OBC 2006 3.2.5.7. v0", date(2026, 8, 6)).endswith(
+            "retrieved 2026-08-06"
+        )
+
+    def test_leaves_the_provision_number_intact(self):
+        """Dots are legal in a filename and they are the provision's
+        identity — stripping them would be the one edit that loses the
+        subject."""
+        assert "3.2.5.7." in exhibit_title("OBC 2006 3.2.5.7. v0", date(2026, 8, 6))
+
+    def test_collapses_the_gaps_a_removal_leaves(self):
+        assert "  " not in exhibit_title("OBC 2006 — 3.2.5.7.", date(2026, 8, 6))
 
 
 class TestLastGovernedDay:
@@ -125,6 +157,21 @@ class TestProvisionPageMeta:
         assert temporal_coverage(
             version.effective_date, version.ineffective_date
         ).endswith("/2008-12-31")
+
+    def test_a_window_that_outlives_its_edition_keeps_its_own_end(self, provision):
+        """CCM computes these dates, and a window may run past its edition.
+
+        The contract extends the old version's end to the overlap end during a
+        transition, and two editions' versions co-exist there on purpose.  To
+        take the earlier of the two ends would delete the overlap and let two
+        edition pages claim the same days.
+        """
+        edition = provision.edition
+        edition.ineffective_date = date(2008, 1, 1)
+        edition.save()
+        version = provision.versions.get(version=0)  # ends 2009-01-01
+        title = provision_page_meta(provision, version)["meta_title"]
+        assert "in force 31 December 2006 to 31 December 2008" in title
 
     def test_a_version_that_governed_no_day_is_not_given_a_backwards_range(
         self, provision
@@ -360,6 +407,23 @@ class TestProvisionJsonLd:
         block = _block(enacted, version, today=date(2020, 1, 1))
         assert block["legislationLegalForce"] == "NotInForce"
         assert block["temporalCoverage"] == "2012-01-01/2013-12-31"
+
+    def test_the_edition_end_never_shortens_a_version_that_has_its_own(
+        self, enacted
+    ):
+        """The edition end is a fallback for a null, not a ceiling.
+
+        A version whose window runs past its edition is a transition overlap
+        CCM emits on purpose.  Shortening it here would report a text as
+        NotInForce on days it still governed.
+        """
+        version = enacted.versions.get(version=0)  # 2006-12-31 to 2009-01-01
+        edition = enacted.edition
+        edition.ineffective_date = date(2008, 1, 1)
+        edition.save()
+        block = _block(enacted, version, today=date(2008, 6, 1))
+        assert block["temporalCoverage"] == "2006-12-31/2008-12-31"
+        assert block["legislationLegalForce"] == "InForce"
 
     def test_coverage_ends_the_day_before_the_ineffective_date(self, enacted):
         """The stored window is half-open; an ISO interval is closed.  Copying

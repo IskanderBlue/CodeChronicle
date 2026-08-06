@@ -35,7 +35,7 @@ from core.models import CodeEditionProvisionVersion, EngagementEvent
 from core.page_crops import build_crops
 from core.permalinks import provision_permalink_url
 from core.print_options import apply_tables_mode, resolve_tables_mode, toggle_query
-from core.seo import TITLE_SUFFIX, site_origin
+from core.seo import TITLE_SUFFIX, exhibit_title, site_origin
 
 from .regulation import _locked_edition_response
 
@@ -45,13 +45,25 @@ def _side(version: CodeEditionProvisionVersion, label: str) -> dict[str, Any]:
     provision = version.provision
     edition = provision.edition
     clause = version.last_contributing_clause
+    # A v0 has no amending clause, and naming it "base" told the reader the
+    # category and withheld the instrument — the one fact the row is for.
+    # ``origin_regulation`` is the right source rather than the edition's base
+    # reg: for a provision an amendment ADDED, the edition base never attested
+    # it, so it is the introducing regulation that enacted this text.
     return {
         "label": label,
         "version": version,
         "provision": provision,
         "edition": edition,
         "edition_name": f"{edition.code.code} {edition.edition_id}".strip(),
-        "regulation": clause.regulation if clause is not None else None,
+        "regulation": (
+            clause.regulation if clause is not None else provision.origin_regulation
+        ),
+        # Whether that regulation ENACTED this text or amended it. Both are
+        # "the instrument behind this version", and a comparison that showed
+        # them identically would flatten a distinction the product spends the
+        # rest of its surface area making.
+        "regulation_is_origin": clause is None,
         "url": provision_permalink_url(
             edition.code_name,
             provision.division,
@@ -259,7 +271,19 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
             "force_redline_url": (
                 f"?a={side_a['ref']}&b={side_b['ref']}&redline=on"
             ),
-            "meta_title": f"{title}{TITLE_SUFFIX}",
+            # A printed comparison is a file somebody keeps, so its title is
+            # written as that file's name; on screen the reading title stands.
+            "meta_title": (
+                exhibit_title(
+                    f"comparison {side_a['edition_name']} "
+                    f"{side_a['provision'].provision_id} v{side_a['version'].version} "
+                    f"vs {side_b['edition_name']} "
+                    f"{side_b['provision'].provision_id} v{side_b['version'].version}",
+                    date.today(),
+                )
+                if for_print
+                else f"{title}{TITLE_SUFFIX}"
+            ),
             "social_title": title,
             "meta_description": (
                 f"{side_a['provision'].provision_id} as it read in "

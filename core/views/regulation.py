@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
 from api.formatters import (
-    _build_copy_text,
+    provenance_lines,
     replacement_commencement,
     select_commencement_record,
 )
@@ -48,6 +48,7 @@ from core.seo import (
     TITLE_SUFFIX,
     amending_regulations,
     base_regulation,
+    exhibit_title,
     last_governed_day,
     provision_jsonld,
     provision_page_meta,
@@ -376,11 +377,9 @@ def _provenance_result(
     next_version = next(
         (v for v in chain if v.version > target_version.version), None
     )
-    copy_text = _build_copy_text(
-        code_edition=code_name,
-        division=division,
-        provision_id=provision_id,
-        title=target_version.title or provision_id,
+    # The amendment chain, for the Reference citation.  It names the provision
+    # itself with the shared pinpoint helper and prints these lines underneath.
+    chain_lines = provenance_lines(
         version=target_version,
         most_recent_clause=clause,
         base_regulation=base_regulation,
@@ -453,7 +452,7 @@ def _provenance_result(
         "until_commencement": until_commencement,
         "until_commencement_date": until_commencement_date,
         "amendment_chain": chain,
-        "copy_text": copy_text,
+        "provenance_lines": chain_lines,
         # Attestation rail. The permalink has no user query date, so it reads the
         # rail at this version's own commencement (the direct replacement for the
         # old "as it read [date]" line) — verification status at its From. The base
@@ -923,6 +922,14 @@ def _print_response(
         "active_provision_id": provision_id,
         "transition_active": False,
         **provision_page_meta(matched, target_version),
+        # After the spread, deliberately: the reading page's title is right
+        # for a tab and wrong for a saved file, and this page is a file.
+        "meta_title": exhibit_title(
+            f"{edition.code.code} {edition.edition_id} "
+            f"{'Div ' + division + ' ' if division else ''}"
+            f"{provision_id} v{version}",
+            date.today(),
+        ),
     })
 
 

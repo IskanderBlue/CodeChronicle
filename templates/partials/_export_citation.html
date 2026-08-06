@@ -16,15 +16,26 @@ on the panel itself and targets "this", so nothing here needs an id: a
 provision id contains dots, a dot in a CSS selector means a class, and one
 page can render this partial twice for the same version (the wide band and
 the narrow banner both include it), so no id built from the target would be
-both selectable and unique.  htmx sees the teleported panel through its
-mutation observer, the same way it sees the report dialog's form.
+both selectable and unique.
+
+``openCite`` hands the teleported panel to ``htmx.process`` — it is not
+optional, and it is why the results page works at all.  htmx 1.9 has no
+mutation observer: it walks the DOM once at DOMContentLoaded, and again over
+whatever it swaps in itself.  A server-rendered page survives on an accident
+of load order (Alpine is deferred, so it teleports before that first walk),
+but a search result arrives IN an htmx swap — htmx processes the fragment
+while this panel is still inert ``<template>`` content it cannot walk into,
+and Alpine teleports the clone into body afterwards, where htmx never looks
+again.  Without this call the panel keeps its placeholder for ever and no
+request is made.  ``citeWired`` keeps it to one call; ``once`` on the trigger
+makes a second one harmless anyway.
 
 The dialog teleports to body, like the report dialog and the commencement
 modal, because the band and the rail clip a fixed overlay.  Alpine state stays
 in this scope, so several cards on one page never share a flag.
 {% endcomment %}
-<span x-data="{ citeOpen: false }">
-    <button type="button" class="ui-disclosure" @click.stop="citeOpen = true"
+<span x-data="{ citeOpen: false, citeWired: false, openCite() { this.citeOpen = true; if (this.citeWired) return; this.citeWired = true; this.$nextTick(() => { if (window.htmx) htmx.process(this.$refs.citePanel) }) } }">
+    <button type="button" class="ui-disclosure" @click.stop="openCite()"
             :aria-expanded="citeOpen"
             title="Copy a citation for this version">Cite <span class="ui-caret"></span></button>
     <template x-teleport="body">
@@ -44,7 +55,8 @@ in this scope, so several cards on one page never share a flag.
                     class="absolute right-3 top-3 cursor-pointer text-ink-3 hover:text-ink">
                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
                 </button>
-                <div hx-get="{% url 'core:citation_panel' %}?v={{ code_edition }}/{{ division }}/{{ provision_id }}/v{{ version }}"
+                <div x-ref="citePanel"
+                     hx-get="{% url 'core:citation_panel' %}?v={{ code_edition }}/{{ division }}/{{ provision_id }}/v{{ version }}"
                      hx-trigger="intersect once" hx-target="this" hx-swap="innerHTML">
                     <p class="text-[12px] italic text-ink-3">Building the citations&hellip;</p>
                 </div>

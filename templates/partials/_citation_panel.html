@@ -1,9 +1,16 @@
 {% comment %} The citation menu's contents, fetched by core.views.exports.citation_panel.
 
-   Three strings for one provision version, because a factum and the body of a
-   consultant's report are different documents and no single string serves
-   both.  Each is shown in full rather than described: a reader decides which
-   one is theirs by reading it, not by trusting a label.
+   Three strings for one provision version, because a factum, the body of a
+   consultant's report and a set of working notes are different documents and
+   no single string serves them.  Each is shown in full rather than described:
+   a reader decides which one is theirs by reading it, not by trusting a
+   label.
+
+   All three come from core.citations now, including Reference — it used to be
+   rendered separately here from the search band's builder, which is how it
+   came to name an Article "S 1.1.2.4." and to carry no retrieval line.  A
+   preformatted citation draws in a pre, because its line breaks are its
+   structure; the other two are sentences and wrap.
 
    Each copy is a real form post, not a fetch: the post records the export
    (that is the whole point of shipping four of them), and a form carries the
@@ -34,32 +41,14 @@
                 <button type="submit" class="ui-action shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]" data-copy-text="{{ c.text }}" @click="navigator.clipboard.writeText($el.dataset.copyText); copied = '{{ c.kind }}'; setTimeout(() => copied = '', 1500)"><span x-show="copied !== '{{ c.kind }}'">Copy</span><span x-show="copied === '{{ c.kind }}'" x-cloak class="text-secondary">Copied</span></button>
             </p>
             <p class="mt-0.5 text-[11px] italic text-ink-3">{{ c.note }}</p>
+            {% if c.preformatted %}
+            <pre class="mt-2 select-all whitespace-pre-wrap break-words font-mono text-[11px] leading-snug text-ink">{{ c.text }}</pre>
+            {% else %}
             <p class="mt-2 select-all break-words text-[12px] leading-snug text-ink">{{ c.text }}</p>
+            {% endif %}
         </div>
     </form>
     {% endfor %}
-
-    {% comment %} The incumbent.  The band's copy button produced this block
-       long before the citation formats existed; it is a provenance dump
-       rather than a citation — the base regulation, the amending clause, the
-       next amendment — and a reader pasting into working notes may still want
-       it.  It sits in the same menu so that one control answers "how do I
-       quote this", and it is measured like the other two so it can lose.
-    {% endcomment %}
-    <form hx-post="{% url 'core:record_export' %}" hx-swap="none">
-        {% csrf_token %}
-        <input type="hidden" name="kind" value="citation">
-        <input type="hidden" name="format" value="reference">
-        <input type="hidden" name="v" value="{{ version_ref }}">
-        <div class="border border-rule p-3 [--backdrop:var(--surface)]">
-            <p class="flex items-baseline justify-between gap-3">
-                <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-3">Reference</span>
-                <button type="submit" class="ui-action shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]" data-copy-text="{{ reference_text }}" @click="navigator.clipboard.writeText($el.dataset.copyText); copied = 'reference'; setTimeout(() => copied = '', 1500)"><span x-show="copied !== 'reference'">Copy</span><span x-show="copied === 'reference'" x-cloak class="text-secondary">Copied</span></button>
-            </p>
-            <p class="mt-0.5 text-[11px] italic text-ink-3">The provenance block, for working notes</p>
-            <pre class="mt-2 select-all whitespace-pre-wrap break-words font-mono text-[11px] leading-snug text-ink">{{ reference_text }}</pre>
-        </div>
-    </form>
 
     {% comment %} The exhibit. Not a citation format, so it sits below them
        rather than among them, but the reader who wants one often wants the
