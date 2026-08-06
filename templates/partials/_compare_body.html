@@ -51,9 +51,14 @@
     {% if basis.state == 'mapped' %}
     <p class="mt-3 border-l-2 border-secondary bg-secondary-soft px-3 py-2 text-sm text-ink-2">
         <span class="font-semibold">These are counterparts, not the same provision.</span>
-        CodeChronicle maps {{ side_a.edition_name }} {{ side_a.provision.provision_id }}
+        {% comment %} Source and target, not A and B: a mapping runs in edition
+           order and the two sides are drawn in date order, and a version that
+           outlives its edition puts those two orders out of step. The view
+           resolves it (basis_source / basis_target) so the sentence names the
+           mapping's own direction whichever way the sides fell. {% endcomment %}
+        CodeChronicle maps {{ basis_source.edition_name }} {{ basis_source.provision.provision_id }}
         {% if basis.verb %}({{ basis.verb }}){% endif %}
-        to {{ side_b.edition_name }} {{ side_b.provision.provision_id }}.
+        to {{ basis_target.edition_name }} {{ basis_target.provision.provision_id }}.
         The legislature did not enact them as a pair.
     </p>
     {% elif basis.state == 'unmapped' %}

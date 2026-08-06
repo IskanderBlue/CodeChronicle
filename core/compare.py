@@ -584,24 +584,49 @@ class PairingBasis:
     ``unmapped``
         Different provisions with no mapping between them.  Reachable only by
         a hand-built URL.  The page says plainly that we did not pair these.
+
+    ``reversed_`` says the mapping runs from ``later`` to ``earlier`` rather
+    than the other way about.  The two arguments arrive in date order, and a
+    mapping runs in edition order, and those are not always the same order —
+    see ``pairing_basis``.  The sentence on the page names a source and a
+    target, so it has to know which is which.
     """
 
     state: str
     verb: str = ""
+    reversed_: bool = False
 
 
 def pairing_basis(
     earlier: CodeEditionProvisionVersion,
     later: CodeEditionProvisionVersion,
 ) -> PairingBasis:
-    """Establish how ``earlier`` and ``later`` come to be shown together."""
+    """Establish how ``earlier`` and ``later`` come to be shown together.
+
+    A ``ProvisionMapping`` has a direction: the older edition's provision
+    continues as the newer one's.  The two arguments do NOT: the view hands
+    them over in date order, and a version can outlive the edition that
+    carries it, so the newer edition's provision sometimes arrives first.
+    OBC 2006 A 1.4.1.2. v6 is dated 2016-01-01 against an edition that ended
+    in 2014, which puts it after OBC 2012 A 1.4.1.2. v0.
+
+    So the question is asked both ways.  Asking it once, forwards, reported
+    "no mapping links them" for a pair the rail on either provision was
+    already naming as counterparts — the two surfaces contradicted each other
+    about the same mapping row.
+    """
     if earlier.provision_id == later.provision_id:
         return PairingBasis("same_provision")
 
-    lineage = resolve_lineage([earlier.provision]).get(earlier.provision.pk)
-    if lineage is not None:
+    for source, target, is_reversed in (
+        (earlier, later, False),
+        (later, earlier, True),
+    ):
+        lineage = resolve_lineage([source.provision]).get(source.provision.pk)
+        if lineage is None:
+            continue
         for link in lineage.successors.links:
-            if link.provision.pk == later.provision.pk:
-                return PairingBasis("mapped", verb=link.verb)
+            if link.provision.pk == target.provision.pk:
+                return PairingBasis("mapped", verb=link.verb, reversed_=is_reversed)
 
     return PairingBasis("unmapped")

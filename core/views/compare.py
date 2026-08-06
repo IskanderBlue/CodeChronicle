@@ -216,6 +216,12 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
 
     side_a = _side(earlier, "A")
     side_b = _side(later, "B")
+    # The mapping's own direction, which is edition order and not always the
+    # order the two sides are drawn in.  The sentence on the page reads
+    # "maps X to Y", so it names these rather than A and B.
+    basis_source, basis_target = (
+        (side_b, side_a) if basis.reversed_ else (side_a, side_b)
+    )
     title = (
         f"{side_a['provision'].provision_id} — "
         f"{side_a['edition_name']} compared with {side_b['edition_name']}"
@@ -268,6 +274,8 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
             "text_unchanged": diff_is_empty(earlier.html, later.html),
             "similarity_pct": round(similarity * 100),
             "basis": basis,
+            "basis_source": basis_source,
+            "basis_target": basis_target,
             "timeline": version_timeline(earlier, later, request.user),
             "cross_edition": cross_edition,
             "force_redline_url": (

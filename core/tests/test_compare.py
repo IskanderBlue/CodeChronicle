@@ -454,6 +454,32 @@ class TestPairingBasis:
         assert "counterparts, not the same provision" in body
         assert "did not enact them as a pair" in body
 
+    def test_a_version_outliving_its_edition_still_cites_the_mapping(
+        self, client: Client, corpus, settings, pro,
+    ):
+        """The sides sort by date; a mapping runs in edition order.
+
+        CCM lets a version's window run past its edition on purpose, so the
+        older edition's version can carry the later date and land on side B.
+        Asked only forwards, the page then reported "no mapping links them"
+        for a pair whose rail names the counterpart on both provisions.
+        """
+        settings.FREE_TIER_CODE_NAMES = FREE
+        client.force_login(pro)
+        old_v0 = corpus["old_v0"]
+        old_v0.effective_date = date(2016, 1, 1)   # after the 2012 edition starts
+        old_v0.save()
+        body = client.get(
+            "/compare/",
+            {"a": "OBC_2006/B/9.10.18.6./v0", "b": "OBC_2012/B/9.10.18.7./v0"},
+        ).content.decode()
+        assert "counterparts, not the same provision" in body
+        assert "does not pair these two provisions" not in body
+        # Named in the mapping's own direction, not the drawing order.
+        assert body.index("9.10.18.6.", body.index("CodeChronicle maps")) < body.index(
+            "9.10.18.7.", body.index("CodeChronicle maps"),
+        )
+
     def test_a_hand_built_unmapped_pair_says_so(
         self, client: Client, corpus, settings, pro,
     ):
