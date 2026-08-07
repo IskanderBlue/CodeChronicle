@@ -23,6 +23,7 @@ from core.models import (
     CodeEditionProvisionVersionClause,
     Regulation,
     RegulationClause,
+    User,
 )
 from core.seo import (
     DEFAULT_DESCRIPTION,
@@ -551,6 +552,76 @@ class TestJsonLdOnThePage:
 
     def test_a_page_with_no_subject_carries_no_block(self, client):
         assert "application/ld+json" not in client.get("/terms/").content.decode()
+
+
+@pytest.mark.django_db
+class TestTheIntervalAgreesWithTheVisibleWindow:
+    """The machine's window and the reader's window, off the same responses.
+
+    ``TestProvisionJsonLd`` proves the interval against the stored dates, and
+    ``test_the_title_and_the_json_ld_name_the_same_last_day`` proves it against
+    the page title.  Both of those compare two ``core.seo`` outputs, so a
+    conversion that moved *inside* ``core.seo`` keeps them agreeing while the
+    page disagrees with itself.
+
+    The window a reader sees on the exhibit does not come from ``core.seo``.
+    It comes from :func:`core.citations.in_force_phrase`, and CLAUDE.md records
+    that three private copies of the half-open conversion once gave three
+    answers.  So these fetch the pages and compare the two modules' work as
+    rendered.
+    """
+
+    URL = "/provision/OBC_2006/B/3.2.5.7./v0/"
+
+    def _interval(self, client):
+        body = client.get(self.URL).content.decode()
+        found = re.search(
+            r'<script type="application/ld\+json">(.*?)</script>', body, re.DOTALL
+        )
+        assert found is not None
+        return json.loads(found.group(1))["temporalCoverage"]
+
+    def _exhibit_window(self, client):
+        """The phrase under the exhibit's "In force" label, and only that.
+
+        Read out of its own ``<dd>`` rather than searched for in the body: the
+        page also carries a ``core.seo`` window in a meta tag, and a loose
+        search finds that one and reports agreement with itself.
+        """
+        User.objects.create_user(email="r@example.com", password="testpass")
+        client.login(email="r@example.com", password="testpass")
+        printed = client.get(f"{self.URL}print/").content.decode()
+        found = re.search(r">In force</dt>\s*<dd[^>]*>(.*?)</dd>", printed, re.DOTALL)
+        assert found is not None
+        return found.group(1).strip()
+
+    def test_the_interval_ends_on_the_day_the_exhibit_says_it_does(
+        self, client, enacted
+    ):
+        interval = self._interval(client)
+        assert interval == "2006-12-31/2008-12-31"
+
+        # The same last day, in the two spellings the two modules use.  Built
+        # from the interval rather than written out, so the assertion cannot
+        # drift from what the block actually said.
+        last = date.fromisoformat(interval.split("/")[1])
+        assert self._exhibit_window(client) == (
+            f"in force 31 December 2006 to {last.day} December {last.year}"
+        )
+
+    def test_neither_surface_names_the_stored_end_date(self, client, enacted):
+        """The off-by-one, asserted as an absence on both surfaces at once.
+
+        1 January 2009 is the first day this text did *not* apply.  It is the
+        value in the database, so it is what a fresh copy of the conversion
+        prints, and it must appear on neither page.
+        """
+        assert "2009-01-01" not in self._interval(client)
+
+        User.objects.create_user(email="r@example.com", password="testpass")
+        client.login(email="r@example.com", password="testpass")
+        printed = client.get(f"{self.URL}print/").content.decode()
+        assert "to 1 January 2009" not in printed
 
 
 @pytest.mark.django_db

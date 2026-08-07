@@ -7,6 +7,17 @@ that a crop is its own region and never the union of its neighbours, and that
 one provision is drawn at one scale.
 """
 
+from datetime import date
+
+import pytest
+
+from core.models import (
+    Code,
+    CodeEdition,
+    CodeEditionProvision,
+    CodeEditionProvisionVersion,
+    User,
+)
 from core.page_crops import MARGIN_X, MARGIN_Y, build_crops
 
 # A two-column scan: the left column, then the right, the way CCM emits them.
@@ -123,3 +134,83 @@ def test_pages_are_numbered_for_the_caption():
         {"image": "b.webp", "bboxes": [{"x": 0.1, "y": 0.1, "w": 0.4, "h": 0.4}]},
     ])
     assert [c["page"] for c in crops] == [1, 2]
+
+
+# A column beside a full-page table: the pair the one-scale rule exists for.
+MIXED_WIDTHS = [
+    {
+        "image": "documents/ont_reg_1997_v2/13.webp",
+        "bboxes": [
+            {"x": 0.023, "y": 0.100, "w": 0.452, "h": 0.300},
+            {"x": 0.023, "y": 0.500, "w": 0.930, "h": 0.300},
+        ],
+    }
+]
+
+
+@pytest.fixture
+def scanned(db, settings):
+    """One free-tier provision whose version is a scan."""
+    settings.FREE_TIER_CODE_NAMES = ["OBC_2006"]
+    code = Code.objects.create(code="OBC", display_name="Ontario Building Code")
+    edition = CodeEdition.objects.create(
+        code=code, edition_id="2006", year=2006, effective_date=date(2006, 12, 31),
+    )
+    prov = CodeEditionProvision.objects.create(
+        edition=edition, provision_id="3.2.5.7.", level="article", division="B",
+    )
+    CodeEditionProvisionVersion.objects.create(
+        provision=prov,
+        version=0,
+        effective_date=date(2006, 12, 31),
+        title="Fire Department Access Routes",
+        page_images=MIXED_WIDTHS,
+    )
+    return prov
+
+
+@pytest.mark.django_db
+class TestTheExhibitIsDrawnAtTheScaleThatWasComputed:
+    """The handoff, which the unit tests above cannot reach.
+
+    ``build_crops`` is proven on its own, but nothing it returns matters until
+    a page prints it.  The print view attaches the crops to the version rows
+    and the shared partial places them, and a scale computed correctly and
+    then dropped prints exactly the fault the rule exists to prevent — with
+    every unit test still green.
+    """
+
+    URL = "/provision/OBC_2006/B/3.2.5.7./v0/"
+
+    def _printed(self, client):
+        User.objects.create_user(email="r@example.com", password="testpass")
+        client.login(email="r@example.com", password="testpass")
+        return client.get(f"{self.URL}print/").content.decode()
+
+    def test_the_exhibit_carries_the_computed_widths(self, client, scanned):
+        printed = self._printed(client)
+        column, table = build_crops(MIXED_WIDTHS)
+        # The widest fills the printable width; the column is drawn at its
+        # true share of it.  Both are read off build_crops rather than written
+        # out, so this asserts the handoff and never re-states the geometry.
+        assert table["width_pct"] == 100.0
+        assert f'width: {table["width_pct"]}%' in printed
+        assert f'width: {column["width_pct"]}%' in printed
+        assert column["width_pct"] < 50
+
+    def test_the_crop_is_placed_not_just_sized(self, client, scanned):
+        """A wrapper at the right width holding an unmoved image shows the
+        neighbouring provision at the right size — a plausible wrong exhibit.
+        """
+        printed = self._printed(client)
+        for crop in build_crops(MIXED_WIDTHS):
+            assert f'width: {crop["image_width_pct"]}%' in printed
+            assert f'left: {crop["offset_left_pct"]}%' in printed
+            assert f'top: {crop["offset_top_pct"]}%' in printed
+
+    def test_the_reading_page_shows_the_whole_page_instead(self, client, scanned):
+        """Crops are the export form.  On screen the scan is shown whole with
+        the region highlighted, because a reader wants it in its setting.
+        """
+        body = client.get(self.URL).content.decode()
+        assert "doc-crop" not in body
