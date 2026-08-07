@@ -238,8 +238,14 @@
         });
     </script>
 
+    {% comment %} A link that carries ?q= runs its own search, so a reader who
+    follows one from the front page, from their history, or out of an email we
+    sent lands on results rather than on a filled-in box.  The attribute names
+    this block: it submits the form with the same call the example chips use,
+    so a test looking for the call alone cannot tell the two apart and would
+    stay green with this block deleted. {% endcomment %}
     {% if initial_query %}
-    <script>
+    <script data-autorun-search>
         document.addEventListener('DOMContentLoaded', function () {
             var form = document.querySelector('[hx-post]');
             if (form) {
@@ -373,7 +379,20 @@
             });
         }
     }"
-    x-init="window.addEventListener('popstate', () => { if (viewerOpen) closeViewer(); })"
+    {% comment %} One popstate handler, two jobs, in order. The overlay pushes
+    an entry of its own so Back closes it, and that entry carries the same
+    address — so it must be handled first and must stop there. Otherwise Back
+    reloads the page underneath a reader who only wanted the overlay shut.
+
+    With the overlay closed, Back has moved the address to an earlier search.
+    The reload runs whatever the address says, so the page cannot end up
+    showing one search while the address names another. It reuses the seeded
+    auto-run rather than restoring the results here, which would be a second
+    copy of that logic and could drift from it. {% endcomment %}
+    x-init="window.addEventListener('popstate', () => {
+        if (viewerOpen) { closeViewer(); return; }
+        location.reload();
+    })"
     x-show="viewerOpen" x-cloak
     class="fixed inset-0 z-50 overflow-y-auto bg-surface"
     @keydown.escape.window="if (viewerOpen) closeViewer()">

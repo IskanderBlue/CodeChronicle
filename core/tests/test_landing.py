@@ -164,6 +164,34 @@ class TestLandingRouting:
         body = client.get(f"{reverse('core:search')}?q=guards&d=nonsense").content.decode()
         assert 'value="nonsense"' not in body
 
+    def test_a_seeded_link_runs_its_own_search(self, client) -> None:
+        """``?q=`` lands on results, not on a filled-in box.
+
+        Every link we hand somebody — the front page, a history card, a message
+        we send — relies on this.  The block is found by its own attribute
+        rather than by the ``htmx.trigger`` call inside it: the example-chip
+        handler makes the identical call and is always on the page, so a test
+        matching the call would pass with the auto-run deleted.
+        """
+        body = client.get(f"{reverse('core:search')}?q=guards&d=2010-06-01").content.decode()
+        assert "data-autorun-search" in body
+        # The search it runs is the one in the link.  A block that fires
+        # against an empty box runs a search for nothing.
+        assert 'value="guards"' in body
+
+    def test_no_template_syntax_leaks_into_the_search_page(self, client) -> None:
+        """The search page carries comments inside HTML tags and inside script
+        blocks.  Django scans for its own syntax everywhere, so a comment that
+        the tokenizer does not recognise prints itself into the page."""
+        body = client.get(reverse("core:search")).content.decode()
+        for leak in ("{%", "{{", "{#"):
+            assert leak not in body, f"unrendered template syntax {leak!r} in page body"
+
+    def test_an_unseeded_search_page_runs_nothing(self, client) -> None:
+        """A reader who opens /search/ themselves has asked for nothing yet."""
+        body = client.get(reverse("core:search")).content.decode()
+        assert "data-autorun-search" not in body
+
     def test_hero_query_hands_off_to_the_search_page(self, client) -> None:
         """The hero field is a real GET to ``/search/?q=``, which the search
         page already auto-runs — a visitor arrives holding their own

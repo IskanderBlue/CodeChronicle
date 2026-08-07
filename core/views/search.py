@@ -2,11 +2,13 @@
 
 from datetime import date
 from typing import Any
+from urllib.parse import urlencode
 
 from coloured_logger import Logger
 from django.db.models import F, Q
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from api.formatters import _code_order_key, highlight_terms
@@ -42,6 +44,41 @@ logger = Logger(__name__)
 def _query_value(request: HttpRequest, key: str) -> str:
     value = request.GET.get(key)
     return value if isinstance(value, str) else ""
+
+
+def _push_search_url(
+    response: HttpResponse, query: str, day: str | None, *, replace: bool
+) -> HttpResponse:
+    """Put the search that just ran into the address bar.
+
+    The results arrive by ``hx-post``, so without this the address stays
+    ``/search/`` and a reload throws the search away.  The header rewrites it
+    to the ``?q=``/``?d=`` form the page already understands, and that page
+    auto-runs a seeded query — so a reload, a bookmark and a link a reader
+    sends somebody all reproduce the search.
+
+    It happens **here** rather than in the browser because the address must
+    name the search that ran.  The AS-OF picker overrides whatever date the
+    parser reads out of the query text, so ``day`` is the picker's value; a
+    script copying the form could name a date the search did not use.
+
+    **A new search earns a history entry; re-measuring one does not.**  The
+    relevance-floor control re-posts through this same view without changing
+    the query or the date, so pushing there would stack entries with identical
+    addresses and Back would look broken to a reader who had only moved a
+    line.  ``replace`` tells the two apart, and the caller decides it from the
+    post itself rather than by comparing addresses, which the server cannot
+    see.
+
+    ``day`` is omitted when empty.  A seeded page with no ``?d=`` searches at
+    the corpus default, which is the date this search used.
+    """
+    params = {"q": query}
+    if day:
+        params["d"] = day
+    header = "HX-Replace-Url" if replace else "HX-Push-Url"
+    response[header] = f"{reverse('core:search')}?{urlencode(params)}"
+    return response
 
 
 
@@ -588,6 +625,13 @@ def search_results(request):
     # the line re-runs the query rather than needing a second endpoint.
     match_threshold = resolve_match_threshold(request)
 
+    # Which of those two this is.  The threshold field lives in the results
+    # partial, not in the search form, so only the floor control sends it —
+    # and re-measuring a search the reader is already looking at must not add
+    # a history entry.  Read from the post rather than from the parsed value,
+    # which is filled in from the reader's stored preference either way.
+    refining = "match_threshold" in request.POST
+
     # Extract IP for anonymous tracking
     ip = extract_client_ip(request.META)
 
@@ -619,10 +663,18 @@ def search_results(request):
     # the ninety-line context below would put the withholding decision in the
     # template, where every future key would have to remember it.
     if getattr(request, "search_teaser_only", False):
-        return render(
-            request,
-            "partials/search_results_partial.html",
-            _teaser_context(result),
+        # The address is pushed here too.  The search ran; only the text was
+        # withheld.  A reader who signs in and reloads gets their own search
+        # answered, rather than having to remember and retype it.
+        return _push_search_url(
+            render(
+                request,
+                "partials/search_results_partial.html",
+                _teaser_context(result),
+            ),
+            query,
+            date_override,
+            replace=refining,
         )
 
     # The search turned up results this user's tier can't open.  Recorded as an
@@ -670,7 +722,7 @@ def search_results(request):
             },
         )
 
-    return render(
+    return _push_search_url(render(
         request,
         "partials/search_results_partial.html",
         {
@@ -764,4 +816,4 @@ def search_results(request):
                 "Click to move it."
             ),
         },
-    )
+    ), query, date_override, replace=refining)
