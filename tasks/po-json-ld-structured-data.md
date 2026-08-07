@@ -1,6 +1,7 @@
 # JSON-LD structured data on provision and regulation pages
 
-**Prefix:** `c-` — low priority, actionable now. Real value, but indirect.
+**Prefix:** `po-` — ops, and gated on a push to prod. The remaining work runs
+an external validator against deployed URLs, which cannot read a working tree.
 
 **Status:** the code is built and tested, for both page kinds. The external
 validators are the remaining step, and they need a deploy. See **What is

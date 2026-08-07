@@ -1,6 +1,6 @@
 # Register with Google Search Console and Bing Webmaster Tools
 
-**Prefix:** `a-` — high priority, actionable now, but only **after** the
+**Prefix:** `p-` — high priority, actionable now, but only **after** the
 sitemap is live on production. A submitted sitemap that returns 404 starts the
 property at a deficit.
 
