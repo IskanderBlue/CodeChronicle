@@ -37,6 +37,16 @@ python manage.py makemigrations
 # Load a CCM consolidated edition (provenance models) into the DB
 python manage.py load_edition --source ../CodeChronicleMapping/data/outputs
 
+# Tell the people who asked for an edition that it has landed. Run by hand,
+# when an edition ships. Prints a report and sends nothing without --send;
+# read the message yourself before you add that flag. A human picks the
+# recipients (--match / --ids) because code_text is free text.
+python manage.py notify_edition_requests \
+    --about "OBC 1997" \
+    --news "The 1997 Ontario Building Code is now on CodeChronicle." \
+    --search "guards and handrails for a stairway" --date 1999-06-01 \
+    --match 1997
+
 # Point django.contrib.sites at this deployment's domain. The sitemap's <loc>
 # URLs and allauth's email links both read that row, and Django ships it as
 # "example.com". Production is already set to www.codechronicle.ca; dev is not.
@@ -178,6 +188,41 @@ CodeChronicle used from it — is vendored at `config/synonyms.py`.
 
 Django templates + HTMX + Alpine.js + Tailwind CSS (CDN). Templates live in `templates/` with HTMX partials in `templates/partials/`. The search page uses `hx-post` for partial page updates without full reloads.
 
+**The address bar holds the search that ran.** `hx-post` does not change the
+address, so a reload used to throw the search away. `core.views.search._push_search_url`
+answers with `HX-Replace-Url` and rewrites it to `/search/?q=…&d=…`, which
+`search_page` already reads and auto-runs (the `data-autorun-search` block in
+`templates/search.html`). So a reload, a bookmark and a link a reader sends
+somebody all reproduce the search. Three rules:
+
+- **The view writes it, not a script.** The AS-OF picker overrides the date
+  the parser reads out of the query text, so only the view knows the date the
+  search used.
+- **A new search pushes; re-measuring one replaces.** The relevance-floor
+  control re-posts through the same view without changing the query, so
+  pushing there would stack identical entries and Back would look broken. The
+  view tells them apart by `match_threshold` in the post — that field lives in
+  the results partial, not in the search form, so only the floor control sends
+  it.
+- **A failed search writes nothing.** Nothing ran, so there is nothing to
+  reproduce.
+
+**Back reloads.** One `popstate` handler in `templates/search.html` does two
+jobs in order: it closes the viewer overlay if the overlay is open and stops
+there, because the overlay pushes an entry carrying the same address; then it
+reloads. The reload runs whatever the address says, so the page cannot show
+one search while the address names another. It reuses the seeded auto-run
+rather than restoring the results in JavaScript, which would be a second copy
+of that logic.
+
+**A reload costs an anonymous reader nothing.** `RateLimitMiddleware` counts
+*questions*, not requests — see `_other_questions_today`. A question is the
+query text with the date it ran at, and the question being asked now is left
+out of the count, so a reload, a Back, or the reader's own link leaves the
+number unchanged. Two rules hold it together: the same words at two dates are
+two questions (that is the product), and distinct questions still reach the
+hard band, so the LLM-parse tap stays capped.
+
 ### Settings
 
 Split settings in `code_chronicle/settings/`: `base.py`, `development.py`, `production.py`. Tests use `development` settings (configured in `pyproject.toml`). Key env vars: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `DATABASE_URL`.
@@ -217,6 +262,20 @@ uses, so the page and the charge cannot disagree, and a change in the Stripe
 dashboard needs no deploy. It always returns a number — three logged fallback
 paths — because a pricing page that 500s is worse than a stale figure.
 
+### The new-account notice
+
+`core/signup_notice.py` writes to `settings.SIGNUP_NOTICE_EMAILS`
+(`rob@codechronicle.ca` by default, env-backed, comma-separated) when somebody
+creates an account. Three rules:
+
+- **It hooks allauth's `user_signed_up`, not `post_save` on the user.** The
+  model signal fires on every profile edit and on accounts made by a script;
+  neither is somebody arriving at the product.
+- **It never breaks a signup.** The account already exists when the receiver
+  runs, so an unguarded failure would lose the notice *and* show a 500 to a
+  reader whose signup actually worked. Same reasoning as `core.auth_audit`.
+- **An empty list switches it off**, which is what a local run wants.
+
 ### Clickwrap versions
 
 The signup checkbox covers both documents, but they are stamped **separately**:
@@ -239,7 +298,12 @@ document that changed. Full reasoning:
   cumulative charts, most-repeated queries, the edition-request queue, and the
   reader-report triage queue.
 - `EditionRequest` (`core/views/demand.py`) — "which edition do you need?"
-  demand capture. The need is required; the email is optional.
+  demand capture. The need is required; the email is optional. The band
+  promises we will write when the edition lands, and
+  `notify_edition_requests` keeps that promise. `notified_about` is a **list**
+  of edition labels, not one stamp: a row may name two editions, and one
+  timestamp would spend it on the first. That list is also what makes a
+  re-run safe after a part-way failure.
 - `ProvisionFeedback` (`core/views/feedback.py`) — the "This looks wrong"
   reader report, free for everybody including anonymous readers. The trigger
   lives in the attestation rail's trailing affordances, beside "How to read
