@@ -76,9 +76,7 @@ class RateLimitMiddleware:
             if not ip:
                 return None
 
-            search_count = SearchHistory.objects.filter(
-                ip_address=ip, user__isnull=True, timestamp__gte=today_start
-            ).count()
+            search_count = self._other_questions_today(request, ip, today_start)
 
             limit = settings.RATE_LIMIT_ANONYMOUS
             teaser_limit = settings.RATE_LIMIT_ANONYMOUS_TEASER
@@ -91,6 +89,12 @@ class RateLimitMiddleware:
             # not entitled to read.  Recorded once per request, in both the
             # teaser band and the hard band, so the conversion denominator
             # counts intent rather than which wall the intent met.
+            #
+            # A repeat of a question already asked never reaches here, which is
+            # the point: re-reading one answer is not a second intent, and
+            # counting it would inflate the denominator with the same reader
+            # pressing reload.  ``searches_used`` therefore counts distinct
+            # other questions, not requests.
             record_event(
                 request,
                 event_type=EngagementEvent.EventType.RATE_LIMIT_BLOCK,
@@ -121,6 +125,59 @@ class RateLimitMiddleware:
             return self._build_rate_limit_response(request, payload, status_code=429)
 
         return None
+
+    def _other_questions_today(self, request, ip: str, today_start) -> int:
+        """How many *different* questions this address has asked today.
+
+        The allowance counts questions, not requests.  A reader who reloads
+        their search, presses Back to it, or follows their own link to it is
+        asking one question twice, and we should not charge them twice for one
+        answer.  This used to count rows, so a reload spent a search — and
+        since the address bar now carries the search
+        (``core.views.search._push_search_url``), a repeat is one keystroke
+        away.
+
+        **A question is the query text and the date it ran at.**  The same
+        words at two dates are two questions; asking what the code said in
+        2005 and again in 2015 is most of what this product is for, and it
+        must not be free.
+
+        **The question being asked now is left out**, not counted.  Counting
+        it would make the count 1 before the first search had run, and the
+        first search would meet the teaser.  So the number means "how many
+        other questions have you asked today", and a repeat leaves it
+        unchanged.
+
+        The distinct set is bounded: the hard band writes no row, so an
+        address cannot accumulate more distinct questions than the ceiling.
+        """
+        asked = set(
+            SearchHistory.objects.filter(
+                ip_address=ip, user__isnull=True, timestamp__gte=today_start
+            )
+            .values_list("query", "parsed_params__date")
+            .distinct()
+        )
+
+        # Matched against what was sent, not against a tidied copy of it: the
+        # stored query is the raw posted text, and comparing a stripped value
+        # to an unstripped one silently counts a repeat as a new question.
+        query = request.POST.get("query", "")
+        day = request.POST.get("date") or ""
+
+        if day:
+            # The picker overrides the parsed date, so the date this search
+            # will run at is known here, and the match is exact.
+            asked.discard((query, day))
+        else:
+            # No picker value, so this search runs at whatever date the parser
+            # reads out of the text — which is not known until the search
+            # runs.  Every earlier row with these words counts as the same
+            # question.  This errs towards the reader, and only in the case
+            # where they gave us no date to tell two questions apart.
+            asked = {row for row in asked if row[0] != query}
+
+        return len(asked)
 
     def get_client_ip(self, request):
         """Extract client IP from request, handling proxies."""

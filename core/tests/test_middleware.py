@@ -82,12 +82,22 @@ class TestRateLimitMiddleware:
         return request
 
     def _spend(self, count):
-        for _ in range(count):
+        """Use up ``count`` of the allowance.
+
+        Each row is a *different* question, and different from every question
+        an earlier call wrote.  The allowance counts distinct questions, so
+        identical rows would spend one search however many were written — and
+        every test below that means "N searches used" would quietly be testing
+        one.  Numbering from the rows already there is what makes two
+        ``_spend(1)`` calls spend two.
+        """
+        start = SearchHistory.objects.count()
+        for n in range(start, start + count):
             SearchHistory.objects.create(
                 user=None,
                 ip_address="127.0.0.1",
-                query="q",
-                parsed_params={},
+                query=f"q{n}",
+                parsed_params={"date": "2010-06-01"},
                 result_count=0,
                 top_results=[],
             )
@@ -138,6 +148,92 @@ class TestRateLimitMiddleware:
             event_type=EngagementEvent.EventType.RATE_LIMIT_BLOCK
         ).order_by("id")
         assert [b.context["band"] for b in blocks] == ["teaser", "hard"]
+
+    def _asking(self, query: str, day: str = ""):
+        """An anonymous request that carries a question, the way the form does."""
+        data = {"query": query}
+        if day:
+            data["date"] = day
+        request = self.factory.post(
+            "/search-results/", data, HTTP_HX_REQUEST="true", REMOTE_ADDR="127.0.0.1"
+        )
+        request.user = AnonymousUser()
+        return request
+
+    def _ask(self, query: str, day: str = ""):
+        """Run one search the whole way: the check, then the row it writes."""
+        request = self._asking(query, day)
+        response = self.middleware.check_rate_limit(request)
+        if response is None:
+            SearchHistory.objects.create(
+                user=None,
+                ip_address="127.0.0.1",
+                query=query,
+                parsed_params={"date": day} if day else {},
+                result_count=0,
+                top_results=[],
+            )
+        return request, response
+
+    def test_reading_one_answer_twice_costs_one_search(self, settings):
+        """A reload, Back, or the reader's own link returns them to a search
+        they already ran.  The address bar carries the search now, so this is
+        one keystroke away — and it used to drop them into the teaser band
+        holding results they had already been shown."""
+        settings.RATE_LIMIT_ANONYMOUS = 1
+        settings.RATE_LIMIT_ANONYMOUS_TEASER = 10
+        self._ask("guards", "2010-06-01")
+
+        again, response = self._ask("guards", "2010-06-01")
+
+        assert response is None
+        assert getattr(again, "search_teaser_only", False) is False
+
+    def test_a_second_question_still_spends_the_allowance(self, settings):
+        """The allowance is not removed, only measured properly."""
+        settings.RATE_LIMIT_ANONYMOUS = 1
+        settings.RATE_LIMIT_ANONYMOUS_TEASER = 10
+        self._ask("guards", "2010-06-01")
+
+        other, _ = self._ask("fire separation", "2010-06-01")
+
+        assert getattr(other, "search_teaser_only", False) is True
+
+    def test_the_same_words_at_another_date_are_another_question(self, settings):
+        """Asking what the code said in 2005 and again in 2015 is most of what
+        this product is for.  It must not be free."""
+        settings.RATE_LIMIT_ANONYMOUS = 1
+        settings.RATE_LIMIT_ANONYMOUS_TEASER = 10
+        self._ask("guards", "2005-01-01")
+
+        later, _ = self._ask("guards", "2015-01-01")
+
+        assert getattr(later, "search_teaser_only", False) is True
+
+    def test_a_repeat_records_no_block_event(self, settings):
+        """A reader re-reading one answer has not formed a second intent, and
+        the conversion denominator counts intent."""
+        settings.RATE_LIMIT_ANONYMOUS = 1
+        settings.RATE_LIMIT_ANONYMOUS_TEASER = 10
+        self._ask("guards", "2010-06-01")
+        self._ask("guards", "2010-06-01")
+
+        assert not EngagementEvent.objects.filter(
+            event_type=EngagementEvent.EventType.RATE_LIMIT_BLOCK
+        ).exists()
+
+    def test_repeats_do_not_open_the_tap(self, settings):
+        """The hard band exists because the teaser costs an LLM parse per
+        request.  Distinct questions still reach it."""
+        settings.RATE_LIMIT_ANONYMOUS = 1
+        settings.RATE_LIMIT_ANONYMOUS_TEASER = 2
+        self._ask("one", "2010-06-01")
+        self._ask("two", "2010-06-01")
+
+        _, response = self._ask("three", "2010-06-01")
+
+        assert response is not None
+        assert response.status_code == 429
 
     def test_authenticated_free_user_not_rate_limited(self, settings):
         """Authenticated free users should never be rate limited."""
