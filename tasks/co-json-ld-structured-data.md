@@ -1,11 +1,12 @@
 # JSON-LD structured data on provision and regulation pages
 
-**Prefix:** `po-` — ops, and gated on a push to prod. The remaining work runs
-an external validator against deployed URLs, which cannot read a working tree.
+**Prefix:** `co-` — low priority ops. The card was `po-`, gated on a push to
+prod, because the remaining work runs an external validator against deployed
+URLs and a validator cannot read a working tree. **The gate lifted on
+2026-08-07:** both page kinds now emit the block on production.
 
-**Status:** the code is built and tested, for both page kinds. The external
-validators are the remaining step, and they need a deploy. See **What is
-left** at the end.
+**Status:** the code is built and tested, for both page kinds. Running the
+external validators is the remaining step. See **What is left** at the end.
 
 ## What this is, and is not
 
@@ -224,7 +225,19 @@ Run the validators against the deployed pages:
   a division-less OBC 1997 provision, a base regulation, and an amending
   regulation.
 
+> ⚠️ **Do not copy a `/regulation/<pk>/` URL out of this card.** `load_edition`
+> replaces every regulation pk on each reload. The examples above were written
+> when O. Reg. 350/06 was pk 17; after the reload on 2026-08-07 it is pk 351.
+> Read the current pk from the site or the database before you validate.
+>
+> This is worth more than a note about stale examples. The block's
+> `legislationConsolidates.url` names a pk URL, so a crawler that indexes it
+> holds a link that a later reload breaks. The block's own `url` is the
+> canonical **provision** URL, which is stable, so the subject of the page
+> survives. Judge whether the regulation node should name a stable identifier
+> instead — `sameAs` already carries the durable ontario.ca link.
+
 ## Related
 
 - `core/seo.py` — same source objects; extend, do not duplicate.
-- `tasks/a-search-console-registration.md` — where you watch for the effect.
+- `tasks/ao-search-console-registration.md` — where you watch for the effect.

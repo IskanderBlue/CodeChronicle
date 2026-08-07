@@ -1,8 +1,10 @@
 # Register with Google Search Console and Bing Webmaster Tools
 
-**Prefix:** `p-` — high priority, actionable now, but only **after** the
-sitemap is live on production. A submitted sitemap that returns 404 starts the
-property at a deficit.
+**Prefix:** `ao-` — high priority ops, actionable now. The card was `po-`,
+gated on a push to prod, because a submitted sitemap that returns 404 starts
+the property at a deficit. **The gate lifted on 2026-08-07:** `/robots.txt`
+returns 200 and names the sitemap, and all three sitemap URLs return 200 on
+production.
 
 ## Why
 
@@ -63,4 +65,4 @@ Check monthly, not daily. The four reports that matter:
 ## Related
 
 - `core/sitemaps.py`, `templates/robots.txt`, `core/seo.py`.
-- `tasks/c-json-ld-structured-data.md`.
+- `tasks/co-json-ld-structured-data.md`.
