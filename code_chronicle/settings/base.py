@@ -244,6 +244,22 @@ RATE_LIMIT_ANONYMOUS_TEASER = 10
 # below; Pro (active subscription or pro_courtesy) is unrestricted.
 # Canonical edition names (CodeEdition.code_name, e.g. "OBC_2006") in the
 # free scope.  Env-backed so the free window can widen without a deploy.
+# ===================
+# Signup notice (core.signup_notice)
+# ===================
+# Where to write when somebody creates an account.  Empty switches it off,
+# which is what a test or a local run wants; every environment that should
+# send sets it.  A list, because the second person to want these should not
+# need a code change.
+SIGNUP_NOTICE_EMAILS = [
+    address.strip()
+    for address in os.environ.get(
+        "SIGNUP_NOTICE_EMAILS", "rob@codechronicle.ca"
+    ).split(",")
+    if address.strip()
+]
+
+
 FREE_TIER_CODE_NAMES = [
     name.strip()
     for name in os.environ.get("FREE_TIER_CODE_NAMES", "OBC_2006").split(",")
