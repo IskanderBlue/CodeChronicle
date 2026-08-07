@@ -1,6 +1,6 @@
 # Review the export counts, and remove what nobody used
 
-**Prefix:** `b-` — medium priority. **Do this on or after 3 October 2026**
+**Prefix:** `x-` — medium priority, but not yet possible. **Do this on or after 3 October 2026**
 (sixty days after the exports shipped, 4 August 2026).
 
 ## Why this card exists
