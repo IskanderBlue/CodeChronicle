@@ -447,6 +447,18 @@ class EditionRequest(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    #: When we last wrote to this address about this request.  Null means we
+    #: never have.
+    notified_at = models.DateTimeField(null=True, blank=True)
+    #: Every edition we have announced to this row, by the label the sender
+    #: typed.  A **list**, not one label: ``code_text`` is free text and a
+    #: reader may name two editions in it, so a single stamp would spend the
+    #: row on the first one and the second would never be announced.  It is
+    #: also what makes a re-run safe — the send skips a row that already holds
+    #: the label, so a failure part-way through can be re-run without writing
+    #: to the people it already reached.
+    notified_about = models.JSONField(default=list, blank=True)
+
     class Meta:
         db_table = "edition_requests"
         verbose_name = "Edition Request"
