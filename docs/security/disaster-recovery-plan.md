@@ -138,7 +138,7 @@ confirm the rollback path works.
 
 | Date | Scenario (5a/5b/5c) | Restored from | Outcome | RTO observed | RPO (window reach) | Notes |
 |---|---|---|---|---|---|---|
-| _(none yet — run §5a and record it here)_ | | | | | | |
+| 2026-08-07 | 5b (logical backup) | `pg_dump` of a branch of prod, taken as `cc_app` | **Fail, then pass** | ~4 min, unattended | n/a — the dump was taken during the drill | First run: 5 FK constraints not created, `pg_restore` exited 0 anyway (189 of 194). Cause: 4 kept tables referenced excluded corpus tables. Fixed in `CORPUS_TABLES`; second run silent, 194/194, dump 1.7 MB → 859 KB. User data intact: 6 users, 111 searches, 10,597 events, 11 sessions. Restored into a scratch Postgres 17, not a Neon branch. The corpus reload was **not** exercised. |
 
 ---
 
@@ -153,15 +153,33 @@ being useless. Add a second, host-independent backup.
 re-loadable from CCM via `load_edition`, so dumping them is wasted storage and
 bandwidth on every run. The data we *cannot* rebuild is the user/operational data:
 `users`, `search_history`, `engagement_events`, `auth_events`, the LLM-cache tables,
-Django auth/admin/session plumbing, and the dj-stripe mirror. Those tables form a
-**clean FK island** — none of them reference the corpus tables (e.g.
-`EngagementEvent.object_id` is a loose integer by design), so they dump and restore
-independently of the corpus.
+Django auth/admin/session plumbing, and the dj-stripe mirror.
 
 Use `--exclude-table-data` on the corpus tables: it keeps their *schema* (so a
-restore recreates the structure) but skips their *rows*. This is safe-by-default —
-any **new** table you add later is included in the backup automatically; only the
-known-reproducible corpus tables are skipped.
+restore recreates the structure) but skips their *rows*.
+
+> ⚠️ **The backed-up tables must be an FK island, and that is a rule to enforce, not
+> a fact to assume.** An earlier draft of this section stated the island as given. A
+> drill on 2026-08-07 disproved it: four kept tables held foreign keys into excluded
+> ones, and **five constraints could not be created on restore**. `pg_restore` reported
+> each as a *warning* and exited 0, so the restore looked clean and produced a database
+> with 189 foreign keys where the original had 194.
+>
+> A kept table that references an excluded table references rows the restore does not
+> have. The rule is one-directional: an excluded table may point at a kept table, since
+> it has no rows to dangle. `core/tests/test_backup_userdata.py` now fails the build if
+> a kept table gains a foreign key into an excluded one, so the island is checked on
+> every commit instead of believed.
+
+This is safe-by-default for *content*: any **new** table you add later is included in
+the backup automatically. It is not automatically safe for *shape* — a new table that
+references the corpus must join the exclude-list, which is what the guard test tells
+you.
+
+**The exclude-list lives in one place: `CORPUS_TABLES` in
+`core/management/commands/backup_userdata.py`.** The PowerShell below is illustrative
+only. Do not treat it as a second source of truth; a hand-kept copy is how a list like
+this drifts out of date.
 
 ```powershell
 $DBURL = "<prod DATABASE_URL>"
@@ -188,13 +206,24 @@ Checklist:
 **Restore from this dump:** provision a fresh Postgres → `pg_restore` the dump
 (recreates all tables + the user data, and preserves `django_migrations` history) →
 re-run `python manage.py load_edition --source ../CodeChronicleMapping/data/outputs`
-to refill the corpus → repoint `database_url` and restart (§3d).
+and `python manage.py load_consolidations` to refill the corpus → repoint
+`database_url` and restart (§3d).
+
+**Check the restore by counting, not by the exit code.** `pg_restore` exits 0 with
+failed constraints, so the exit code cannot tell you the restore was faithful:
+
+```sql
+SELECT count(*) FROM pg_constraint WHERE contype = 'f';   -- must be 194
+```
+
+A silent run with the right count is the pass mark.
 
 > **Dependency this introduces:** because the corpus is *not* in the dump, full
 > recovery now relies on the **CCM source outputs still existing**. Make sure
 > `CodeChronicleMapping/data/outputs` is itself durably stored (its own repo/backup) —
 > otherwise you've protected the user data but made the corpus the new single point of
-> failure.
+> failure. `data/elaws_consolidations.json` is the second such input, and it is
+> committed to this repository, so it is already as durable as the code.
 
 This converts the plan from "trust the host's window" to "we hold our own copy,"
 narrows RPO below the host's retention limit, keeps the backup small, and makes the

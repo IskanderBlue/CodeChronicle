@@ -25,6 +25,7 @@ re-run ``load_edition`` to refill the corpus.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -56,6 +57,19 @@ CORPUS_TABLES: tuple[str, ...] = (
     "provision_dispositions",
     "edition_transitions",
     "corpus_currency",
+    # Added 2026-08-07 after a restore drill. These four are corpus-derived like
+    # the rest, but were kept, and a kept table that holds a foreign key into an
+    # excluded table cannot restore: the parent rows are not there, so
+    # pg_restore reports the constraint as a *warning* and leaves it off the
+    # restored database. Five constraints failed that way. They also carried the
+    # bulk — `provision_cross_references` alone was 42,983 rows in a 1.7 MB dump
+    # that exists to hold 6 users. Rebuilt by `load_edition`, except
+    # `consolidations`, which `load_consolidations` rebuilds from
+    # `data/elaws_consolidations.json` in this repository.
+    "provision_cross_references",
+    "provision_cross_reference_alternates",
+    "provision_version_assets",
+    "consolidations",
 )
 
 
@@ -168,8 +182,6 @@ class Command(BaseCommand):
             raise CommandError("age produced no output.")
 
     def _save_local(self, src: Path, dest_dir: Path, name: str) -> None:
-        import shutil
-
         dest_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest_dir / name)
         logger.info("backup written locally: %s", dest_dir / name)
