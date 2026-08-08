@@ -428,6 +428,102 @@ class TestLoadEdition:
         assert CodeEditionProvisionVersion.objects.count() == 12
         assert ProvisionVersionTable.objects.count() == 1
 
+    @staticmethod
+    def _as_ccm_ships_it(edition_json: Path, tmp_path: Path) -> Path:
+        """The fixture with the three keys CCM does not send removed.
+
+        Every other test here loads a payload richer than the real one, which
+        is why the two defects below went unseen for as long as they did.
+        """
+        stripped = json.loads(edition_json.read_text(encoding="utf-8"))
+        for key in ("display_name", "is_national", "province"):
+            stripped.pop(key, None)
+        out = tmp_path / "OBC_1997_as_ccm_ships_it.json"
+        out.write_text(json.dumps(stripped), encoding="utf-8")
+        return out
+
+    def test_a_reload_does_not_blank_a_field_the_payload_never_carried(
+        self, edition_json: Path, tmp_path: Path
+    ) -> None:
+        """A value seeded by other means must survive a reload.
+
+        The loader used to write ``""`` and ``False`` over whatever the row
+        held, on every reload, because it read them out of a payload that
+        carries neither.  That is not a default — it is an overwrite, and it
+        is why the one code the product serves had an empty display name while
+        every code it does not serve kept theirs: the unserved ones are never
+        reloaded.  ``is_national`` would have un-flagged a national code the
+        same way, and nothing would have reported it.
+        """
+        call_command("load_edition", "--source", str(edition_json))
+        Code.objects.filter(code="OBC").update(is_national=True)
+
+        call_command(
+            "load_edition",
+            "--source",
+            str(self._as_ccm_ships_it(edition_json, tmp_path)),
+        )
+
+        assert Code.objects.get(code="OBC").is_national is True
+
+    def test_the_loader_names_a_code_the_payload_does_not_name(
+        self, edition_json: Path, tmp_path: Path
+    ) -> None:
+        """``DISPLAY_NAMES`` is the home for the reader-facing name.
+
+        Without it a fresh load leaves ``display_name`` empty, and every page
+        title, meta description and JSON-LD ``isPartOf`` says "OBC 1997" where
+        it means "Ontario Building Code 1997".  The map lives in the
+        repository rather than in the payload because the name is a
+        presentation choice, not a mapping result: CCM writes one file per
+        edition, so a code-system fact would repeat in every one of them.
+        """
+        call_command(
+            "load_edition",
+            "--source",
+            str(self._as_ccm_ships_it(edition_json, tmp_path)),
+        )
+
+        assert Code.objects.get(code="OBC").display_name == "Ontario Building Code"
+
+    def test_the_map_outranks_a_name_already_on_the_row(
+        self, edition_json: Path, tmp_path: Path
+    ) -> None:
+        """Version control wins, and that is the point of the map.
+
+        The stored name has no traceable origin — the named codes in a dev
+        database come from a loader that no longer exists — so a reload must
+        be able to correct it.  This is the one field the previous test's rule
+        does not cover, and the two must not be merged.
+        """
+        call_command("load_edition", "--source", str(edition_json))
+        Code.objects.filter(code="OBC").update(display_name="Whatever seeded it")
+
+        call_command(
+            "load_edition",
+            "--source",
+            str(self._as_ccm_ships_it(edition_json, tmp_path)),
+        )
+
+        assert Code.objects.get(code="OBC").display_name == "Ontario Building Code"
+
+    def test_a_code_outside_the_map_keeps_its_stored_name(
+        self, edition_json: Path, tmp_path: Path
+    ) -> None:
+        """The map names what it knows and touches nothing else."""
+        payload = json.loads(edition_json.read_text(encoding="utf-8"))
+        for key in ("display_name", "is_national", "province"):
+            payload.pop(key, None)
+        payload["code"] = "ZZZ"
+        unmapped = tmp_path / "ZZZ_1997.json"
+        unmapped.write_text(json.dumps(payload), encoding="utf-8")
+
+        call_command("load_edition", "--source", str(unmapped))
+        Code.objects.filter(code="ZZZ").update(display_name="Some Other Code")
+        call_command("load_edition", "--source", str(unmapped))
+
+        assert Code.objects.get(code="ZZZ").display_name == "Some Other Code"
+
     def test_missing_file_raises(self) -> None:
         with pytest.raises(CommandError, match="Source file not found"):
             call_command("load_edition", "--source", "/nonexistent/file.json")

@@ -10,6 +10,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.models import Count, Q
 
+from config.code_metadata import DISPLAY_NAMES
 from core.cross_refs import assign_occurrences
 from core.models import (
     Code,
@@ -272,10 +273,32 @@ class Command(BaseCommand):
         )
 
     def _load_edition(self, data: dict[str, Any]) -> tuple[Code, CodeEdition]:
-        code_defaults: dict[str, Any] = {
-            "display_name": data.get("display_name", ""),
-            "is_national": data.get("is_national", False),
-        }
+        # Only set what the payload actually carries.  CCM ships neither
+        # ``display_name`` nor ``is_national``, so a default here is not a
+        # default at all — it is an overwrite that runs on every reload, and
+        # the ``update_or_create`` below spends it on a row somebody else
+        # seeded.  That is how the one code we serve came to have an empty
+        # display name while every code we do not serve kept its own: the
+        # unserved ones are never reloaded.  A national code would lose
+        # ``is_national`` the same way, and nothing would report it.
+        # Precedence: the payload, then the repository, then leave the row
+        # alone.  Never a literal default — CCM ships neither key, so a
+        # ``data.get(key, "")`` is not a default but an overwrite that runs on
+        # every reload and spends itself on a row seeded elsewhere.  That is
+        # how the one code we serve came to have an empty display name while
+        # every code we do not serve kept its own: the unserved ones are never
+        # reloaded.  ``is_national`` had the same defect and would have
+        # un-flagged a national code with nothing to report it.
+        code_defaults: dict[str, Any] = {}
+        for key in ("display_name", "is_national"):
+            if key in data:
+                code_defaults[key] = data[key]
+        # The reader-facing name, from version control.  It outranks the stored
+        # row on purpose: the row's value has no traceable origin, which is the
+        # state this map exists to end.  A code absent from the map keeps
+        # whatever the row holds.
+        if "display_name" not in code_defaults and data["code"] in DISPLAY_NAMES:
+            code_defaults["display_name"] = DISPLAY_NAMES[data["code"]]
         # Only set when known — never null out a date seeded by other means
         # (e.g. admin) for a code this dict hasn't caught up with.
         if data["code"] in self.FIRST_EDITION_DATES:

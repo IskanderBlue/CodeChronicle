@@ -5,8 +5,11 @@ prod, because the remaining work runs an external validator against deployed
 URLs and a validator cannot read a working tree. **The gate lifted on
 2026-08-07:** both page kinds now emit the block on production.
 
-**Status:** the code is built and tested, for both page kinds. Running the
-external validators is the remaining step. See **What is left** at the end.
+**Status: the validators ran on 2026-08-08 and found two defects. Both are
+fixed.** See **What the validators found** at the end. What is left is one
+smoke check after the next deploy, which is why this stays an ops card and
+does not go back to `po-`: the validation itself is done, and a card should
+not describe a finished investigation as pending work.
 
 ## What this is, and is not
 
@@ -88,8 +91,13 @@ disagree.
 }
 ```
 
-A version that an amending regulation produced also carries
-`legislationChangedBy`, as a list of the same node shape.
+The block names the base regulation and stops there. It does **not** name the
+amending regulations that produced the version. That is a limit of the
+vocabulary, not of the data — see **What the validators found**.
+
+`sameAs` comes from `Regulation.source_url`, which CCM ships. On the loaded
+corpus that is the `r06350` form rather than the `060350` form above. Both
+resolve; CCM is the source of truth and the block must not rewrite it.
 
 ## The regulation block
 
@@ -168,16 +176,16 @@ One per regulation detail page.
   `legislationDate` belongs to the regulation. `legislationDateVersion` is
   when this version began. To collapse the two back-dates every amendment to
   the edition.
-- **Use two relations, not `isBasedOn`.** `isBasedOn` is a generic
-  `CreativeWork` property with no legal meaning, and it cannot tell apart the
-  two instruments behind a consolidated text:
-  - `legislationConsolidates` — the edition's base regulation. This is an
-    **edition-level** fact, so it survives the base-enactment data gap and is
-    present even on a v0 with no contributing clause.
-  - `legislationChangedBy` — the amending regulations that produced *this*
-    version, from `contributing_clauses`. Absent on a v0, because nothing
-    changed it.
-  Never fall back from one to the other. A guessed citation is a false one.
+- **Name the base regulation with `legislationConsolidates`, and nothing
+  else.** Not `isBasedOn`: that is a generic `CreativeWork` property with no
+  legal meaning. `legislationConsolidates` is an **edition-level** fact, so it
+  survives the base-enactment data gap and is present even on a v0 with no
+  contributing clause. Never substitute one instrument for another when the
+  data is missing. A guessed citation is a false one.
+- **Do not try to name the amending regulations here.** schema.org defines no
+  inverse of `legislationChanges`, and the block carried an invented
+  `legislationChangedBy` until 2026-08-08. The reasoning is in **What the
+  validators found**; read it before you reach for `@reverse`.
 - **`legislationIdentifier` is a citation that stands alone.** The bare
   provision number names a provision in three editions and in more than one
   division. Qualify it by level, division and instrument.
@@ -192,10 +200,11 @@ One per regulation detail page.
   means the kind of instrument: act, regulation, directive. Base and
   amendment are our word for the part a row plays in an edition, and both
   rows are regulations.
-- **`legislationChanges` mirrors the provision block's
-  `legislationChangedBy`.** There the version names what changed it; here the
-  instrument names what it changes, from `Regulation.amends`. Absent on a
-  base regulation, which amends nothing.
+- **`legislationChanges` is the only place the product states the amendment
+  edge to a machine.** The instrument names what it changes, from
+  `Regulation.amends`. Absent on a base regulation, which amends nothing.
+  There is no inverse in the vocabulary, so the provision page cannot carry
+  this fact and this page must.
 
 ## What shipped
 
@@ -208,22 +217,117 @@ One per regulation detail page.
 - `core/views/regulation.py` — `provision_permalink` and `regulation_detail`
   each set `jsonld`.
 - `core/tests/test_seo.py` — `TestProvisionJsonLd`, `TestJsonLdOnThePage` and
-  `TestRegulationJsonLd`, 26 tests. Both halves of the force rule are
+  `TestRegulationJsonLd`. Both halves of the force rule are
   asserted, because free scope today holds one superseded edition, so an
   inverted computation would still pass on every page a crawler sees.
+- `core/models.py` — `Regulation.citation`, added 2026-08-08. The "O. Reg."
+  prefix is what makes the number a citation, so it belongs to the model and
+  not to each surface that prints one. It is also the one place to widen when
+  a second jurisdiction lands.
+
+## What the validators found
+
+Run on 2026-08-08 against production, with the **Schema Markup Validator**
+(`validator.schema.org`) as the gate. The validator has a JSON endpoint that
+takes either a `url` or an `html` parameter, which is how the candidate fixes
+below were tested before any of them shipped. It rate-limits hard; leave 20
+seconds between calls.
+
+The **Rich Results Test** reports "No items detected" for `Legislation`,
+because Google draws no rich result for the type. That is the expected answer
+and not a failure. Do not unpick working code over it.
+
+**Four page shapes, not five.** A validator fetches anonymously, so it sees
+what an anonymous reader sees. OBC 1997 is outside `FREE_TIER_CODE_NAMES`, so
+a 1997 provision answers **403** with no block — which is the "never emit for
+a locked page" rule working, and is the reason the division-less shape cannot
+be validated from outside while 1997 stays gated. Validate it by rendering the
+block in a shell as a Pro user, or wait until the free scope changes.
+
+| Page | Result |
+|---|---|
+| Provision, mid-chain version | 1 error |
+| Provision, final version | 1 error |
+| Provision, v0 with no amender | clean |
+| Base regulation | clean |
+| Amending regulation | clean |
+
+### Defect 1 — `legislationChangedBy` is not a schema.org property
+
+`INVALID_PREDICATE`, on exactly the two pages that carried it.
+`schemaorg-current-https.jsonld` confirms it: ELI's `changed_by` was never
+adopted. **Every** change relation schema.org defines — `legislationChanges`,
+`legislationAmends`, `legislationCorrects`, `legislationRepeals`,
+`legislationConsolidates` — runs from the *instrument* to the text it acts on.
+The vocabulary has a direction, and an instrument is always the actor.
+
+So the edge cannot be stated from a provision. Three ways to state it anyway
+were tested, and each was rejected for a reason worth keeping:
+
+- **`@reverse` with `legislationChanges`** validates clean, and re-roots the
+  graph: the amending regulation becomes the root node and the provision, with
+  its `temporalCoverage`, becomes a nested target. A provision page whose root
+  node is a different document has given away the one thing it exists to
+  state.
+- **A two-root `@graph`** was the next candidate. It was not settled, because
+  the validator began refusing the client. Any triple whose object is the
+  provision makes the provision an object, so it likely re-roots the same way.
+  If you pick this card up, that is the open question.
+- **A vaguer property** such as `citation` is not wrong, but it does not say
+  the regulation *produced* this text, so it buys a triple and spends the
+  meaning.
+
+**Fixed by dropping the property.** The block now names the base regulation
+and stops. Nothing is lost that the site does not say elsewhere: each amending
+regulation's own page carries `legislationChanges`, and the provision page
+still lists the chain in its markup. What is dropped is a triple no consumer
+could read.
+
+### Defect 2 — the citation was the bare number
+
+`legislationIdentifier` read `350/06`, and the provision's read `Article
+1.4.1.2. of Division A of 350/06`. Neither is a citation, which is the one
+rule this property has. The validator does not catch it — it checks the shape,
+not the sense — so it was found by reading the deployed block against this
+card.
+
+The suite could not catch it either, and that is the part to remember: the
+fixture stored `reg_id="O. Reg. 350/06"`, so the assertion compared the block
+against a fixture that had already done the block's job. CCM ships the bare
+number. **A fixture richer than the payload asserts nothing.**
+
+**Fixed** by `Regulation.citation`, one computed property on the model — no
+column, no migration — used by `__str__` and by both blocks. `__str__` cannot
+serve as the citation itself, because it appends the role: `O. Reg. 350/06
+(amendment)` reads correctly in an admin list and corrupts an exhibit. The
+fixture now holds the bare number CCM ships.
+
+### Defect 3 — the loader deleted the code's display name
+
+Found by the same reading. `isPartOf.name` says `OBC 2006` where it means
+`Ontario Building Code 2006`, because `Code.display_name` is empty for the one
+code the product serves.
+
+The cause was in `load_edition`, which wrote `data.get("display_name", "")`
+into the `Code` row on every reload. CCM ships no such key, so that was not a
+default but an overwrite, spent on a row seeded elsewhere. Every code we do
+**not** serve kept its name, because nothing reloads them. `is_national` had
+the identical defect, and would have silently un-flagged a national code.
+
+**Fixed** two ways. The loader now sets only what the payload carries — the
+rule the next lines of that function already stated for `first_edition_date`.
+And `config/code_metadata.py` now owns the names as `DISPLAY_NAMES`, which the
+loader applies, so the value has a home in version control rather than in
+whatever seeded the row last. The names are a presentation choice, not a
+mapping result, which is why they are not asked of CCM: CCM writes one file
+per edition, and a code-system fact would repeat in every one of them.
 
 ## What is left
 
-Run the validators against the deployed pages:
-
-- Use the **Schema Markup Validator** (`validator.schema.org`) as the gate.
-  It validates any type.
-- The **Rich Results Test** reports "No items detected" for `Legislation`,
-  because Google draws no rich result for the type. That is the expected
-  answer and not a failure. Do not unpick working code over it.
-- Run one page of each shape: a mid-chain provision version, a final version,
-  a division-less OBC 1997 provision, a base regulation, and an amending
-  regulation.
+One smoke check after the next deploy: re-fetch the five URLs and confirm the
+provision pages come back clean and the identifiers read `O. Reg. …`. The
+post-fix block shape was already validated through the `html` parameter and
+returned zero errors, so this confirms the deploy, not the design.
 
 > ⚠️ **Do not copy a `/regulation/<pk>/` URL out of this card.** `load_edition`
 > replaces every regulation pk on each reload. The examples above were written
@@ -241,3 +345,4 @@ Run the validators against the deployed pages:
 
 - `core/seo.py` — same source objects; extend, do not duplicate.
 - `tasks/ao-search-console-registration.md` — where you watch for the effect.
+- `config/code_metadata.py` — `DISPLAY_NAMES`, and the two readers of it.

@@ -884,7 +884,23 @@ class Regulation(models.Model):
         ]
 
     def __str__(self):
-        return f"O. Reg. {self.reg_id} ({self.role})"
+        return f"{self.citation} ({self.role})"
+
+    @property
+    def citation(self) -> str:
+        """The instrument as a reader cites it: ``O. Reg. 350/06``.
+
+        ``reg_id`` is the bare number.  On its own it names nothing — a reader
+        cannot tell "350/06" from a date or a docket, and a machine reading it
+        out of a structured block has no way to learn what it is.  The prefix
+        is the part that makes it a citation, so it belongs to the model and
+        not to each surface that prints one.
+
+        Ontario's form, because Ontario is the only jurisdiction loaded.  A
+        national or another province's instrument takes a different prefix; it
+        is spelled once, here, so there is one place to widen it.
+        """
+        return f"O. Reg. {self.reg_id}"
 
     @property
     def source_link_label(self) -> str:

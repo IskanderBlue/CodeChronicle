@@ -32,6 +32,7 @@ from core.seo import (
     SOCIAL_IMAGE_HEIGHT,
     SOCIAL_IMAGE_PATH,
     SOCIAL_IMAGE_WIDTH,
+    amending_regulations,
     canonical_version_number,
     exhibit_title,
     last_governed_day,
@@ -341,12 +342,19 @@ def enacted(provision):
 
     The edition is given an end date, because OBC 2006 has one.  Without it
     every currency assertion below tests a corpus that does not exist.
+
+    ``reg_id`` holds the **bare** number, which is what CCM ships and what the
+    loaded corpus holds.  It used to carry the "O. Reg." prefix here, and that
+    single wrong character made the identifier assertions below assert nothing:
+    they compared the block against a fixture that had already done the work
+    the block was supposed to do, and production shipped "350/06" as a citation
+    for weeks with the suite green.  Keep the fixture as CCM ships it.
     """
     edition = provision.edition
     edition.ineffective_date = date(2014, 1, 1)
     edition.save()
     base = Regulation.objects.create(
-        reg_id="O. Reg. 350/06",
+        reg_id="350/06",
         edition=edition,
         role=Regulation.Role.BASE,
         filed_date=date(2006, 8, 18),
@@ -354,7 +362,7 @@ def enacted(provision):
         source_url="https://www.ontario.ca/laws/regulation/060350",
     )
     amending = Regulation.objects.create(
-        reg_id="O. Reg. 315/08",
+        reg_id="315/08",
         edition=edition,
         role=Regulation.Role.AMENDMENT,
         amends=base,
@@ -484,17 +492,33 @@ class TestProvisionJsonLd:
             assert consolidates["legislationIdentifier"] == "O. Reg. 350/06"
             assert consolidates["sameAs"].startswith("https://www.ontario.ca/")
 
-    def test_the_amending_regulation_is_named_only_where_it_applies(self, enacted):
-        """Absent on a version nothing amended, rather than falling back to the
-        base regulation — a guessed citation is a false one.
+    def test_no_version_claims_an_amender_the_vocabulary_cannot_express(
+        self, enacted
+    ):
+        """schema.org defines no inverse of ``legislationChanges``.
+
+        Every change relation it defines runs from the instrument to the text
+        it acts on, so a provision — which is the subject of its own page —
+        cannot name what amended it.  The block used to emit
+        ``legislationChangedBy``, which the Schema Markup Validator rejects as
+        INVALID_PREDICATE.  A property outside the vocabulary is not a partial
+        win: a strict consumer drops the triple and a lenient one invents a
+        term, so the edge was never communicated either way.
+
+        Asserted on v1, the version an amending regulation really produced, so
+        that a future attempt to state the edge from this side has to come back
+        and read the reason first.
         """
-        assert "legislationChangedBy" not in _block(
-            enacted, enacted.versions.get(version=0)
-        )
-        changed_by = _block(enacted, enacted.versions.get(version=1))[
-            "legislationChangedBy"
-        ]
-        assert [r["legislationIdentifier"] for r in changed_by] == ["O. Reg. 315/08"]
+        for version in enacted.versions.all():
+            assert "legislationChangedBy" not in _block(enacted, version)
+        assert amending_regulations(enacted.versions.get(version=1))
+
+    def test_the_amending_regulation_is_named_on_its_own_page(self, enacted):
+        """The edge survives — with the instrument as its subject, which is the
+        only direction schema.org offers."""
+        amending = Regulation.objects.get(reg_id="315/08")
+        block = json.loads(regulation_jsonld(amending, origin="https://x.test"))
+        assert block["legislationChanges"]["legislationIdentifier"] == "O. Reg. 350/06"
 
     def test_the_identifier_is_a_citation_that_stands_alone(self, enacted):
         """The bare provision number names a provision in three editions and in
@@ -638,7 +662,7 @@ class TestRegulationJsonLd:
         )
 
     def test_the_block_names_the_instrument(self, enacted):
-        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        base = Regulation.objects.get(reg_id="350/06")
         block = self._block(base)
         assert block["@type"] == "Legislation"
         assert block["legislationIdentifier"] == "O. Reg. 350/06"
@@ -648,19 +672,19 @@ class TestRegulationJsonLd:
 
     def test_the_url_matches_the_one_the_provision_block_links_to(self, enacted):
         """One node builder, because the two blocks point at each other."""
-        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        base = Regulation.objects.get(reg_id="350/06")
         linked = _block(enacted, enacted.versions.get(version=0))[
             "legislationConsolidates"
         ]["url"]
         assert self._block(base)["url"] == linked
 
     def test_an_amending_regulation_names_what_it_changes(self, enacted):
-        amending = Regulation.objects.get(reg_id="O. Reg. 315/08")
+        amending = Regulation.objects.get(reg_id="315/08")
         changes = self._block(amending)["legislationChanges"]
         assert changes["legislationIdentifier"] == "O. Reg. 350/06"
 
     def test_a_base_regulation_changes_nothing(self, enacted):
-        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        base = Regulation.objects.get(reg_id="350/06")
         assert "legislationChanges" not in self._block(base)
 
     def test_an_instrument_claims_no_currency(self, enacted):
@@ -673,7 +697,7 @@ class TestRegulationJsonLd:
             assert "legislationLegalForce" not in block
 
     def test_a_regulation_page_carries_the_block(self, client, enacted):
-        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        base = Regulation.objects.get(reg_id="350/06")
         body = client.get(f"/regulation/{base.pk}/").content.decode()
         found = re.search(
             r'<script type="application/ld\+json">(.*?)</script>', body, re.DOTALL
@@ -685,7 +709,7 @@ class TestRegulationJsonLd:
         self, client, enacted, settings
     ):
         settings.FREE_TIER_CODE_NAMES = ["OBC_2012"]
-        base = Regulation.objects.get(reg_id="O. Reg. 350/06")
+        base = Regulation.objects.get(reg_id="350/06")
         response = client.get(f"/regulation/{base.pk}/")
         assert response.status_code == 403
         assert "application/ld+json" not in response.content.decode()

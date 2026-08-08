@@ -372,8 +372,10 @@ def amending_regulations(version: CodeEditionProvisionVersion) -> list[Regulatio
     """The instruments that produced this version, in apply order.
 
     Public because the printable provision states the same instruments in its
-    header.  An exhibit and the machine-readable block must name the same
-    regulations, or one of them is wrong.
+    header, and the reading page lists them in the amendment chain.  The
+    exhibit and the page must name the same regulations, or one of them is
+    wrong.  The JSON-LD block does *not* name them — see ``provision_jsonld``
+    for why schema.org cannot state that edge from a provision.
 
     Empty for a base v0, which is correct: nothing amended it.  It is also
     empty when CCM shipped no contributing clause (the base-enactment gap), and
@@ -401,8 +403,11 @@ def _regulation_node(reg: Regulation, origin: str) -> dict[str, Any]:
     """
     node: dict[str, Any] = {
         "@type": "Legislation",
-        "name": reg.reg_id,
-        "legislationIdentifier": reg.reg_id,
+        # ``Regulation.citation``, not the bare ``reg_id``: an identifier that
+        # reads "350/06" identifies nothing to a machine that did not already
+        # know it was a regulation number.
+        "name": reg.citation,
+        "legislationIdentifier": reg.citation,
         "url": f"{origin}{reverse('core:regulation_detail', args=[reg.pk])}",
     }
     if reg.source_url:
@@ -452,7 +457,7 @@ def _citation(provision: CodeEditionProvision, base_reg: Regulation | None) -> s
     if provision.division:
         parts.append(f"of Division {provision.division}")
     if base_reg:
-        parts.append(f"of {base_reg.reg_id}")
+        parts.append(f"of {base_reg.citation}")
     return " ".join(parts)
 
 
@@ -475,8 +480,25 @@ def provision_jsonld(
     * ``legislationConsolidates`` — the base regulation the edition assembles.
       An edition-level fact, so it survives the base-enactment gap and is
       present even on a v0 with no contributing clause.
-    * ``legislationChangedBy`` — the amending regulations that produced *this*
-      version.  Absent on a v0, because nothing changed it.
+
+    The amending regulations are **not** named here, and that is a limit of the
+    vocabulary rather than of the data.  This block used to carry
+    ``legislationChangedBy``; the Schema Markup Validator rejects it as
+    INVALID_PREDICATE, and schema.org's own definitions confirm the term does
+    not exist — ELI's ``changed_by`` was never adopted.  Every change relation
+    schema.org does define (``legislationChanges``, ``legislationAmends``,
+    ``legislationCorrects``, ``legislationRepeals``) runs from the *instrument*
+    to the text it acts on, so the edge can only be stated with the amending
+    regulation as its subject.  Saying it here therefore costs the page its
+    own subject: expressed with ``@reverse`` the validator re-roots the graph
+    onto the amending regulation, and a provision page whose root node is some
+    other document has given away the one thing it exists to state, its
+    ``temporalCoverage``.
+
+    Nothing is lost that the site does not say elsewhere.  Each amending
+    regulation's own page carries ``legislationChanges``, and the provision
+    page still links the chain in its markup.  What is dropped is a triple that
+    no consumer could read, in exchange for a block that validates clean.
 
     ``url`` is the CANONICAL url, not this page.  Every version page of one
     provision must name the same subject, or the chain describes itself as
@@ -520,9 +542,6 @@ def provision_jsonld(
         "legislationConsolidates": (
             _regulation_node(base_reg, origin) if base_reg else None
         ),
-        "legislationChangedBy": [
-            _regulation_node(reg, origin) for reg in amending_regulations(version)
-        ],
         "url": f"{origin}{canonical_path}",
     }
     return _serialize(block)
@@ -558,9 +577,11 @@ def regulation_jsonld(regulation: Regulation, *, origin: str) -> SafeString:
         "legislationDate": adopted.isoformat() if adopted else "",
         "inLanguage": "en",
         "isPartOf": _edition_node(edition, origin),
-        # The mirror of the provision block's ``legislationChangedBy``: there
-        # the version names what changed it, here the instrument names what it
-        # changes.  Absent on a base regulation, which amends nothing.
+        # The one direction schema.org defines: the instrument names what it
+        # changes.  There is no inverse, which is why a provision page cannot
+        # name its amenders — so this is the *only* place the product states
+        # the amendment edge to a machine.  Absent on a base regulation, which
+        # amends nothing.
         "legislationChanges": (
             _regulation_node(regulation.amends, origin) if regulation.amends else None
         ),

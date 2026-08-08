@@ -2,20 +2,46 @@
 Helpers for looking up code metadata stored in the database.
 """
 
+#: The name a reader would use for each code system.
+#:
+#: This lives here rather than in the CCM payload because it is a presentation
+#: choice and not a mapping result: CCM writes one file per edition, so a
+#: code-system fact would repeat in every one of them and a wording change
+#: would need a mapping run.  ``load_edition`` applies this map to the ``Code``
+#: row, which keeps the value in version control instead of in whatever seeded
+#: the row last — the state that left ``OBC`` unnamed while every code the
+#: product does not serve kept its own name.
+#:
+#: Add a code here when its first edition loads.  A code that is absent falls
+#: back to its own short form, which reads as trade shorthand but is never
+#: wrong.
+DISPLAY_NAMES = {
+    "OBC": "Ontario Building Code",
+    "NBC": "National Building Code",
+    "NFC": "National Fire Code",
+    "NPC": "National Plumbing Code",
+    "ABC": "Alberta Building Code",
+}
+
 
 def get_code_display_name(system_code: str) -> str:
     """
     Get the display name for a code system (e.g., OBC -> Ontario Building Code).
+
+    The database row answers first, because ``load_edition`` keeps it equal to
+    ``DISPLAY_NAMES``.  The map answers for a code whose row is unnamed or
+    absent — a code the loader has not reached, and any caller running without
+    a database.
     """
     try:
         from core.models import Code
     except Exception:
-        return system_code
+        return DISPLAY_NAMES.get(system_code, system_code)
 
     system = Code.objects.filter(code=system_code).first()
     if system and system.display_name:
         return system.display_name
-    return system_code
+    return DISPLAY_NAMES.get(system_code, system_code)
 
 
 def edition_display_name(code_name: str) -> str:
