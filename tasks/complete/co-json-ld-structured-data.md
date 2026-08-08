@@ -1,15 +1,22 @@
 # JSON-LD structured data on provision and regulation pages
 
-**Prefix:** `co-` — low priority ops. The card was `po-`, gated on a push to
-prod, because the remaining work runs an external validator against deployed
-URLs and a validator cannot read a working tree. **The gate lifted on
-2026-08-07:** both page kinds now emit the block on production.
+**Status: DONE, 2026-08-08.** The validators ran, found three defects, and all
+three are fixed, deployed and confirmed on production. See **What the
+validators found** for each one, and **What is left** for the post-deploy
+check that closed the card.
 
-**Status: the validators ran on 2026-08-08 and found two defects. Both are
-fixed.** See **What the validators found** at the end. What is left is one
-smoke check after the next deploy, which is why this stays an ops card and
-does not go back to `po-`: the validation itself is done, and a card should
-not describe a finished investigation as pending work.
+It was `po-` first, gated on a push to prod, because the remaining work runs
+an external validator against deployed URLs and a validator cannot read a
+working tree. That gate lifted on 2026-08-07, when both page kinds began
+emitting the block on production. It then ran as `co-`, low-priority ops, for
+one day.
+
+**One judgement is archived unanswered**, at the end of **What is left**: the
+regulation node's `url` names a pk that `load_edition` changes on every
+reload, so a crawler can hold a link a later reload breaks. The page's own
+subject survives, because the block's `url` is the canonical provision URL,
+and `sameAs` already carries the durable ontario.ca link. So this is a quality
+question about one nested node and not a defect in what shipped.
 
 ## What this is, and is not
 
@@ -322,12 +329,27 @@ whatever seeded the row last. The names are a presentation choice, not a
 mapping result, which is why they are not asked of CCM: CCM writes one file
 per edition, and a code-system fact would repeat in every one of them.
 
-## What is left
+## What is left — nothing. The smoke check passed on 2026-08-08.
 
-One smoke check after the next deploy: re-fetch the five URLs and confirm the
-provision pages come back clean and the identifiers read `O. Reg. …`. The
-post-fix block shape was already validated through the `html` parameter and
-returned zero errors, so this confirms the deploy, not the design.
+The three fixes deployed on 2026-08-08 (workflow run `31250653510`), and the
+block a provision page serves now reads:
+
+| | |
+|---|---|
+| `legislationChangedBy` | **absent** — Defect 1 fixed |
+| `legislationIdentifier` | `Article 1.4.1.2. of Division A of O. Reg. 350/06` — Defect 2 fixed |
+| `isPartOf.name` | `Ontario Building Code 2006` — Defect 3 fixed |
+| `legislationConsolidates` | `O. Reg. 350/06` |
+| `temporalCoverage` | absent, and correctly so — v6 is `NotInForce` and governed no day |
+
+The block shape had already validated through the `html` parameter with zero
+errors, so this confirmed the deploy and not the design.
+
+**Defect 3 needed no edition reload.** `get_code_display_name` reads the
+`DISPLAY_NAMES` map when the stored row is empty, and prod's row is empty, so
+the deploy alone changed the page titles from "OBC 2006" to "Ontario Building
+Code 2006". A later reload only makes the stored row agree with what the pages
+already show. This was expected to wait for the reload; it did not.
 
 > ⚠️ **Do not copy a `/regulation/<pk>/` URL out of this card.** `load_edition`
 > replaces every regulation pk on each reload. The examples above were written

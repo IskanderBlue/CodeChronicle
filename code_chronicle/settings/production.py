@@ -82,7 +82,21 @@ def _resolve_runtime_setting(env_key, secret_id=None, default=""):
     return default
 
 
-DATABASE_URL = _get_secret("database_url")
+# Which Secret Manager secret holds the connection string.  The app answers
+# `database_url`, which is the least-privilege `cc_app` role and cannot run DDL.
+# A deploy overrides this to `database_url_owner` for one `migrate` run, because
+# only the owner role can alter a table.
+#
+# It names a *secret*, never a credential.  Passing the owner connection string
+# itself would put a password into a workflow file, an ssh argument, the VM's
+# shell history and a CI log — four places it does not belong, to avoid one
+# indirection.  The container already reads Secret Manager with the VM's service
+# account, so this reuses the channel that serves the app.
+#
+# An unset value keeps the app's own secret, so a container that starts without
+# it behaves exactly as it did before this existed.
+DATABASE_URL_SECRET_ID = os.environ.get("DATABASE_URL_SECRET_ID", "") or "database_url"
+DATABASE_URL = _get_secret(DATABASE_URL_SECRET_ID)
 if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.parse(DATABASE_URL)

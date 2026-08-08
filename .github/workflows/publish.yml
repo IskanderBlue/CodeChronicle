@@ -134,6 +134,29 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      # The running app connects as `cc_app`, which cannot run DDL, and
+      # `scripts/entrypoint.sh` runs `migrate` at every container start.  So a
+      # migration that reaches the new container unapplied stops it before
+      # gunicorn, and Docker restarts it into the same failure — a crash loop,
+      # not a degraded page.  Applying it here, as the owner role and from the
+      # new image, leaves the entrypoint nothing to do.
+      #
+      # This step runs BEFORE the container is replaced on purpose.  A failed
+      # migration fails the job, the deploy step never runs, and the previous
+      # container keeps serving.  The site stays up on old code, which is the
+      # outcome to want when a schema change will not apply.
+      #
+      # No credential appears here.  `DATABASE_URL_SECRET_ID` names a secret,
+      # and the container reads it with the VM's service account, the same way
+      # it reads the app's own connection string.
+      - name: Apply migrations as the database owner
+        run: |
+          gcloud compute ssh "${{ vars.GCP_INSTANCE_NAME }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --zone "${{ vars.GCP_ZONE }}" \
+            --tunnel-through-iap \
+            --command "sudo docker pull ghcr.io/iskanderblue/codechroniclenet:${DEPLOY_TAG} && sudo docker run --rm --network host --env-file /home/codechroniclenet/.env -e DATABASE_URL_SECRET_ID=database_url_owner ghcr.io/iskanderblue/codechroniclenet:${DEPLOY_TAG} python manage.py migrate --noinput"
+
       - name: Deploy application container
         run: |
           gcloud compute ssh "${{ vars.GCP_INSTANCE_NAME }}" \

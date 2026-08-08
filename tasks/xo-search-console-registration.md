@@ -208,4 +208,4 @@ Check monthly, not daily. The four reports that matter:
 ## Related
 
 - `core/sitemaps.py`, `templates/robots.txt`, `core/seo.py`.
-- `tasks/co-json-ld-structured-data.md`.
+- `tasks/complete/co-json-ld-structured-data.md`.
