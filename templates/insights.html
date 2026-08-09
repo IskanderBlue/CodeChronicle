@@ -271,5 +271,57 @@ move" is asked of all of them at once.
     {% endif %}
   </section>
 
+  {% comment %}
+  Off-host backup. Not a traction number, and deliberately not windowed: the
+  question has one answer, and the range control must not be able to make a
+  stale backup read as absent. This is the record; the alarm is the dead-man's
+  switch, because nobody is looking at this page at 07:00.
+  {% endcomment %}
+  <section class="mt-8 border border-rule bg-surface-2 p-5">
+    <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Off-host backup</h2>
+    {% if backup.is_stale %}
+    <p class="mt-1 text-sm text-secondary">No successful off-host backup in the last {{ backup.stale_after_hours }} hours. The daily copy of the irreproducible data is not being made, or is not being recorded.</p>
+    {% else %}
+    <p class="mt-1 text-sm text-ink-2">Encrypted, uploaded to R2, and verified in the bucket after upload.</p>
+    {% endif %}
+
+    <table class="mt-4 w-full text-left">
+      <tbody>
+        <tr class="border-t border-rule-2">
+          <td class="py-1.5 pr-4 font-mono text-[11px] uppercase tracking-[0.04em] text-ink-3">Last succeeded</td>
+          <td class="py-1.5 font-serif text-sm text-ink-2">
+            {% if backup.last_good %}{{ backup.last_good.finished_at|date:"Y-m-d H:i" }}Z{% if backup.age_hours %} · {{ backup.age_hours|floatformat:0 }} hours ago{% endif %}{% else %}never{% endif %}
+          </td>
+        </tr>
+        {% if backup.last_good.size_bytes %}
+        <tr class="border-t border-rule-2">
+          <td class="py-1.5 pr-4 font-mono text-[11px] uppercase tracking-[0.04em] text-ink-3">Size</td>
+          <td class="py-1.5 font-serif text-sm text-ink-2">{{ backup.last_good.size_bytes|intcomma }} bytes</td>
+        </tr>
+        <tr class="border-t border-rule-2">
+          <td class="py-1.5 pr-4 font-mono text-[11px] uppercase tracking-[0.04em] text-ink-3">Object</td>
+          <td class="py-1.5 font-mono text-[11px] break-all text-ink-3">{{ backup.last_good.location }}</td>
+        </tr>
+        {% endif %}
+        {% if backup.last_attempt %}
+        <tr class="border-t border-rule-2">
+          <td class="py-1.5 pr-4 font-mono text-[11px] uppercase tracking-[0.04em] text-ink-3">Newer attempt</td>
+          <td class="py-1.5 font-serif text-sm text-secondary">
+            {{ backup.last_attempt.started_at|date:"Y-m-d H:i" }}Z failed{% if backup.last_attempt.error %} — {{ backup.last_attempt.error|truncatechars:200 }}{% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% if backup.failures_recent %}
+        <tr class="border-t border-rule-2">
+          <td class="py-1.5 pr-4 font-mono text-[11px] uppercase tracking-[0.04em] text-ink-3">Failed runs</td>
+          <td class="py-1.5 font-serif text-sm text-ink-2">{{ backup.failures_recent|intcomma }} all time</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <p class="mt-3 font-mono text-[10px] leading-relaxed tracking-[0.04em] text-ink-3">A recent backup is not a restorable one. Only the restore test proves that — see docs/security/disaster-recovery-plan.md §6.</p>
+  </section>
+
 </div>
 {% endblock %}

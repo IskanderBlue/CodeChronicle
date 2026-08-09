@@ -14,11 +14,12 @@ from django.utils import timezone
 
 from core.insights import (
     CHART_HEIGHT,
+    backup_state,
     collect_metrics,
     conversion_rates,
     top_queries,
 )
-from core.models import EngagementEvent, SearchHistory, User
+from core.models import BackupRun, EngagementEvent, SearchHistory, User
 
 
 def _metric(metrics, key):
@@ -173,6 +174,51 @@ class TestTopQueries:
         rows = top_queries(days=30)
         assert rows[0] == {"query": "fire", "count": 2}
         assert rows[1] == {"query": "stairs", "count": 1}
+
+
+@pytest.mark.django_db
+class TestBackupState:
+    """What "the backup is fine" is allowed to mean on this page.
+
+    Each test here is a way the panel could read healthy while no restorable
+    off-host copy exists.  That is the only failure mode worth a test: a panel
+    that wrongly says *broken* costs somebody five minutes.
+    """
+
+    def _run(self, *, hours_ago: float, succeeded=True, kind=BackupRun.Kind.UPLOAD):
+        when = timezone.now() - timedelta(hours=hours_ago)
+        run = BackupRun.objects.create(kind=kind, succeeded=succeeded)
+        # started_at is auto_now_add, so it needs a second write to move.
+        BackupRun.objects.filter(pk=run.pk).update(started_at=when, finished_at=when)
+        return BackupRun.objects.get(pk=run.pk)
+
+    def test_a_recent_upload_is_not_stale(self):
+        self._run(hours_ago=2)
+        assert not backup_state()["is_stale"]
+
+    def test_one_late_run_is_tolerated_but_two_misses_are_not(self):
+        """A deploy replacing the container while the timer fires costs a day."""
+        self._run(hours_ago=25)
+        assert not backup_state()["is_stale"]
+        BackupRun.objects.all().delete()
+        self._run(hours_ago=27)
+        assert backup_state()["is_stale"]
+
+    def test_a_failed_run_does_not_refresh_the_clock(self):
+        self._run(hours_ago=40)
+        self._run(hours_ago=1, succeeded=False)
+        assert backup_state()["is_stale"]
+        assert backup_state()["last_attempt"] is not None
+
+    def test_a_local_drill_does_not_refresh_the_clock(self):
+        """Otherwise a run of drills hides the absence of an off-host copy."""
+        self._run(hours_ago=1, kind=BackupRun.Kind.LOCAL)
+        assert backup_state()["is_stale"]
+
+    def test_a_healthy_state_shows_one_timestamp(self):
+        """No `last_attempt` when it is the same row, or it reads as two backups."""
+        self._run(hours_ago=1)
+        assert backup_state()["last_attempt"] is None
 
 
 @pytest.mark.django_db

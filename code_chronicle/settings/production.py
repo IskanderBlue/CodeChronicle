@@ -192,6 +192,7 @@ R2_ENDPOINT_URL = _resolve_runtime_setting("R2_ENDPOINT_URL") or (
 )
 R2_BACKUP_BUCKET = _resolve_runtime_setting("R2_BACKUP_BUCKET")
 BACKUP_AGE_RECIPIENT = _resolve_runtime_setting("BACKUP_AGE_RECIPIENT")
+BACKUP_HEALTHCHECK_URL = _resolve_runtime_setting("BACKUP_HEALTHCHECK_URL")
 
 # Hashed static filenames for cache busting (e.g. tailwind.a1b2c3d4.css)
 STORAGES = {

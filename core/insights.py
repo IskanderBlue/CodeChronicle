@@ -31,6 +31,7 @@ from djstripe.models import Subscription
 
 from core.models import (
     AuthEvent,
+    BackupRun,
     EditionRequest,
     EngagementEvent,
     ProvisionFeedback,
@@ -554,6 +555,52 @@ def export_counts(days: int = DEFAULT_WINDOW_DAYS) -> list[dict[str, Any]]:
             ]
         rows.append(row)
     return rows
+
+
+#: How old the newest good off-host backup may be before the panel calls it
+#: stale.  The schedule is daily, so 26 hours allows one late run — a deploy
+#: replacing the container while the timer fires costs a day — without letting
+#: two consecutive misses pass as healthy.
+BACKUP_STALE_AFTER_HOURS = 26
+
+
+def backup_state() -> dict[str, Any]:
+    """When the off-host backup last worked, and whether that is recent enough.
+
+    This is the record, not the alarm.  Nobody watches a dashboard at 07:00, so
+    the alarm is the dead-man's switch that pings from the backup host.  What
+    this answers is the question you have *after* something goes wrong: when did
+    it last work, how big was it, and what did the failure say.
+
+    Age is measured from the newest **succeeded upload**.  Three exclusions,
+    each of which would otherwise let the panel read healthy while no off-host
+    copy exists:
+
+    * a failed run is not a backup, however recent its row;
+    * a ``--dest`` drill uploads nothing, so a run of drills must not refresh
+      the clock;
+    * an empty table reads as stale, not as unknown — a backup that has never
+      run and a backup whose history was lost are the same situation.
+    """
+    uploads = BackupRun.objects.filter(kind=BackupRun.Kind.UPLOAD)
+    newest_good = uploads.filter(succeeded=True).order_by("-started_at").first()
+    newest_any = BackupRun.objects.order_by("-started_at").first()
+
+    age_hours: float | None = None
+    if newest_good and newest_good.finished_at:
+        delta = timezone.now() - newest_good.finished_at
+        age_hours = delta.total_seconds() / 3600
+
+    return {
+        "last_good": newest_good,
+        # Shown only when it is not the same row, so a healthy panel does not
+        # carry a second timestamp that reads like a second backup.
+        "last_attempt": newest_any if newest_any != newest_good else None,
+        "age_hours": age_hours,
+        "stale_after_hours": BACKUP_STALE_AFTER_HOURS,
+        "is_stale": age_hours is None or age_hours > BACKUP_STALE_AFTER_HOURS,
+        "failures_recent": uploads.filter(succeeded=False).count(),
+    }
 
 
 def top_queries(limit: int = 15, days: int = DEFAULT_WINDOW_DAYS) -> list[dict[str, Any]]:

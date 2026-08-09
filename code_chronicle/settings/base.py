@@ -154,6 +154,13 @@ R2_ENDPOINT_URL = os.environ.get("R2_ENDPOINT_URL", "") or (
 R2_BACKUP_BUCKET = os.environ.get("R2_BACKUP_BUCKET", "")
 BACKUP_AGE_RECIPIENT = os.environ.get("BACKUP_AGE_RECIPIENT", "")
 
+# Dead-man's switch.  The backup pings this URL when it finishes, and the
+# service raises the alarm when a ping does not arrive.  That polarity is the
+# point: a check that lives on the backup host cannot tell "the run failed"
+# from "the host is gone", and the second failure is the one that matters.
+# Unset means no ping, which is right for a developer machine.
+BACKUP_HEALTHCHECK_URL = os.environ.get("BACKUP_HEALTHCHECK_URL", "")
+
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

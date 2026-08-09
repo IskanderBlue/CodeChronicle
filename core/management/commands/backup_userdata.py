@@ -14,7 +14,18 @@ cannot read its own backups) → upload to the R2 backups bucket → delete loca
 temp files.  Every step fails loudly; an unencrypted PII dump is never uploaded
 unless ``--allow-unencrypted`` is passed explicitly.
 
-Schedule daily/weekly (cron on the VM, or a scheduled job).  Restore: see the
+Because it runs unattended, every failure here is silent by default.  Three
+things answer that, and they are deliberately not the same thing:
+
+* the upload is **read back** with ``head_object`` and its size checked, so a
+  PUT that did not land cannot report success;
+* each run writes a ``BackupRun`` row, success or failure, which ``/insights/``
+  reads for freshness — that is the *record*;
+* on finishing, the run pings ``BACKUP_HEALTHCHECK_URL`` — that is the *alarm*,
+  and it lives off this host so it still fires when this host does not.
+
+Schedule daily (a systemd timer on the VM — Container-Optimized OS has no
+cron).  Restore: see the
 recovery plan §7 — ``pg_restore`` the decrypted dump into a fresh database, then
 re-run ``load_edition`` to refill the corpus.
 
@@ -28,6 +39,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -35,8 +48,16 @@ from typing import Any
 from coloured_logger import Logger
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.utils.timezone import now as timezone_now
+
+from core.models import BackupRun
 
 logger = Logger(__name__)
+
+#: How long to wait on the dead-man's-switch ping.  Short on purpose: the ping
+#: is a notification, and a slow notifier must never hold up or fail a backup
+#: that has already succeeded.
+PING_TIMEOUT_SECONDS = 10
 
 #: Reproducible-from-CCM corpus tables — we keep their schema in the dump but
 #: skip their (bulky) rows.  Single source of truth for the exclude-list; the
@@ -107,6 +128,32 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
+        """Record the run, then ping, whichever way it goes.
+
+        The record and the ping both have to happen on the failure path too.  A
+        row written only on success cannot distinguish a broken backup from one
+        that never started, and a ping sent only on success makes the alarm
+        wait for its timeout before saying what the command already knew.
+        """
+        run = BackupRun.objects.create(
+            kind=BackupRun.Kind.LOCAL if options["dest"] else BackupRun.Kind.UPLOAD
+        )
+        try:
+            location, size = self._run_backup(**options)
+        except Exception as exc:
+            run.finished_at = timezone_now()
+            run.error = str(exc)[:4000]
+            run.save(update_fields=["finished_at", "error"])
+            self._ping(ok=False, detail=str(exc))
+            raise
+        run.finished_at = timezone_now()
+        run.succeeded = True
+        run.location = location
+        run.size_bytes = size
+        run.save(update_fields=["finished_at", "succeeded", "location", "size_bytes"])
+        self._ping(ok=True, detail=f"{location} ({size} bytes)")
+
+    def _run_backup(self, **options: Any) -> tuple[str, int]:
         encrypt = not options["allow_unencrypted"]
         recipient = getattr(settings, "BACKUP_AGE_RECIPIENT", "") or ""
         if encrypt and not recipient:
@@ -134,13 +181,17 @@ class Command(BaseCommand):
                 upload_path, upload_name = enc_path, enc_path.name
 
             if options["dest"]:
-                self._save_local(upload_path, Path(options["dest"]).expanduser(), upload_name)
+                written = self._save_local(
+                    upload_path, Path(options["dest"]).expanduser(), upload_name
+                )
+                location, size = str(written), written.stat().st_size
             else:
-                self._upload_r2(upload_path, upload_name)
+                location, size = self._upload_r2(upload_path, upload_name)
                 if options["keep"] is not None:
                     self._prune_r2(keep=options["keep"])
 
         logger.info("backup_userdata: done (%s)", upload_name)
+        return location, size
 
     # -- steps ---------------------------------------------------------------
 
@@ -181,16 +232,63 @@ class Command(BaseCommand):
         if not dst.exists() or dst.stat().st_size == 0:
             raise CommandError("age produced no output.")
 
-    def _save_local(self, src: Path, dest_dir: Path, name: str) -> None:
+    def _save_local(self, src: Path, dest_dir: Path, name: str) -> Path:
         dest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest_dir / name)
-        logger.info("backup written locally: %s", dest_dir / name)
+        written = dest_dir / name
+        shutil.copy2(src, written)
+        logger.info("backup written locally: %s", written)
+        return written
 
-    def _upload_r2(self, src: Path, name: str) -> None:
+    def _upload_r2(self, src: Path, name: str) -> tuple[str, int]:
+        """Upload, then read the object back and check it.
+
+        `upload_file` returning is not evidence the object exists.  It logs
+        before it calls R2, and a multipart upload that completes with a
+        truncated body still returns.  A `head_object` afterwards is the first
+        statement that the bytes are there and are the right number of them —
+        without it a silent failure reports success, and the daily backup looks
+        healthy until the day somebody needs it.
+        """
         client, bucket = self._r2_client()
         key = f"db-backups/{name}"
-        logger.info("uploading → r2://%s/%s", bucket, key)
+        expected = src.stat().st_size
+        logger.info("uploading → r2://%s/%s (%d bytes)", bucket, key, expected)
         client.upload_file(str(src), bucket, key)
+
+        try:
+            head = client.head_object(Bucket=bucket, Key=key)
+        except Exception as exc:
+            raise CommandError(
+                f"upload reported success but r2://{bucket}/{key} cannot be read back: {exc}"
+            ) from exc
+        stored = int(head.get("ContentLength", -1))
+        if stored != expected:
+            raise CommandError(
+                f"r2://{bucket}/{key} is {stored} bytes, expected {expected}. "
+                "The stored backup is not the one that was made."
+            )
+        logger.info("verified in the bucket: %s (%d bytes)", key, stored)
+        return f"r2://{bucket}/{key}", stored
+
+    def _ping(self, *, ok: bool, detail: str) -> None:
+        """Tell the dead-man's switch the run finished, and how.
+
+        Never raises.  A backup that succeeded must not be reported as failed
+        because the notifier was unreachable — and the switch handles that case
+        already: a missing ping is exactly what it alarms on.
+        """
+        url = getattr(settings, "BACKUP_HEALTHCHECK_URL", "") or ""
+        if not url:
+            return
+        target = url.rstrip("/") + ("" if ok else "/fail")
+        try:
+            request = urllib.request.Request(
+                target, data=detail.encode("utf-8")[:10000], method="POST"
+            )
+            with urllib.request.urlopen(request, timeout=PING_TIMEOUT_SECONDS) as resp:
+                logger.info("healthcheck ping %s → HTTP %s", "ok" if ok else "fail", resp.status)
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            logger.warning("healthcheck ping failed (the backup itself is unaffected): %s", exc)
 
     def _prune_r2(self, *, keep: int) -> None:
         client, bucket = self._r2_client()

@@ -632,6 +632,61 @@ class AuthEvent(models.Model):
         return f"{who}: {self.event_type}"
 
 
+class BackupRun(models.Model):
+    """One row per ``manage.py backup_userdata`` run, successful or not.
+
+    The backup runs unattended on a timer, and a backup nobody looks at is a
+    backup nobody knows is broken.  Two failures are possible and they need
+    different detectors: a run that *fails* exits non-zero, and a run that
+    *never happens* produces no signal at all.  A row here answers the first
+    directly and the second by its absence — ``/insights/`` reads the newest
+    row's age, so silence shows as a stale timestamp rather than as nothing.
+
+    This is the record, not the alarm.  The alarm is the dead-man's switch
+    (``BACKUP_HEALTHCHECK_URL``), which lives off this machine and so still
+    fires when the database this table is in cannot be reached at all.
+
+    ``kind`` matters: a ``--dest`` drill writes a local file and uploads
+    nothing, so counting it as a backup would let a run of drills hide the fact
+    that no off-host copy exists.
+
+    Rows are tiny and this table is *not* in ``CORPUS_TABLES``, so the backup
+    backs up its own history.
+    """
+
+    # Auto pk, plugin-only — declared for Pyright.
+    id: int
+
+    class Kind(models.TextChoices):
+        UPLOAD = "upload", "Uploaded off-host"
+        LOCAL = "local", "Local drill"
+
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.UPLOAD)
+    succeeded = models.BooleanField(default=False)
+    # The R2 key, or the local path for a drill.  Text, never a reference to
+    # anything: the object it names is deliberately outside this database.
+    location = models.TextField(blank=True, default="")
+    size_bytes = models.BigIntegerField(null=True, blank=True)
+    # Empty on success.  Holds the CommandError text otherwise, which is what
+    # tells you whether pg_dump, age or the upload was the step that broke.
+    error = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "backup_runs"
+        verbose_name = "Backup Run"
+        verbose_name_plural = "Backup Runs"
+        ordering = ["-started_at"]
+        indexes = [
+            models.Index(fields=["kind", "succeeded", "-started_at"]),
+        ]
+
+    def __str__(self):
+        state = "ok" if self.succeeded else "FAILED"
+        return f"{self.started_at:%Y-%m-%d %H:%M}Z {self.kind} {state}"
+
+
 class Code(models.Model):
     """
     A building code system (e.g., OBC, NBC).

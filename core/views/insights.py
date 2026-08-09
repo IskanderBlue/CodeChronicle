@@ -19,6 +19,7 @@ from core.insights import (
     CHART_HEIGHT,
     CHART_WIDTH,
     DEFAULT_WINDOW_DAYS,
+    backup_state,
     collect_metrics,
     conversion_rates,
     edition_requests,
@@ -60,6 +61,10 @@ def insights(request: HttpRequest) -> HttpResponse:
         # Which of the four exports readers actually take. The table decides
         # what survives the sixty-day review.
         "exports": export_counts(days=days),
+        # Not a traction number, and not windowed: "when did the off-host
+        # backup last work" has one answer, and the range control must not be
+        # able to make a stale backup look absent.
+        "backup": backup_state(),
         "requests": edition_requests(days=days),
         "reports": feedback_reports(days=days),
         # The status control renders one button per state, so the template

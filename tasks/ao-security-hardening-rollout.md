@@ -11,15 +11,16 @@ already exists and is tested.
 
 ## Where this stands, 2026-08-08
 
-**B1 is done, 2026-08-08. The next action is B2, at the Cloudflare dashboard.**
+**B1 to B7 and B9 are done. The next action is a deploy, then B8. Move this
+card to `tasks/complete/` once B1–B9 are done.**
 
 | | |
 |---|---|
-| **Done** | A1, A2, A3, A4, A6 — Part A entire — and B1 and B5 |
-| **Ready now** | **B2** and **B3** (Cloudflare, both yours to run) |
-| **Waiting on B2** | B4, and on the settings fix under it reaching prod |
-| **Waiting on B4** | B6, and B7 and B8 behind it |
-| **Rehearsed, not run for real** | B6 and B8's mechanics — see the notes under each |
+| **Done** | A1, A2, A3, A4, A6 — Part A entire — and B1 to B6 |
+| **Done** (cont.) | B7 — the timer is installed, enabled and proven; B9's check and bundle key |
+| **Waiting on a deploy** | B9's code — migration `0053` and the settings that read the ping URL |
+| **After that** | B8, the restore test — the last step |
+| **Rehearsed, not run for real** | B8's mechanics — see the note under it |
 
 A5, the Neon IP allow-list, is no longer here. It needs a paid tier and could
 not be finished, so it moved to `tasks/maybe/neon-ip-allow-list.md` rather than
@@ -237,7 +238,30 @@ Confirm it in the container, which is the only place that proves it:
 gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 --tunnel-through-iap --command="sudo docker exec codechroniclenet-web sh -c 'pg_dump --version; age --version'"
 ```
 
-### B6. Smoke-test the pipeline, then a full run [PASTE]
+### B6. Smoke-test the pipeline, then a full run — **DONE on prod 2026-08-09** [PASTE]
+
+Both forms ran against production, on image `4b8fcc6`:
+
+| | |
+|---|---|
+| Local-only | `cc-userdata-20260809T044545Z.dump.age`, 979,114 bytes, exit 0 |
+| Full run | uploaded to `r2://codechronicle-backups-prod/db-backups/` |
+| Read back from the bucket | 1 object, 979,171 bytes, class STANDARD |
+| Recipient | `age1vg86td83…`, out of `app_runtime_secrets` v6 |
+| 18 corpus tables excluded | the original 14 plus the four the rehearsal found |
+
+**List the bucket afterwards; do not trust the exit code.** The command logs
+"uploading" before it calls R2, so its own success line proves the code path
+ran, not that the object exists. A separate `list_objects_v2` is the first
+statement that the bytes are there, and it also proves the B2 token can read as
+well as write, which B8 needs.
+
+The recipient in that log line is the other reason to read the output: it exists
+only in bundle v6, so seeing it proves the settings resolution works on prod and
+not only in the tests.
+
+⚠️ **The local-only form leaves user data in the container's `/tmp`.** Remove it
+after the run. A deploy clears it, but not before then.
 ```powershell
 # local-only (no upload) — proves pg_dump + age work end to end:
 gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 --tunnel-through-iap --command="sudo docker exec codechroniclenet-web python manage.py backup_userdata --dest /tmp"
@@ -271,12 +295,124 @@ Confirm the object appears under `db-backups/` in the bucket.
 > with their schema and no rows, so `load_edition` and `load_consolidations` must run
 > before the site is usable. That is by design — see gotcha 4.
 
-### B7. Schedule it (daily) [PASTE — run on the VM]
-SSH to the VM (`gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 --tunnel-through-iap`) then:
+### B7. Schedule it (daily) — **DONE on prod 2026-08-09** [PASTE — run on the VM]
+
+Installed and enabled: `cc-backup.timer` next fires 07:02:10Z (the randomized
+delay), and `cc-backup.service` was triggered once by hand to prove it —
+`Result=success`, `ExecMainStatus=0`, and the journal shows the full pipeline
+through the upload. **Run the unit once after you install a timer.** An
+untested schedule is a schedule that fails at 07:00, to nobody.
+
+The units are also in `CodeChronicleTerraform/modules/compute/startup.sh`
+(uncommitted there as of this writing), so a rebuild keeps them.
+
+> **Not cron.** The VM runs Container-Optimized OS, which ships no `crontab` for
+> any user, including root. The scheduling primitive is a **systemd timer**, and
+> `/etc/systemd/system` is writable and survives a reboot. A user crontab would
+> also have tied the backup to one person's login — the objection that made an
+> Account API token right in B2.
+
+SSH to the VM, then:
+
 ```bash
-( crontab -l 2>/dev/null; echo "0 7 * * * docker exec codechroniclenet-web python manage.py backup_userdata >> /var/log/cc-backup.log 2>&1" ) | crontab -
+sudo tee /etc/systemd/system/cc-backup.service >/dev/null <<'UNIT'
+[Unit]
+Description=CodeChronicle off-host encrypted user-data backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec codechroniclenet-web python manage.py backup_userdata
+UNIT
+
+sudo tee /etc/systemd/system/cc-backup.timer >/dev/null <<'UNIT'
+[Unit]
+Description=Run the CodeChronicle backup daily
+
+[Timer]
+OnCalendar=*-*-* 07:00:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now cc-backup.timer
+systemctl list-timers cc-backup.timer --no-pager
 ```
-(07:00 UTC daily. Adjust as you like.)
+
+Output goes to journald, not to a log file — on COS that is the durable place:
+
+```bash
+journalctl -u cc-backup.service -n 50 --no-pager
+```
+
+`Persistent=true` runs a schedule missed while the VM was down at the next boot.
+It does **not** retry within the same day, so a deploy that replaces the
+container while the timer fires costs one backup. B9's alarm tolerates that; two
+consecutive misses it does not.
+
+⚠️ **This is drift until it is in Terraform.** `startup.sh` in
+`CodeChronicleTerraform/modules/compute/` rebuilds this VM, the same way it owns
+`nginx.conf`. Add the same two units there, or a rebuild silently loses the
+schedule — and a lost schedule is the exact failure B9 exists to catch.
+
+### B9. Watch it — **check created and in the bundle, 2026-08-09** (added 2026-08-09)
+
+`BACKUP_HEALTHCHECK_URL` is in `app_runtime_secrets` **v7**, and the URL was
+validated with one live ping (HTTP 200; a wrong UUID answers 404, which would
+otherwise mean an alarm that never fires and never says so). It stays inert
+until the code that reads it deploys.
+
+A backup nobody looks at is a backup nobody knows is broken. Two failures are
+possible and they need different detectors:
+
+| Failure | Signal | What catches it |
+|---|---|---|
+| the run fails | non-zero exit, journald | the `BackupRun` row, and the alarm's `/fail` ping |
+| the run never happens | **nothing at all** | only the alarm, because it lives off this host |
+
+The second is the dangerous one: silence and health look identical from the box.
+Three things shipped against it, and they are not interchangeable.
+
+**1. The upload is read back.** `upload_file` returning is not evidence the
+object is there. The command now calls `head_object` and compares the size,
+and fails if either is wrong. This removes a false-positive source *underneath*
+whatever monitor sits on top.
+
+**2. The record — a `BackupRun` row per run**, success or failure, shown on
+`/insights/` with its age, size, object key and error text. Freshness is
+measured from the newest **succeeded upload**: a failed run and a `--dest` drill
+must not refresh the clock, and an empty table reads as stale rather than as
+unknown. Stale after **26 hours** — one late run tolerated, two not.
+
+**3. The alarm — a dead-man's switch.** Set `BACKUP_HEALTHCHECK_URL` in the
+bundle. The run POSTs to it on success and to `<url>/fail` on failure, and the
+service raises the alarm when a ping does not arrive. That polarity is the whole
+point: you do not have to be right about which way it broke. A ping that fails
+never fails the backup — the switch already alarms on silence, and reporting a
+good backup as failed inverts the alarm.
+
+To set it up:
+
+1. Create a check at healthchecks.io (free tier). Period **1 day**, grace
+   **2 hours**.
+2. Copy its ping URL, then add one key to the bundle and restart:
+
+```powershell
+# same procedure as B4 — download, add "BACKUP_HEALTHCHECK_URL": "https://hc-ping.com/…", upload
+gcloud secrets versions access latest --secret=app_runtime_secrets --project=codechronicle-487104 > bundle.json
+gcloud secrets versions add app_runtime_secrets --data-file=bundle.json --project=codechronicle-487104
+del bundle.json
+gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 --tunnel-through-iap --command="sudo docker restart codechroniclenet-web"
+```
+
+**What none of this proves.** A 979 KB encrypted object arriving daily could be
+garbage, and every check above would call it healthy. Freshness is not
+restorability. Only B8 answers that, which is why B8 stays.
 
 ### B8. Periodically test a restore [PASTE]
 Decrypt with the **private** key (on your machine), then restore into a scratch DB or a
