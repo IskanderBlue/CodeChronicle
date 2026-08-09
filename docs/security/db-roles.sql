@@ -1,5 +1,5 @@
 -- CodeChronicle — least-privilege database roles
--- See tasks/ao-security-hardening-rollout.md, Part A. Run ONCE.
+-- See tasks/complete/security-hardening-rollout.md, Part A. Run ONCE.
 --
 -- THE DATABASE IS `codechroniclenet`, NOT `neondb`. The Neon project carries
 -- both; `neondb` is the empty default Neon ships and holds none of this

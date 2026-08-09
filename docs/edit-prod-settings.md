@@ -30,7 +30,7 @@ then restart.
 # Migrations, after the app runs as `cc_app`
 
 Read this before you rotate `database_url` to the `cc_app` role
-(`tasks/ao-security-hardening-rollout.md`, step A3). Until you do, the app runs
+(`tasks/complete/security-hardening-rollout.md`, step A3). Until you do, the app runs
 as `codechroniclenet_app`, which owns every table, and nothing here applies.
 
 ## Warning

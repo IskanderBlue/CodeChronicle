@@ -5,7 +5,7 @@ wrong value instead of raising, and the deploy or the backup reports success.
 
 ## Which secret holds the DSN
 
-`tasks/ao-security-hardening-rollout.md` A3 pointed the app at `cc_app`, which
+`tasks/complete/security-hardening-rollout.md` A3 pointed the app at `cc_app`, which
 cannot run DDL.  A4 applies each migration as the owner role instead, and the
 deploy does that by naming a *different* Secret Manager secret for one
 `migrate` run rather than by passing a connection string around.

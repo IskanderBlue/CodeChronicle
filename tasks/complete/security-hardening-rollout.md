@@ -1,93 +1,192 @@
-# Security hardening rollout — operator checklist
+# Security hardening rollout — operator record
 
-**Status: Part A is DONE. Part B, the off-host backups, is what remains.**
-One-time rollout. Implements the off-host backups in
-`docs/security/disaster-recovery-plan.md` §7 and the DB lockdown in
-`docs/security/breach-response-plan.md` §8. The standing procedures live in
-those two permanent docs; this file is the finite set of setup actions. **Move
-it to `tasks/complete/` once B1–B8 are done.** The supporting code
-(`core/auth_audit.py`, `manage.py backup_userdata`, `docs/security/db-roles.sql`)
-already exists and is tested.
+**Complete. 2026-08-07 to 2026-08-09.** Part A locked down database access
+(`docs/security/breach-response-plan.md` §8). Part B added off-host encrypted
+backups (`docs/security/disaster-recovery-plan.md` §7).
 
-## Where this stands, 2026-08-08
+This card is the record of what changed on production and how to undo it. The
+**standing procedures live in the two permanent documents** and in
+`docs/edit-prod-settings.md`; nothing here needs to be read to operate the
+system. A5, the Neon IP allow-list, needs a paid tier and moved to
+`tasks/maybe/neon-ip-allow-list.md`.
 
-**B1 to B7 and B9 are done. The next action is a deploy, then B8. Move this
-card to `tasks/complete/` once B1–B9 are done.**
+## What is true on production now
 
 | | |
 |---|---|
-| **Done** | A1, A2, A3, A4, A6 — Part A entire — and B1 to B6 |
-| **Done** (cont.) | B7 — the timer is installed, enabled and proven; B9's check and bundle key |
-| **Waiting on a deploy** | B9's code — migration `0053` and the settings that read the ping URL |
-| **After that** | B8, the restore test — the last step |
-| **Rehearsed, not run for real** | B8's mechanics — see the note under it |
+| The app connects as `cc_app` | SELECT/INSERT/UPDATE/DELETE and sequence USAGE, nothing else |
+| `cc_app` cannot | run DDL, TRUNCATE any table, or CREATE in `public` |
+| `cc_ro` exists | SELECT only, for a read-only session |
+| Neither role inherits | no path to `neon_superuser` |
+| Migrations run as the owner | in `publish.yml`, before the container is replaced |
+| TLS is required | the server refuses `sslmode=disable` |
+| A backup runs daily | 07:00 UTC, `cc-backup.timer`, encrypted to an age key, uploaded to R2 |
+| Each upload is read back | `head_object` plus a size comparison, or the run fails |
+| Each run is recorded | a `BackupRun` row, shown on `/insights/` with its age |
+| Silence raises an alarm | a healthchecks.io dead-man's switch |
+| The backup credential cannot delete | an R2 bucket lock, whole-bucket — verified 2026-08-09 |
+| Objects expire after 90 days | an R2 lifecycle rule, which the lock outranks |
+| The host's PITR reaches 6 hours | measured against the server, not a config value — verified 2026-08-09 |
 
-A5, the Neon IP allow-list, is no longer here. It needs a paid tier and could
-not be finished, so it moved to `tasks/maybe/neon-ip-allow-list.md` rather than
-sit in this card as a permanently blocked line.
+Verified across the whole schema, not one table: of 104 tables, `cc_app` is
+missing a needed privilege on **0** and holds TRUNCATE on **0**; `cc_ro` can
+UPDATE **0**; `cc_app` has USAGE on all 100 sequences.
 
-## Part A — Database access lockdown (§8). DONE.
+## Fixed values
 
-The database is locked down. What is true on production now:
-
-| | |
+| Thing | Value |
 |---|---|
-| **The app connects as `cc_app`** | least privilege — SELECT/INSERT/UPDATE/DELETE and sequence USAGE, and nothing else |
-| **`cc_app` cannot** | run DDL, TRUNCATE any table, or CREATE in `public` |
-| **`cc_ro` exists** | SELECT only, for a read-only session |
-| **Neither role inherits anything** | no path to `neon_superuser` |
-| **Migrations run as the owner** | automatically, in `publish.yml`, before the container is replaced |
-| **TLS is required** | the server refuses `sslmode=disable` |
+| Neon project | `codechroniclenet` · id `restless-cell-46809886` · **db `codechroniclenet`** · PG 17 |
+| App role | `cc_app`, on the **pooler** host `ep-shiny-boat-aivobvoc-pooler.c-4.us-east-1.aws.neon.tech` |
+| DB owner role | `codechroniclenet_app`, on the **direct** host `ep-shiny-boat-aivobvoc.c-4.us-east-1.aws.neon.tech` |
+| GCP | project `codechronicle-487104` · VM `codechroniclenet-vm` · zone `us-central1-a` · container `codechroniclenet-web` |
+| Secrets | `app_runtime_secrets` (bundle), `database_url` (`cc_app`), `database_url_owner` (migrations), `cf_origin_cert`, `cf_origin_key` — **6 active versions**, the free ceiling |
+| Cloudflare R2 | account `1606e553e771e417aab1107b4f3b7836` · assets `codechronicle-assets-prod` · backups `codechronicle-backups-prod` |
+| PITR window | **6 hours** (`history_retention_seconds=21600`) — the reason Part B exists |
 
-Verified across the whole schema rather than one table, and re-verified after
-the 2026-08-08 deploy: of 104 tables, `cc_app` is missing a needed privilege on
-**0** and holds TRUNCATE on **0**; `cc_ro` can UPDATE **0**; `cc_app` has USAGE
-on all 100 sequences.
+## How to undo it
 
-### What each step did
+**Part A — put the app back on the owner role.** A retreat, not a fix: find
+which grant `cc_app` is missing before you leave it there. Rebuild the string
+from `database_url_owner`, because the pre-A3 `database_url` version 1 is
+destroyed (it was byte-identical — same sha256 — so nothing was lost).
 
-- **A1** (2026-08-07) created the roles from `docs/security/db-roles.sql`,
-  after a full drill on `drill-db-roles-a1`, a branch of prod.
-- **A2** built the two connection strings.
-- **A3** (2026-08-08) rotated `database_url` to the `cc_app` string and
-  restarted. `database_url` version 2 was written at 10:37:08Z, the container
-  restarted at 10:37:41Z, and `cc_app` held connections from 10:37:52Z.
-- **A4** (2026-08-08) moved the migrate-as-owner rule out of prose and into
-  `publish.yml`. Full procedure: `docs/edit-prod-settings.md`.
-- **A6** (2026-08-07) confirmed TLS by being refused without it.
+```powershell
+$tmp = "$env:TEMP\dburl_rollback.txt"
+$owner = gcloud secrets versions access latest --secret=database_url_owner --project=codechronicle-487104
+[IO.File]::WriteAllText($tmp, $owner)
+gcloud secrets versions add database_url --data-file=$tmp --project=codechronicle-487104
+Remove-Item $tmp
+gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 --tunnel-through-iap --command="sudo docker restart codechroniclenet-web"
+```
 
-### Five things Part A learned that are easy to undo by accident
+**Part B — the bundle.** `app_runtime_secrets` **v7** carries the backup keys
+(five from B4, plus `BACKUP_HEALTHCHECK_URL`). **v6** is the rollback, and holds
+the five without the healthcheck URL. Add the old version as a new one and
+restart; never edit in place. Full procedure: `docs/edit-prod-settings.md`.
 
-1. **`cc_app` cannot run DDL, and `scripts/entrypoint.sh` runs `migrate` at
-   every container start.** A migration that reaches a starting container
-   unapplied stops it before gunicorn, and Docker restarts it into the same
-   failure — a crash loop, not a degraded page. The `publish.yml` step applies
-   each migration as the owner first, from the new image, before the container
-   is replaced. **Do not remove that step, and do not reorder it after the
-   deploy step.**
-2. **The migrate step names a secret, never a credential.**
-   `DATABASE_URL_SECRET_ID=database_url_owner` tells `production.py` which
-   Secret Manager secret to read, and the container fetches it with the VM's
-   service account. Passing the connection string instead would put a password
-   in a workflow file, an ssh argument, the VM's shell history and a CI log —
-   four places, to save one indirection.
-   `core/tests/test_production_settings.py` holds this, because a broken
-   override would silently migrate as `cc_app` and fail only in production.
-3. **The owner uses the direct endpoint; the app uses the pooler.**
-   `ep-shiny-boat-aivobvoc.c-4…` against `ep-shiny-boat-aivobvoc-pooler.c-4…`.
-   A transaction-mode pooler cannot carry session-level DDL such as
+**Part B — the schedule.** `sudo systemctl disable --now cc-backup.timer` stops
+it on the running VM, and removing the two units from
+`CodeChronicleTerraform/modules/compute/startup.sh` stops a rebuild restoring
+them. Both are needed.
+
+## What each step changed
+
+| Step | Date | Change |
+|---|---|---|
+| A1 | 2026-08-07 | Created the roles from `docs/security/db-roles.sql`, after a full drill on `drill-db-roles-a1`, a branch of prod |
+| A2 | 2026-08-07 | Built the two connection strings |
+| A3 | 2026-08-08 | Rotated `database_url` to `cc_app`; `cc_app` held connections 44 s after the secret was written |
+| A4 | 2026-08-08 | Moved migrate-as-owner out of prose and into `publish.yml` |
+| A6 | 2026-08-07 | Confirmed TLS by being refused without it |
+| B1 | 2026-08-08 | Generated the age keypair. **The private key is offline and is the only irreplaceable secret here** |
+| B2 | 2026-08-09 | Created `codechronicle-backups-prod` and a bucket-scoped **Account** API token |
+| B3 | 2026-08-09 | 90-day object lifecycle rule |
+| B4 | 2026-08-09 | Five R2/age keys into the bundle (v6) |
+| B5 | 2026-08-08 | `postgresql-client-17` and `age` in the image; the container answers `pg_dump` 17.10, `age` 1.2.1 |
+| B6 | 2026-08-09 | First real backup: 979,171 bytes in the bucket |
+| B7 | 2026-08-09 | `cc-backup.timer` installed, enabled, proven, and mirrored into Terraform (`28d3adf`) |
+| B9 | 2026-08-09 | Verification, the `BackupRun` record and the dead-man's switch |
+| B8 | 2026-08-09 | The restore drill. Stamped in the recovery plan §6 |
+| B10 | 2026-08-09 | The bucket lock, verified; and the PITR drill, the first 5a row in §6 |
+
+## What the rehearsals found
+
+Seven defects, and **every one of them exited 0**. That is the single most useful
+thing this rollout learned: check by counting, never by an exit code.
+
+1. **A grant aimed at `neondb`.** The project carries both `neondb` (Neon's
+   empty default) and `codechroniclenet` (the 104 real tables).
+   `GRANT … ON DATABASE neondb` succeeds, grants nothing, and leaves roles that
+   look created and cannot read a row.
+2. **A dump that dropped five foreign keys.** The exclude-list held 14 tables
+   and missed four whose rows reference excluded corpus tables. `pg_restore`
+   reported each failure as a warning and exited 0 — 189 foreign keys where the
+   original had 194. Fixed; adding the four also halved the dump.
+   `core/tests/test_backup_userdata.py` now fails if a kept table gains a
+   foreign key into an excluded one.
+3. **Settings the container never read.** `backup_userdata` reads Django
+   settings that `base.py` fills from `os.environ`, and the prod env-file
+   carries three variables, none of them an R2 key. The command aborted naming
+   a setting the bundle plainly held. `production.py` now resolves all six
+   through the bundle, guarded by `core/tests/test_production_settings.py`.
+4. **`load_edition` loaded one edition for each run.** The restore procedure
+   said `--source <dir>` and nothing else, which loads the default
+   `OBC_2012.json`. A restored site would have held one edition of three and
+   looked complete. `--all` now loads every edition, oldest first.
+5. **`province_codes` was excluded as corpus and no loader recreated it.** The
+   one row maps ON to OBC. Without it a search answers **0 matches**; with it,
+   **158**. The site reads as an empty corpus rather than a broken one.
+   `Command.CODE_PROVINCES` now seeds it on every load.
+6. **A reload deleted consolidation rows nothing put back.** `Consolidation` has
+   a foreign key to `CodeEdition` with CASCADE, so loading an edition wipes its
+   rows. Production carried **0** rows for OBC 1997 — every 1997 provision read
+   as reconstruction-only — because the follow-up step was skipped once.
+   `load_edition` now calls `load_consolidations` itself. Production was
+   corrected on 2026-08-09; all three editions now match the source file.
+
+7. **`neonctl` ignored an unknown flag and reported success.** `--parent-timestamp`
+   does not exist; the correct flag is `--parent`. The branch was created from
+   **now**, the success table printed, and it read as a point-in-time restore of
+   a database that was simply live. Found in B10. Prove a branch is where you
+   asked with a marker that cannot exist yet.
+
+The drills also proved both restores work. B8: the bucket copy downloads, the
+private key decrypts it, `pg_restore` prints nothing and makes **194 of 194**
+foreign keys, the user data matches production exactly, and a search answers.
+B10: a point-in-time branch 5 h 30 m back in 3 seconds, corpus included.
+
+## Gotchas that outlive this card
+
+1. **The age private key is irreplaceable.** Lose it and every backup is
+   unreadable. It must never touch the repository, the VM, or any transcript.
+2. **`cc_app` cannot run DDL, and `scripts/entrypoint.sh` runs `migrate` at
+   every container start.** An unapplied migration stops the container before
+   gunicorn, and Docker restarts it into the same failure — a crash loop, not a
+   degraded page. **Do not remove the `publish.yml` migrate step, and do not
+   reorder it after the deploy step.**
+3. **`database_url_owner` must keep existing.** The migrate step runs on every
+   deploy, not only ones carrying a migration. Without the secret the step
+   cannot connect, and the container is never replaced. The site stays up on old
+   code and nothing ships.
+4. **The owner uses the direct endpoint; the app uses the pooler.** A
+   transaction-mode pooler cannot carry session-level DDL such as
    `CREATE INDEX CONCURRENTLY`. Do not tidy the two hosts into one.
-4. **`neondb` is the wrong database and fails silently.** The project carries
-   both `neondb` (Neon's empty default) and `codechroniclenet` (the 104 real
-   tables). `GRANT … ON DATABASE neondb` succeeds, grants nothing, and leaves
-   roles that look created and cannot read a row.
-5. **A 200 does not prove the app changed roles.** Had the A3 restart failed,
-   the old container would still be serving on the owner credential and every
-   read *and* write would have passed. `pg_stat_activity.usename` is the only
-   check that answers "as whom". Expect a second row there for the owner —
-   that is your own SQL session.
+5. **A 200 does not prove the app changed roles.** `pg_stat_activity.usename` is
+   the only check that answers "as whom".
+6. **A bucket lock, not the token's scope, is what stops a delete.** R2's
+   *Object Read & Write* includes delete, so scoping the token to one bucket
+   contains the damage from a compromised VM but does not make the objects
+   immutable. The bucket lock does. Do not remove it, and remember it also
+   outranks the lifecycle rule: nothing expires inside the retention window.
+   The lock also means an erasure request against backup contents waits for the
+   window to pass.
+7. **A corpus load runs from an operator machine, never in the container.** The
+   image holds neither the CCM output directory nor
+   `data/elaws_consolidations.json`. Point `DATABASE_URL` at the target first —
+   with your usual environment the command reloads your development database and
+   reports success.
+8. **Corpus reproducibility is a dependency.** Keep
+   `CodeChronicleMapping/data/outputs` durably stored, or it becomes the single
+   point of failure for the part of the database the backup deliberately skips.
+9. **A card is a memory of prod, not prod.** This card claimed a migration was
+   pending for a day after it had applied, and held A4 back for no reason. Read
+   `django_migrations` before you trust a sentence here.
 
-### One prerequisite of A4 is still outstanding
+---
+
+# The steps, as run
+
+Kept verbatim. A step that reads as an instruction is what makes it
+repeatable — for a second deployment, or for reading what was actually
+done rather than a summary of it.
+
+## Part A — how the owner secret was made
+
+The rest of Part A is dashboard and SQL work, recorded above and in
+`docs/security/db-roles.sql`. The A3 rollback is under "How to undo it".
+
+### A4's owner secret
 
 ✅ **`database_url_owner` was created on 2026-08-08 and the whole path is
 proven.** The workflow's exact command was run by hand against the deployed
@@ -105,6 +204,11 @@ The site stays up on old code, but nothing new ships.
 the owner connection string, and copying keeps the password off the screen and
 gets the direct host right:
 
+> ⚠️ **This is how it was done, not how to do it again.** `database_url`
+> version 1 is destroyed. To recreate the secret now, take the string from
+> `database_url_owner` itself, or rebuild it from the Neon console using the
+> **direct** host.
+
 ```powershell
 $tmp = "$env:TEMP\dburl_owner.txt"
 $owner = gcloud secrets versions access 1 --secret=database_url --project=codechronicle-487104
@@ -117,27 +221,6 @@ No IAM step is needed: the VM's service account holds
 `secretmanager.secretAccessor` at project level, which covers a secret created
 later.
 
-### Rolling A3 back
-
-**Rebuild the owner string from `database_url_owner`, not from an old
-`database_url` version.** The pre-A3 version 1 was byte-identical to
-`database_url_owner` — same sha256 — so nothing was lost when it was
-destroyed, but the "re-add the previous version" route is gone:
-
-```powershell
-$tmp = "$env:TEMP\dburl_rollback.txt"
-$owner = gcloud secrets versions access latest --secret=database_url_owner --project=codechronicle-487104
-[IO.File]::WriteAllText($tmp, $owner)
-gcloud secrets versions add database_url --data-file=$tmp --project=codechronicle-487104
-Remove-Item $tmp
-gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 --tunnel-through-iap --command="sudo docker restart codechroniclenet-web"
-```
-
-That puts the app back on the owner role, which is where it ran before
-2026-08-08. It is a retreat, not a fix: check which grant `cc_app` is missing
-before you leave it there.
-
----
 
 ## Part B — Off-host encrypted backups (§7)
 
@@ -184,15 +267,39 @@ half is a dashboard action anyway and Wrangler here is not logged in.
 
 ⚠️ **Scoping contains the damage; it does not remove it.** R2's *Object Read &
 Write* includes delete, so this token can still delete objects in the backups
-bucket. The B3 lifecycle rule does not protect them either — it deletes as well.
-Treat object immutability as open, not solved.
+bucket, and the B3 lifecycle rule does not protect them either — it deletes as
+well. The B3 bucket lock is what closes this.
 
 A Wrangler route exists (`npx wrangler login`, then
 `npx wrangler r2 bucket create codechronicle-backups-prod`) and makes the bucket only.
 
-### B3. Set retention on the bucket [DASH]
+### B3. Set retention on the bucket — **both rules live 2026-08-09** [DASH]
 Cloudflare → R2 → `codechronicle-backups-prod` → Settings → **Object lifecycle rules** →
 delete objects older than e.g. 90 days. (Preferred over the command's `--keep` flag.)
+
+Then, in the same Settings panel, a **bucket lock**. This is the part that makes
+the backups survive an attacker who owns the VM: a lifecycle rule and a scoped
+token both still allow a delete, and a lock does not. Managing a lock needs the
+*edit R2 bucket configuration* permission, which the B2 token deliberately lacks.
+
+**Verified 2026-08-09**, with the real backup credential, against two throwaway
+objects — one under `db-backups/`, one at the root, so a whole-bucket rule could
+be told apart from a prefix-scoped one:
+
+```
+CONFIG get_object_lock_configuration: DENIED/ABSENT (AccessDenied)
+DELETE db-backups/_locktest-delete-me.txt: REFUSED (ObjectLockedByBucketPolicy)
+DELETE _locktest/_locktest-delete-me.txt:  REFUSED (ObjectLockedByBucketPolicy)
+```
+
+**Test with throwaway objects, never a real backup.** A true test has to attempt
+the delete, and a lock that turns out not to be there would destroy the thing
+being protected.
+
+⚠️ **The two test objects cannot be deleted either** — that is the lock working.
+They stay until the retention window passes. Anything that picks "the newest
+object in the bucket" must filter to the `cc-userdata-` prefix, or it will pick
+one of them up.
 
 ### B4. Put the new config in the prod secret bundle [PASTE]
 
@@ -292,8 +399,8 @@ Confirm the object appears under `db-backups/` in the bucket.
 > key into an excluded one, so the next model does not have to rediscover this.
 >
 > **Note for B8:** a clean restore is not a full recovery. The corpus tables come back
-> with their schema and no rows, so `load_edition` and `load_consolidations` must run
-> before the site is usable. That is by design — see gotcha 4.
+> with their schema and no rows, so `load_edition --all` must run before the site is
+> usable. That is by design — see the gotchas above.
 
 ### B7. Schedule it (daily) — **DONE on prod 2026-08-09** [PASTE — run on the VM]
 
@@ -304,7 +411,8 @@ through the upload. **Run the unit once after you install a timer.** An
 untested schedule is a schedule that fails at 07:00, to nobody.
 
 The units are also in `CodeChronicleTerraform/modules/compute/startup.sh`
-(uncommitted there as of this writing), so a rebuild keeps them.
+(commit `28d3adf`, pushed), so a rebuild keeps them. No `terraform apply` was
+needed — the units were already live on the VM.
 
 > **Not cron.** The VM runs Container-Optimized OS, which ships no `crontab` for
 > any user, including root. The scheduling primitive is a **systemd timer**, and
@@ -355,10 +463,11 @@ It does **not** retry within the same day, so a deploy that replaces the
 container while the timer fires costs one backup. B9's alarm tolerates that; two
 consecutive misses it does not.
 
-⚠️ **This is drift until it is in Terraform.** `startup.sh` in
+⚠️ **A unit written by hand into `/etc` is drift.** `startup.sh` in
 `CodeChronicleTerraform/modules/compute/` rebuilds this VM, the same way it owns
-`nginx.conf`. Add the same two units there, or a rebuild silently loses the
-schedule — and a lost schedule is the exact failure B9 exists to catch.
+`nginx.conf`. The two units are there now; if you change them on the VM, change
+them there too, or a rebuild silently loses the schedule — and a lost schedule
+is the exact failure B9 exists to catch.
 
 ### B9. Watch it — **check created and in the bundle, 2026-08-09** (added 2026-08-09)
 
@@ -414,18 +523,40 @@ gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechroni
 garbage, and every check above would call it healthy. Freshness is not
 restorability. Only B8 answers that, which is why B8 stays.
 
-### B8. Periodically test a restore [PASTE]
-Decrypt with the **private** key (on your machine), then restore into a scratch DB or a
-throwaway Neon branch — and stamp `disaster-recovery-plan.md` §6:
+### B8. Periodically test a restore — **DONE 2026-08-09** [PASTE]
+
+Ran end to end and passed. Stamped in `docs/security/disaster-recovery-plan.md`
+§6, and §3b there now carries the corrected procedure. What it proved, in order:
+the object in the bucket downloads; the age private key decrypts it;
+`pg_restore` prints nothing and makes **194 of 194** foreign keys across 105
+tables; the user data matches production exactly; the corpus reload rebuilds
+every corpus table to production's counts; and a search answers **158 matches**.
+
+Start from the **object in the bucket**, not from a dump left on disk. A drill
+that reads a local file proves the encryption and skips the two links a real
+disaster tests first: the upload, and the bucket.
+
+Decrypt with the **private** key, on your own machine. It must not reach the VM.
+
 ```powershell
 age -d -i backup-key.txt -o restored.dump <downloaded>.dump.age
 pg_restore --no-owner --no-privileges -d "<scratch_or_branch_connection_string>" restored.dump
-# then refill the corpus on that target:
-#   python manage.py load_edition --source ../CodeChronicleMapping/data/outputs
-#   python manage.py load_consolidations
 ```
-`load_consolidations` is part of the restore, not an extra. The `consolidations` table
-is now excluded from the backup, so `load_edition` alone leaves it empty.
+
+⚠️ **Point `DATABASE_URL` at the restored instance before the next command.** It
+runs on your machine and writes to whatever `DATABASE_URL` names, so your usual
+environment reloads your **development** database and leaves the restore empty —
+and every command still reports success.
+
+```powershell
+$env:DATABASE_URL = "<scratch_or_branch_connection_string>"
+# --all loads every edition oldest first, seeds the province-to-code row, and
+# restores the consolidation date ranges.  Without --all you load one edition.
+python manage.py load_edition --source ../CodeChronicleMapping/data/outputs --all
+```
+
+The corpus reload is part of the restore, not an extra: the corpus tables are
+excluded from the backup, so they come back with their schema and no rows.
 
 **A restore that prints nothing is the pass mark.** `pg_restore` reports a failed
 constraint as a warning and still exits 0, so an exit code proves nothing. Count the
@@ -434,48 +565,61 @@ foreign keys instead — the restored database must have **194**:
 SELECT count(*) FROM pg_constraint WHERE contype = 'f';
 ```
 
+**Then run a search.** It is the only check that fails when the `province_codes`
+row is missing, and a missing row makes the site read as an empty corpus rather
+than a broken one.
+
+### B10. Test the host's own recovery — **DONE 2026-08-09** [PASTE]
+
+B8 tests the backup we make. This tests the one the **host** keeps, which is a
+different mechanism and was never exercised. It is the first 5a row in
+`docs/security/disaster-recovery-plan.md` §6.
+
+Neon can branch from history at a timestamp. `neonctl` is needed: the Neon MCP's
+`create_branch` takes a `parentId` but **no timestamp**, so it cannot do
+point-in-time at all.
+
+```bash
+npx neonctl auth   # the stored credential expires; this opens a browser
+IN=$(date -u -d '-5 hours 30 minutes' +"%Y-%m-%dT%H:%M:%SZ")
+npx neonctl branches create --project-id restless-cell-46809886 \
+    --name pitr-drill-inside --parent "$IN"
+# prove it landed where you asked, then delete it:
+npx neonctl branches list --project-id restless-cell-46809886 --output json
+npx neonctl branches delete <branch-id> --project-id restless-cell-46809886
+```
+
+**Results.** A queryable branch 5 h 30 m back in **3 seconds**, holding 6 users,
+113 searches and 12 sessions — and **11,365 corpus versions**. That last figure
+is the point of running this at all: PITR carries the corpus, so it needs no
+`load_edition`, where a B8 restore needs ten minutes of one. Inside six hours
+PITR is the better tool; outside them it is no tool at all, and the B8 backup is
+the only one.
+
+**The window is real, and the host says so.** A request 8 h back was refused:
+`timestamp is before retention window; retention_window:"6h0m0s"`. Read the RPO
+off that error, never off a config value written down months ago.
+
+⚠️ **`neonctl` accepts an unknown flag in silence.** The first attempt here used
+`--parent-timestamp`, which does not exist. The branch was created from **now**,
+the success table printed, and it read as a working point-in-time restore of a
+database that was simply live. The flag is `--parent`.
+
+**So prove the branch is where you asked, with a marker that cannot exist yet.**
+Read `parent_timestamp` back from `branches list`, then check a table a later
+migration added. Here `backup_runs` was **absent** (migration `0053` applied at
+06:09Z), there were 104 tables not 105, the newest migration was 2026-08-07, and
+the consolidation count was 54 rather than 66 because OBC 1997's twelve rows
+landed at 08:0xZ. Four independent markers, all agreeing on the requested time.
+
+⚠️ **A branch costs storage and compute until it is deleted.** Both drill
+branches were removed the same day.
+
 ---
 
-## Fixed values for this project
+## Deliberately not done
 
-| Thing | Value |
-|---|---|
-| Neon project | `codechroniclenet` · id `restless-cell-46809886` · **db `codechroniclenet`** · PG 17 |
-| App role | `cc_app` — least privilege, what the app connects as since 2026-08-08 |
-| DB owner role | `codechroniclenet_app` — owns the database and all 104 tables; used for migrations only |
-| App host | `ep-shiny-boat-aivobvoc-pooler.c-4.us-east-1.aws.neon.tech` (pooler) |
-| Owner host | `ep-shiny-boat-aivobvoc.c-4.us-east-1.aws.neon.tech` (direct) |
-| Neon org | `org-bold-unit-61886633` (iskander.lee@gmail.com) |
-| GCP | project `codechronicle-487104` · VM `codechroniclenet-vm` · zone `us-central1-a` · container `codechroniclenet-web` |
-| Secrets | Secret Manager: `app_runtime_secrets` (bundle), `database_url` (the app, `cc_app`), `database_url_owner` (migrations, the owner) |
-| Cloudflare R2 | account `1606e553e771e417aab1107b4f3b7836` · assets bucket `codechronicle-assets-prod` · backups bucket `codechronicle-backups-prod` (B2) |
-| PITR window | **6 hours** (`history_retention_seconds=21600`) — the reason for Part B |
+- **The Neon IP allow-list**, in `tasks/maybe/neon-ip-allow-list.md`.
 
-## Gotchas that still apply
-
-1. **The age private key (B1) is the only irreplaceable new secret.** Lose it → every
-   backup is unreadable. It must never touch the repo, the VM, or any chat/transcript.
-2. **`postgresql-client` major version must match the server (17).** A mismatched
-   `pg_dump` refuses to dump a newer server.
-3. **Corpus reproducibility is a dependency** (recovery §7): keep
-   `CodeChronicleMapping/data/outputs` durably stored, or it becomes the new single point
-   of failure for the part of the DB the backup deliberately skips. It includes
-   `data/elaws_consolidations.json`, which rebuilds the excluded `consolidations` table —
-   that file is in this repository, so it is already as durable as the code.
-4. **A clean restore is not a recovery.** See the note under B6.
-5. **A card is a memory of prod, not prod.** This card said migration `0052` was pending
-   for a day after it had applied, and that held A3 back for no reason. Read
-   `django_migrations` before you trust a sentence here about prod state.
-6. **The failing thing reports success.** Three defects in this rollout were found by
-   rehearsing rather than reading, and in all three the failure exited 0: a grant aimed at
-   the empty `neondb`, a `pg_restore` that dropped five constraints as warnings, and a
-   `migrate` that would crash-loop only at the next container start. Check by counting,
-   not by exit codes.
-7. **On completion** — the recurring facts already graduated to permanent docs, so they
-   survive the archive: migrate-as-owner is in `docs/edit-prod-settings.md`, and
-   restore-from-encrypted-backup is in the recovery plan §7.
-
-> **Still available, and not yet done:** a real PITR restore drill (recovery §5a) to add
-> a second row to the §6 log. The 2026-08-07 row covers 5b (the logical backup) only, so
-> the host's own recovery path is still untested. Ask, and it will create the branch,
-> run the drill, and — with your OK — delete the branch.
+The two other items that sat here are done: the bucket lock (B3) and the PITR
+drill (B10), both on 2026-08-09.

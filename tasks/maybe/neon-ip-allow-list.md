@@ -1,6 +1,6 @@
 # Restrict where the Neon database accepts connections
 
-Split out of `tasks/ao-security-hardening-rollout.md` (step A5) on 2026-08-08,
+Split out of `tasks/complete/security-hardening-rollout.md` (step A5) on 2026-08-08,
 because the rest of that rollout is finishable and this is not. It sat in an
 actionable card as a permanently blocked line, which made the card read as
 further from done than it was.
@@ -23,7 +23,7 @@ that has a password.
 **It does not protect the data from a stolen credential used from our own VM**,
 and it is not what stops a leaked password being useful — the least-privilege
 roles do that, and they are live. `cc_app` cannot run DDL, cannot TRUNCATE and
-cannot CREATE in `public` (`tasks/ao-security-hardening-rollout.md`, A1 and A3).
+cannot CREATE in `public` (`tasks/complete/security-hardening-rollout.md`, A1 and A3).
 
 **It does close the case where a credential leaks and is used from somewhere
 else** — a laptop, a CI runner, a scanner. That is defence in depth on top of a
@@ -52,5 +52,5 @@ thing.
 
 ## Related
 
-- `tasks/ao-security-hardening-rollout.md` — the rollout this came from.
+- `tasks/complete/security-hardening-rollout.md` — the rollout this came from.
 - `docs/security/breach-response-plan.md` §6 and §8.
