@@ -11,14 +11,13 @@ already exists and is tested.
 
 ## Where this stands, 2026-08-08
 
-**The next action is B1. Nothing blocks it, and every later B step needs its
-output.**
+**B1 is done, 2026-08-08. The next action is B2, at the Cloudflare dashboard.**
 
 | | |
 |---|---|
-| **Done** | A1, A2, A3, A4, A6 — Part A entire — and B5 |
-| **Ready now** | **B1** (age keypair), then B2 and B3 (Cloudflare) |
-| **Waiting on B1 + B2** | B4 |
+| **Done** | A1, A2, A3, A4, A6 — Part A entire — and B1 and B5 |
+| **Ready now** | **B2** and **B3** (Cloudflare, both yours to run) |
+| **Waiting on B2** | B4, and on the settings fix under it reaching prod |
 | **Waiting on B4** | B6, and B7 and B8 behind it |
 | **Rehearsed, not run for real** | B6 and B8's mechanics — see the notes under each |
 
@@ -89,17 +88,17 @@ on all 100 sequences.
 
 ### One prerequisite of A4 is still outstanding
 
-🚨 **The `database_url_owner` secret does not exist yet, and the deploy pipeline
-is blocked until it does.**
+✅ **`database_url_owner` was created on 2026-08-08 and the whole path is
+proven.** The workflow's exact command was run by hand against the deployed
+image: it reached the real database through the new secret and reported "No
+migrations to apply".
 
-The migrate step runs on **every** deploy, not only ones carrying a migration.
-Without the secret, `_get_secret` returns `""`, `production.py` falls through
-to its non-DSN branch — `localhost:5432` as `postgres`, which does not exist —
-and `migrate` cannot connect. The step fails, and the deploy step never runs.
-
-The site is unaffected: the old container keeps serving, which is the failure
-mode this step was designed for. But **no deploy will succeed until the secret
-exists**, so create it before the next push to `main`.
+⚠️ **The secret must keep existing, or no deploy succeeds.** The migrate step
+runs on **every** deploy, not only ones carrying a migration. If the secret is
+missing, `_get_secret` returns `""`, `production.py` falls through to its
+non-DSN branch — `localhost:5432` as `postgres`, which does not exist — and
+`migrate` cannot connect. The step fails and the container is never replaced.
+The site stays up on old code, but nothing new ships.
 
 **Copy it from `database_url` version 1; do not retype it.** That version *is*
 the owner connection string, and copying keeps the password off the screen and
@@ -117,8 +116,25 @@ No IAM step is needed: the VM's service account holds
 `secretmanager.secretAccessor` at project level, which covers a secret created
 later.
 
-**Rollback for A3** stays available while `database_url` version 1 is enabled:
-re-add its value as a new version and restart.
+### Rolling A3 back
+
+**Rebuild the owner string from `database_url_owner`, not from an old
+`database_url` version.** The pre-A3 version 1 was byte-identical to
+`database_url_owner` — same sha256 — so nothing was lost when it was
+destroyed, but the "re-add the previous version" route is gone:
+
+```powershell
+$tmp = "$env:TEMP\dburl_rollback.txt"
+$owner = gcloud secrets versions access latest --secret=database_url_owner --project=codechronicle-487104
+[IO.File]::WriteAllText($tmp, $owner)
+gcloud secrets versions add database_url --data-file=$tmp --project=codechronicle-487104
+Remove-Item $tmp
+gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 --tunnel-through-iap --command="sudo docker restart codechroniclenet-web"
+```
+
+That puts the app back on the owner role, which is where it ran before
+2026-08-08. It is a retreat, not a fix: check which grant `cc_app` is missing
+before you leave it there.
 
 ---
 
@@ -127,7 +143,7 @@ re-add its value as a new version and restart.
 > Steps are paste-ready. **[PASTE]** = run as-is (fill the obvious blanks);
 > **[DASH]** = dashboard action, no CLI.
 
-### B1. Generate the age keypair — KEEP THE PRIVATE KEY OFFLINE [PASTE]
+### B1. Generate the age keypair — DONE 2026-08-08. KEEP THE PRIVATE KEY OFFLINE [PASTE]
 Run on your own machine (install age first: `winget install FiloSottile.age`):
 ```powershell
 age-keygen -o backup-key.txt
@@ -137,33 +153,77 @@ age-keygen -o backup-key.txt
   password manager / offline. **Do not commit it, paste it anywhere, or put it on the VM.**
   Without it, backups are unrecoverable; if it leaks, backups are readable.
 
-### B2. Create a dedicated R2 backups bucket + scoped token [DASH/PASTE]
-Separate from the public assets bucket. With Wrangler:
-```powershell
-npx wrangler r2 bucket create codechronicle-backups-prod
-```
-Then **[DASH]** Cloudflare → R2 → Manage API Tokens → create a token scoped to **just this
-bucket** (Object Read & Write). Note the Access Key ID + Secret.
+### B2. Create a dedicated R2 backups bucket + scoped token [DASH]
+Separate from the public assets bucket. Do both in the dashboard, because the token
+half is a dashboard action anyway and Wrangler here is not logged in.
+
+1. Cloudflare → R2 → **Create bucket** → `codechronicle-backups-prod`. Location
+   automatic. Default storage class **Standard**. **Leave public access off** —
+   this holds user data.
+
+   *Not Infrequent Access.* IA trades storage price for retrieval charges,
+   higher per-operation prices and a 30-day minimum billed duration. The dump is
+   859 KB, so 90 days of dailies is about 77 MB — far inside R2 Standard's
+   10 GB-month free allowance. IA would discount a bill of zero and put a
+   retrieval charge on the restore test (B8) and on a real recovery.
+2. Cloudflare → R2 → **Manage R2 API Tokens** → Create **Account** API token.
+   Permission **Object Read & Write**, and under *Specify bucket(s)* pick
+   **only** `codechronicle-backups-prod`.
+
+   *An Account token, not a User token.* A User token carries one person's
+   access and dies when that membership or those permissions change. This
+   credential runs unattended on the VM.
+
+   *A new token, not an existing all-buckets one.* The backup exists to survive
+   an attacker who owns the VM. A credential on that VM that reaches every
+   bucket lets the same attacker delete the backups. Reuse would also move
+   all-buckets write access into Secret Manager and into a running container,
+   and would tie rotation of the backup credential to the asset sync.
+3. Note the **Access Key ID** and **Secret Access Key**. The secret is shown once.
+
+⚠️ **Scoping contains the damage; it does not remove it.** R2's *Object Read &
+Write* includes delete, so this token can still delete objects in the backups
+bucket. The B3 lifecycle rule does not protect them either — it deletes as well.
+Treat object immutability as open, not solved.
+
+A Wrangler route exists (`npx wrangler login`, then
+`npx wrangler r2 bucket create codechronicle-backups-prod`) and makes the bucket only.
 
 ### B3. Set retention on the bucket [DASH]
 Cloudflare → R2 → `codechronicle-backups-prod` → Settings → **Object lifecycle rules** →
 delete objects older than e.g. 90 days. (Preferred over the command's `--keep` flag.)
 
 ### B4. Put the new config in the prod secret bundle [PASTE]
+
+> **A code change had to land first, 2026-08-08.** `backup_userdata` reads these
+> as Django *settings*, and `base.py` filled them from `os.environ`. The prod
+> container's env-file carries three variables and none of them is an R2 key, so
+> the bundle keys would have been read by nothing: the command would abort with
+> "R2_ENDPOINT_URL … not set" while the bundle plainly held one, which sends you
+> to check the secret instead of the settings module. `production.py` now
+> resolves all six through the bundle, the same way it already resolves email and
+> Stripe, and `core/tests/test_production_settings.py` fails if that stops.
+> **The fix must be deployed before this step is worth doing.**
+
 ```powershell
 gcloud secrets versions access latest --secret=app_runtime_secrets --project=codechronicle-487104 > bundle.json
 # Edit bundle.json — add these keys:
 #   "R2_BACKUP_BUCKET":   "codechronicle-backups-prod",
 #   "BACKUP_AGE_RECIPIENT":"age1…",                      <- the PUBLIC key from B1
-#   "R2_ENDPOINT_URL":    "https://<ACCOUNT_ID>.r2.cloudflarestorage.com",
+#   "R2_ACCOUNT_ID":      "1606e553e771e417aab1107b4f3b7836",
 #   "R2_ACCESS_KEY_ID":   "<from B2>",
 #   "R2_SECRET_ACCESS_KEY":"<from B2>"
+# R2_ENDPOINT_URL is optional: production.py derives it from R2_ACCOUNT_ID.
 gcloud secrets versions add app_runtime_secrets --data-file=bundle.json --project=codechronicle-487104
 del bundle.json
 gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 --tunnel-through-iap --command="sudo docker restart codechroniclenet-web"
 ```
-(The `R2_*` keys are only needed if prod doesn't already carry them — the asset sync runs
-elsewhere, so it likely doesn't.)
+Prod carries no `R2_*` key today — confirmed 2026-08-08. The asset sync runs from a
+developer machine, and the serving app needs no R2 credential because a Worker with an
+R2 binding serves the assets. So all of these are new.
+
+**Use the B2 token, not the assets token.** The assets token cannot even list buckets
+(checked 2026-08-08, `AccessDenied`), which is the boundary working. Do not widen it.
 
 ### B5. Put `pg_dump` + `age` in the container image — **DONE, live on prod 2026-08-08**
 `postgresql-client-17` and `age` are in the `Dockerfile`'s existing `apt-get` layer, and
@@ -251,7 +311,8 @@ SELECT count(*) FROM pg_constraint WHERE contype = 'f';
 | Owner host | `ep-shiny-boat-aivobvoc.c-4.us-east-1.aws.neon.tech` (direct) |
 | Neon org | `org-bold-unit-61886633` (iskander.lee@gmail.com) |
 | GCP | project `codechronicle-487104` · VM `codechroniclenet-vm` · zone `us-central1-a` · container `codechroniclenet-web` |
-| Secrets | Secret Manager: `app_runtime_secrets` (bundle), `database_url`, `database_url_owner` (**to create**) |
+| Secrets | Secret Manager: `app_runtime_secrets` (bundle), `database_url` (the app, `cc_app`), `database_url_owner` (migrations, the owner) |
+| Cloudflare R2 | account `1606e553e771e417aab1107b4f3b7836` · assets bucket `codechronicle-assets-prod` · backups bucket `codechronicle-backups-prod` (B2) |
 | PITR window | **6 hours** (`history_retention_seconds=21600`) — the reason for Part B |
 
 ## Gotchas that still apply

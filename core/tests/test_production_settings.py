@@ -1,4 +1,9 @@
-"""The one production setting a deploy depends on: which secret holds the DSN.
+"""Production settings whose indirection nothing else would catch.
+
+Both halves here share one failure shape: the setting resolves to a plausible
+wrong value instead of raising, and the deploy or the backup reports success.
+
+## Which secret holds the DSN
 
 `tasks/ao-security-hardening-rollout.md` A3 pointed the app at `cc_app`, which
 cannot run DDL.  A4 applies each migration as the owner role instead, and the
@@ -11,10 +16,20 @@ with `must be owner of table …`, and nobody would learn it until a deploy
 carrying a schema change went out.  These tests hold the two halves: the
 default is the app's own secret, and the environment can point it elsewhere.
 
+## Where the backup reads its R2 credentials
+
+`base.py` fills the `R2_*` settings from `os.environ`, and the GCP container's
+env-file carries three variables, none of which is an R2 key.  So the backup
+config has to come out of the `app_runtime_secrets` bundle, like email and
+Stripe.  Miss that and the bundle keys are read by nothing: `backup_userdata`
+aborts naming a setting that *is* in the bundle, which sends you to look at the
+secret rather than at the settings module.
+
 `GCP_PROJECT_ID` is empty throughout, so `_get_secret` never reaches the
 network — it reads the matching environment variable and returns.
 """
 import importlib
+import json
 import os
 from unittest import mock
 
@@ -78,3 +93,65 @@ class TestDatabaseUrlSecretId:
             }
         )
         assert settings.DATABASES["default"]["USER"] == "owner"
+
+
+BACKUP_KEYS = (
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_BACKUP_BUCKET",
+    "BACKUP_AGE_RECIPIENT",
+)
+
+
+class TestBackupSettingsComeOutOfTheBundle:
+    """`manage.py backup_userdata` reads these as settings, not as env vars."""
+
+    def _with_bundle(self, bundle: dict, extra: dict | None = None):
+        """Deliver a bundle the way the container gets it, through the secret.
+
+        Blank the R2 variables first.  A developer's own `.env` carries the
+        assets-bucket credentials, and `_reload_production` does not clear the
+        environment, so without this the test reads the developer's account id
+        and passes or fails by whose machine it runs on.
+        """
+        env = {k: "" for k in (*BACKUP_KEYS, "R2_ENDPOINT_URL")}
+        env["APP_RUNTIME_SECRETS"] = json.dumps(bundle)
+        env.update(extra or {})
+        return _reload_production(env)
+
+    def test_every_backup_setting_is_read_from_the_bundle(self):
+        """The whole set, because one unresolved key stops the backup."""
+        bundle = {k: f"value-of-{k}" for k in BACKUP_KEYS}
+        settings = self._with_bundle(bundle)
+        for key in BACKUP_KEYS:
+            assert getattr(settings, key) == f"value-of-{key}", key
+
+    def test_the_endpoint_is_derived_from_the_bundled_account_id(self):
+        """base.py derived it from an account id that is empty in this container.
+
+        Carrying that derived value over would leave the endpoint empty even
+        with the account id supplied, and `backup_userdata` would report
+        R2_ENDPOINT_URL missing while the bundle plainly holds an account.
+        """
+        settings = self._with_bundle({"R2_ACCOUNT_ID": "abc123"})
+        assert settings.R2_ENDPOINT_URL == "https://abc123.r2.cloudflarestorage.com"
+
+    def test_an_explicit_endpoint_wins_over_the_derived_one(self):
+        settings = self._with_bundle(
+            {"R2_ACCOUNT_ID": "abc123", "R2_ENDPOINT_URL": "https://example.invalid"}
+        )
+        assert settings.R2_ENDPOINT_URL == "https://example.invalid"
+
+    def test_an_environment_variable_still_works(self):
+        """A compose-style deploy sets these in the environment, as base.py did."""
+        settings = self._with_bundle({}, {"R2_BACKUP_BUCKET": "from-the-environment"})
+        assert settings.R2_BACKUP_BUCKET == "from-the-environment"
+
+    def test_the_bundle_wins_over_the_environment(self):
+        """One place decides, and on this deployment that place is the bundle."""
+        settings = self._with_bundle(
+            {"R2_BACKUP_BUCKET": "from-the-bundle"},
+            {"R2_BACKUP_BUCKET": "from-the-environment"},
+        )
+        assert settings.R2_BACKUP_BUCKET == "from-the-bundle"

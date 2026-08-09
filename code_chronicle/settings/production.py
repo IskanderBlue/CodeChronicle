@@ -166,6 +166,33 @@ STRIPE_TEST_SECRET_KEY = _resolve_runtime_setting(
 STRIPE_LIVE_MODE = _resolve_runtime_setting("STRIPE_LIVE_MODE", default="true").lower() == "true"
 STRIPE_PRO_PRICE_ID = _resolve_runtime_setting("STRIPE_PRO_PRICE_ID", default=STRIPE_PRO_PRICE_ID)
 
+# Off-host encrypted backups — `manage.py backup_userdata`, run inside this
+# container on the VM.  `base.py` reads these from `os.environ`, which the GCP
+# deployment never populates: the container env-file carries three variables and
+# none of them is an R2 key.  So resolve them through the app_runtime_secrets
+# bundle, exactly as email and Stripe are resolved above.  Without this block
+# the bundle keys are read by nothing and the command aborts with
+# "R2_ENDPOINT_URL … not set", which reads like a missing secret rather than a
+# setting that is never consulted.
+#
+# The serving app still needs no R2 credential — a Worker with an R2 binding
+# serves the assets.  These exist for the backup command alone.
+#
+# No `default=` is needed.  `_resolve_runtime_setting` reads the environment
+# variable of the same name before it gives up, and that is the one value
+# `base.py` had, so a compose-style deploy keeps behaving as it did.
+R2_ACCOUNT_ID = _resolve_runtime_setting("R2_ACCOUNT_ID")
+R2_ACCESS_KEY_ID = _resolve_runtime_setting("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = _resolve_runtime_setting("R2_SECRET_ACCESS_KEY")
+# Derived here rather than carried over from base.py, which computed it from an
+# account id that was empty at that point.  Carrying the value over would leave
+# the endpoint empty even once the bundle supplies the account.
+R2_ENDPOINT_URL = _resolve_runtime_setting("R2_ENDPOINT_URL") or (
+    f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else ""
+)
+R2_BACKUP_BUCKET = _resolve_runtime_setting("R2_BACKUP_BUCKET")
+BACKUP_AGE_RECIPIENT = _resolve_runtime_setting("BACKUP_AGE_RECIPIENT")
+
 # Hashed static filenames for cache busting (e.g. tailwind.a1b2c3d4.css)
 STORAGES = {
     "staticfiles": {
