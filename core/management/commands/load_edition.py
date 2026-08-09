@@ -1,4 +1,10 @@
-"""Load a CCM consolidated edition JSON into provenance models."""
+"""Load a CCM consolidated edition JSON into provenance models.
+
+Loads one edition for each run; ``--all`` loads every edition in the source
+directory, oldest first.  It finishes by calling ``load_consolidations``,
+because loading an edition deletes that edition's consolidation rows and
+nothing else puts them back.
+"""
 
 import json
 from datetime import date
@@ -6,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from coloured_logger import Logger
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.models import Count, Q
@@ -93,7 +100,11 @@ def _max_concurrent_in_force(intervals: list[tuple[date, date | None]]) -> int:
 
 
 class Command(BaseCommand):
-    help = "Load a CCM consolidated edition JSON into provenance models."
+    help = (
+        "Load a CCM consolidated edition JSON into provenance models.  "
+        "One edition for each run; pass --all to load every edition in the "
+        "source directory, oldest first."
+    )
 
     #: Default location of CCM's consolidated edition JSON output, mirroring
     #: sync_images.  A bare ``load_edition`` loads DEFAULT_FILE from here.
@@ -109,6 +120,21 @@ class Command(BaseCommand):
     #: "first edition" endpoint detection.
     FIRST_EDITION_DATES = {
         "OBC": date(1975, 12, 31),
+    }
+
+    #: Which province each code governs.  Seeded on every load, for the same
+    #: reason as FIRST_EDITION_DATES: a reload can wipe and recreate ``Code``,
+    #: which cascades ``ProvinceCode`` away, so a data migration would not
+    #: survive.  The payload's own top-level ``province`` still wins when CCM
+    #: ships one; this is the fallback, and CCM ships none today.
+    #:
+    #: Without the row, `api.search.orchestration` resolves the searcher's
+    #: province to no code and every search answers with nothing.  The site
+    #: then looks empty rather than broken, which sends you to the corpus to
+    #: look for a fault that is not there.  The B8 restore drill on 2026-08-09
+    #: met exactly that: 0 matches before the row existed, 158 after.
+    CODE_PROVINCES = {
+        "OBC": "ON",
     }
 
     #: Sentinel ``new_provision_id`` on a provision_mappings row meaning the
@@ -136,6 +162,26 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--all",
+            action="store_true",
+            help=(
+                "Load every edition JSON in the --source directory, oldest "
+                "first, instead of the single --file.  This is what a restore "
+                "needs: a reload wipes the cross-edition rows touching the "
+                "edition it loads, and the newer edition's payload is what "
+                "puts them back, so the order is not a preference."
+            ),
+        )
+        parser.add_argument(
+            "--skip-consolidations",
+            action="store_true",
+            help=(
+                "Do not restore the e-Laws consolidation rows afterwards.  "
+                "Loading an edition deletes them, so skipping this leaves the "
+                "edition without its consolidation date ranges."
+            ),
+        )
+        parser.add_argument(
             "--allow-incomplete-chain",
             action="store_true",
             help=(
@@ -156,11 +202,124 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        source_path = Path(options["source"]).expanduser().resolve()
-        # When --source names a directory (the default), append --file so a
-        # bare `load_edition` resolves to DEFAULT_SOURCE_DIR / DEFAULT_FILE.
-        if source_path.is_dir():
-            source_path = source_path / options["file"]
+        source = Path(options["source"]).expanduser().resolve()
+        if options["all"]:
+            paths = self._all_edition_files(source)
+        else:
+            # When --source names a directory (the default), append --file so a
+            # bare `load_edition` resolves to DEFAULT_SOURCE_DIR / DEFAULT_FILE.
+            paths = [source / options["file"] if source.is_dir() else source]
+
+        for index, path in enumerate(paths, start=1):
+            if len(paths) > 1:
+                logger.info("Edition %d of %d: %s", index, len(paths), path.name)
+            try:
+                self._load_file(path, options)
+            except Exception as exc:
+                # Name what did land.  Each file loads in its own transaction,
+                # so an abort half way leaves the earlier editions loaded and
+                # the later ones missing — and the cross-edition rows between a
+                # loaded edition and a missing one are gone with them.  Re-run
+                # the whole command; every load is idempotent.
+                if len(paths) > 1:
+                    done = ", ".join(p.name for p in paths[: index - 1]) or "none"
+                    raise CommandError(
+                        f"{path.name} failed: {exc}\n"
+                        f"Loaded before the failure: {done}.  "
+                        f"The corpus is now part-loaded, and the consolidation "
+                        f"rows were not restored.  Fix the cause and re-run the "
+                        f"same command — it reloads from the start."
+                    ) from exc
+                raise
+
+        if not options["skip_consolidations"]:
+            self._restore_consolidations()
+
+    def _restore_consolidations(self) -> None:
+        """Put back the consolidation rows this command just deleted.
+
+        ``Consolidation`` holds a foreign key to ``CodeEdition`` with CASCADE,
+        so every ``load_edition`` wipes the rows of the edition it loads, and
+        only ``load_consolidations`` can put them back.  Asking a person to
+        remember that is how production came to hold 54 rows where a rebuild
+        makes 66: the missing 12 are OBC 1997's, dropped when that edition was
+        loaded after the consolidations were.  Nothing reported it — the loader
+        that dropped them said it had succeeded.
+
+        Runs once, after every edition in this invocation.  Running it after
+        each edition instead would report the not-yet-loaded editions as
+        skipped, which reads as a fault and is not one.
+
+        A missing source file warns rather than stops the command.  The file is
+        in this repository, so its absence is abnormal — but the edition data is
+        already loaded and correct by this point, and failing a ten-minute load
+        over a follow-up step is the worse trade.
+        """
+        try:
+            call_command("load_consolidations")
+        except CommandError as exc:
+            logger.warning(
+                "The editions loaded, but the consolidation rows were not "
+                "restored: %s.  Every edition loaded just now has lost its "
+                "consolidation date ranges.  Run `manage.py "
+                "load_consolidations` once the source file is there.",
+                exc,
+            )
+
+    def _all_edition_files(self, source: Path) -> list[Path]:
+        """Every edition JSON in ``source``, oldest edition first.
+
+        Order is load-bearing, not cosmetic.  Loading an edition deletes the
+        cross-edition rows that touch it, and the *newer* edition's payload
+        carries the ``mapping_coverage`` that restores them — so newest-first
+        leaves a corpus with no transitions and reports success.
+
+        Reads each file twice: once here for its ``effective_date``, once again
+        to load it.  The three OBC files total 80 MB of JSON, so holding all of
+        them parsed at once to save the second read costs far more memory than
+        the re-read costs time.
+
+        Only the directory's own ``*.json`` files count.  ``snapshots/`` and
+        ``laws/`` are subdirectories, so a non-recursive glob already excludes
+        CCM's intermediates, and the guard in ``_load_file`` is the backstop.
+        """
+        if not source.is_dir():
+            raise CommandError(
+                f"--all needs --source to name a directory, and {source} is a file.  "
+                f"Drop --all to load that one file."
+            )
+
+        dated: list[tuple[date, Path]] = []
+        for path in sorted(source.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                logger.warning("Skipping %s: not readable as JSON", path.name)
+                continue
+            # A JSON file in this directory is not necessarily an edition.
+            # Skip anything lacking the three keys that make it one, rather
+            # than let it fail later with a message about a missing field.
+            if not (data.get("code") and data.get("edition") and data.get("effective_date")):
+                logger.warning(
+                    "Skipping %s: no code/edition/effective_date, so it is not an edition",
+                    path.name,
+                )
+                continue
+            dated.append((_require_date(data["effective_date"], "effective_date"), path))
+
+        if not dated:
+            raise CommandError(f"No edition JSON found in {source}.")
+
+        dated.sort()
+        logger.info(
+            "Loading %d editions, oldest first: %s",
+            len(dated),
+            ", ".join(p.name for _, p in dated),
+        )
+        return [path for _, path in dated]
+
+    def _load_file(self, source_path: Path, options: dict[str, Any]) -> None:
+        """Load one edition JSON.  The whole of the original ``handle``."""
         if not source_path.exists():
             raise CommandError(f"Source file not found: {source_path}")
 
@@ -318,7 +477,7 @@ class Command(BaseCommand):
             },
         )
 
-        province = data.get("province")
+        province = data.get("province") or self.CODE_PROVINCES.get(data["code"])
         if province:
             ProvinceCode.objects.update_or_create(
                 province=province,

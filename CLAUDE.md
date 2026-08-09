@@ -34,8 +34,19 @@ ruff check --fix .
 python manage.py migrate
 python manage.py makemigrations
 
-# Load a CCM consolidated edition (provenance models) into the DB
+# Load a CCM consolidated edition (provenance models) into the DB.  This loads
+# ONE edition, the default OBC_2012.json.  Add --file to pick another.
 python manage.py load_edition --source ../CodeChronicleMapping/data/outputs
+
+# Load every edition in that directory, oldest first.  Use this to rebuild the
+# corpus from empty (a restore, a fresh dev DB).  The order matters: loading an
+# edition deletes the cross-edition rows touching it, and the newer edition's
+# payload is what puts them back.
+#
+# Either form finishes by calling load_consolidations, because loading an
+# edition deletes that edition's consolidation rows (FK, CASCADE) and nothing
+# else restores them.  Pass --skip-consolidations to stop that.
+python manage.py load_edition --source ../CodeChronicleMapping/data/outputs --all
 
 # Tell the people who asked for an edition that it has landed. Run by hand,
 # when an edition ships. Prints a report and sends nothing without --send;

@@ -1,20 +1,25 @@
 """Tests for the load_edition management command."""
 
 import json
+import logging
 from datetime import date
 from pathlib import Path
 
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.test import override_settings
 
+from core.management.commands.load_edition import Command
 from core.models import (
     Code,
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     CodeEditionProvisionVersionClause,
+    Consolidation,
     EditionTransition,
+    ProvinceCode,
     ProvisionCrossReference,
     ProvisionCrossReferenceAlternate,
     ProvisionDisposition,
@@ -1139,3 +1144,147 @@ class TestFirstEditionDateSeed:
         call_command("load_edition", "--source", str(edition_json))
         code = Code.objects.get(code="OBC")
         assert code.first_edition_date == date(1975, 12, 31)
+
+
+@pytest.mark.django_db
+class TestProvinceCodeSeed:
+    """The row that maps a search's province to a code.
+
+    Its absence is silent: `execute_search` resolves the province to no code
+    and answers with nothing, so the site reads as an empty corpus rather than
+    a broken mapping.  The B8 restore drill on 2026-08-09 met exactly that —
+    0 matches before the row existed, 158 after.
+
+    No test caught the gap before, because the fixture below carries a
+    top-level ``province`` and the real CCM payload does not.  A fixture that
+    is kinder than the data proves nothing, so these tests strip the key.
+    """
+
+    @staticmethod
+    def _without_province(edition_json: Path) -> Path:
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        del data["province"]
+        edition_json.write_text(json.dumps(data), encoding="utf-8")
+        return edition_json
+
+    def test_payload_province_creates_the_row(self, edition_json: Path) -> None:
+        call_command("load_edition", "--source", str(edition_json))
+        assert ProvinceCode.objects.get().province == "ON"
+
+    def test_row_is_seeded_when_the_payload_omits_the_province(
+        self, edition_json: Path
+    ) -> None:
+        """What CCM actually ships.  The code-to-province map fills the gap."""
+        call_command("load_edition", "--source", str(self._without_province(edition_json)))
+
+        row = ProvinceCode.objects.get()
+        assert row.province == "ON"
+        assert row.code.code == "OBC"
+
+    def test_an_unmapped_code_creates_no_row(self, edition_json: Path) -> None:
+        """A code absent from both the payload and the map is left alone,
+        rather than guessed at."""
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        del data["province"]
+        data["code"] = "XYZ"
+        edition_json.write_text(json.dumps(data), encoding="utf-8")
+
+        call_command("load_edition", "--source", str(edition_json))
+        assert ProvinceCode.objects.count() == 0
+
+
+class TestAllEditionFilesOrdering:
+    """``--all`` orders by effective date, never by filename.
+
+    Loading an edition deletes the cross-edition rows touching it, and the
+    newer edition's payload is what restores them.  Newest-first therefore
+    produces a corpus with no transitions and reports success.
+    """
+
+    @staticmethod
+    def _write(directory: Path, name: str, edition: str, effective: str) -> Path:
+        raw = FIXTURE_PATH.read_text(encoding="utf-8")
+        # ``Regulation.reg_id`` is unique across the whole corpus, so two
+        # editions built from one fixture collide unless their regulations are
+        # renamed.  Rewriting the serialized text catches every reference to a
+        # reg_id, not only the ones on the regulation rows.
+        for old, new in (("403/97", f"403/{edition[-2:]}"), ("22/98", f"22/{edition[-2:]}")):
+            raw = raw.replace(old, new)
+        data = json.loads(raw)
+        data["edition"] = edition
+        data["effective_date"] = effective
+        data["ineffective_date"] = None
+        path = directory / name
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return path
+
+    def test_orders_by_effective_date_not_by_name(self, tmp_path: Path) -> None:
+        # Filenames sort the opposite way round to the dates, so a run that
+        # passes here cannot be sorting on the name.
+        self._write(tmp_path, "a_newer.json", "2006", "2007-01-01")
+        self._write(tmp_path, "z_older.json", "1997", "1998-04-06")
+
+        found = Command()._all_edition_files(tmp_path)
+        assert [p.name for p in found] == ["z_older.json", "a_newer.json"]
+
+    def test_skips_json_that_is_not_an_edition(self, tmp_path: Path) -> None:
+        self._write(tmp_path, "OBC_1997.json", "1997", "1998-04-06")
+        (tmp_path / "notes.json").write_text('{"hello": "world"}', encoding="utf-8")
+
+        found = Command()._all_edition_files(tmp_path)
+        assert [p.name for p in found] == ["OBC_1997.json"]
+
+    def test_a_directory_with_no_edition_is_an_error(self, tmp_path: Path) -> None:
+        with pytest.raises(CommandError, match="No edition JSON found"):
+            Command()._all_edition_files(tmp_path)
+
+    def test_all_needs_a_directory(self, tmp_path: Path) -> None:
+        path = self._write(tmp_path, "OBC_1997.json", "1997", "1998-04-06")
+        with pytest.raises(CommandError, match="needs --source to name a directory"):
+            Command()._all_edition_files(path)
+
+
+@pytest.mark.django_db
+class TestLoadAll:
+    def test_loads_every_edition_in_the_directory(self, tmp_path: Path) -> None:
+        TestAllEditionFilesOrdering._write(tmp_path, "a_newer.json", "2006", "2007-01-01")
+        TestAllEditionFilesOrdering._write(tmp_path, "z_older.json", "1997", "1998-04-06")
+
+        call_command("load_edition", "--source", str(tmp_path), "--all")
+
+        assert set(CodeEdition.objects.values_list("edition_id", flat=True)) == {"1997", "2006"}
+
+
+@pytest.mark.django_db
+class TestConsolidationsAreRestored:
+    """``load_edition`` puts back the consolidation rows it deletes.
+
+    ``Consolidation`` holds a foreign key to ``CodeEdition`` with CASCADE, so a
+    reload wipes the edition's rows and only ``load_consolidations`` can restore
+    them.  Production ran the two commands in the wrong order once and lost OBC
+    1997's twelve rows — 54 where a rebuild makes 66 — and nothing reported it.
+    """
+
+    def test_the_rows_come_back(self, edition_json: Path) -> None:
+        call_command("load_edition", "--source", str(edition_json))
+
+        rows = Consolidation.objects.select_related("edition")
+        assert rows.count() > 0
+        assert {r.edition.edition_id for r in rows} == {"1997"}
+
+    def test_skip_consolidations_leaves_them_out(self, edition_json: Path) -> None:
+        call_command("load_edition", "--source", str(edition_json), "--skip-consolidations")
+        assert Consolidation.objects.count() == 0
+
+    def test_a_missing_source_warns_and_the_edition_still_stands(
+        self, edition_json: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The edition data is already correct at that point.  Failing a
+        ten-minute load over a follow-up step is the worse trade."""
+        caplog.set_level(logging.WARNING)
+        with override_settings(BASE_DIR=tmp_path):
+            call_command("load_edition", "--source", str(edition_json))
+
+        assert CodeEdition.objects.count() == 1
+        assert Consolidation.objects.count() == 0
+        assert "were not restored" in caplog.text
