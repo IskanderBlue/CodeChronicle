@@ -25,8 +25,10 @@ legitimately given, and it is not meant to.
 
 import hmac
 from hashlib import sha256
+from typing import Any
 
 from django.conf import settings
+from django.core.checks import Error
 
 from config.assets import SIGNED_PREFIXES
 
@@ -42,11 +44,53 @@ def _secret() -> bytes:
     """The shared secret, as bytes.
 
     Falls back to ``SECRET_KEY`` so a developer checkout needs no extra
-    configuration.  Production sets ``ASSET_SIGNING_KEY`` to the same value
-    the Worker holds; if the two disagree every scan 403s, which is loud.
+    configuration.  Production sets ``ASSET_SIGNING_KEY`` to the same value the
+    Worker holds.
+
+    That fallback is the reason :func:`check_asset_signing_key` exists.  A
+    container that never received the key does not fail here: it signs every
+    URL with ``SECRET_KEY``, renders a perfect page, and the 403s appear at the
+    edge, on images only, for gated readers only, naming the Worker rather than
+    the missing setting.  The check turns that into a refused deploy.
     """
     key = getattr(settings, "ASSET_SIGNING_KEY", "") or settings.SECRET_KEY
     return key.encode("utf-8")
+
+
+def check_asset_signing_key(app_configs: Any, **kwargs: Any) -> list[Error]:
+    """Refuse to start a deployed instance with no asset-signing key.
+
+    ``manage.py check`` runs in CI and ahead of ``migrate`` in
+    ``scripts/entrypoint.sh``, so this fails the deploy rather than shipping an
+    instance that signs with the wrong key.
+
+    It matches what the other half of this gate already does: the Worker
+    refuses outright when its ``ASSET_SIGNING_KEY`` binding is missing.  Before
+    this, the Worker failed closed and the app failed silently — the same
+    misconfiguration, reported by one side and hidden by the other.
+
+    ``DEBUG`` is exempt, because the fallback is the point of the fallback: a
+    developer checkout signs and verifies with one key and never meets a
+    Worker.
+    """
+    # Bound to a name rather than inlined into the ``if``: mypy pushes the
+    # boolean context of a condition into ``getattr``'s default and then reads
+    # ``""`` as the wrong type.
+    key = getattr(settings, "ASSET_SIGNING_KEY", "")
+    if settings.DEBUG or key:
+        return []
+    return [
+        Error(
+            "ASSET_SIGNING_KEY is empty, so page scans would be signed with "
+            "SECRET_KEY and the edge would refuse every one of them.",
+            hint=(
+                "Set ASSET_SIGNING_KEY in the app_runtime_secrets bundle to the "
+                "same value the Cloudflare Worker holds "
+                "(modules/cloudflare/main.tf, var.asset_signing_key)."
+            ),
+            id="core.E001",
+        )
+    ]
 
 
 def needs_token(asset_key: str) -> bool:

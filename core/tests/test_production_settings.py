@@ -35,6 +35,8 @@ from unittest import mock
 
 import pytest
 
+from core.asset_signing import check_asset_signing_key
+
 
 def _reload_production(env: dict):
     """Import the production settings fresh under a given environment."""
@@ -155,3 +157,56 @@ class TestBackupSettingsComeOutOfTheBundle:
             {"R2_BACKUP_BUCKET": "from-the-environment"},
         )
         assert settings.R2_BACKUP_BUCKET == "from-the-bundle"
+
+
+class TestTheAssetSigningKey:
+    """The key the Cloudflare Worker checks page-scan tokens against.
+
+    Same failure shape as the two above, and the worst of the three: nothing
+    raises.  ``core.asset_signing._secret`` falls back to ``SECRET_KEY``, so a
+    container that never received the key renders every page perfectly and the
+    403s surface at the edge, on images only, for gated readers only.
+    """
+
+    def test_it_is_read_from_the_bundle(self):
+        settings = _reload_production(
+            {"APP_RUNTIME_SECRETS": json.dumps({"ASSET_SIGNING_KEY": "shared-value"})}
+        )
+        assert settings.ASSET_SIGNING_KEY == "shared-value"
+
+    def test_base_settings_alone_leave_it_empty(self):
+        """Why ``production.py`` has to re-resolve it.
+
+        ``base.py`` reads ``os.environ``, and the container's env-file does not
+        carry this key — it is in the bundle.  Without the re-resolution the
+        setting is silently "" and the fallback takes over.
+        """
+        settings = _reload_production({"APP_RUNTIME_SECRETS": json.dumps({})})
+        assert settings.ASSET_SIGNING_KEY == ""
+
+
+class TestTheDeployRefusesAnUnsignableInstance:
+    """``check_asset_signing_key`` — the app half of a gate that must agree.
+
+    The Worker refuses outright when its binding is missing.  Before this
+    check the app did not: the same misconfiguration was reported by one side
+    and hidden by the other.
+    """
+
+    def test_it_objects_when_the_key_is_missing(self, settings):
+        settings.DEBUG = False
+        settings.ASSET_SIGNING_KEY = ""
+        errors = check_asset_signing_key(None)
+        assert [e.id for e in errors] == ["core.E001"]
+
+    def test_it_is_satisfied_once_the_key_is_set(self, settings):
+        settings.DEBUG = False
+        settings.ASSET_SIGNING_KEY = "shared-value"
+        assert check_asset_signing_key(None) == []
+
+    def test_a_developer_checkout_is_exempt(self, settings):
+        """The fallback is the point of the fallback: a dev instance signs and
+        verifies with one key and never meets a Worker."""
+        settings.DEBUG = True
+        settings.ASSET_SIGNING_KEY = ""
+        assert check_asset_signing_key(None) == []
