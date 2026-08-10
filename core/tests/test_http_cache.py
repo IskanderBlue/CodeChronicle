@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import http_date
 
+from core.http_cache import EDGE_MAX_AGE
 from core.models import (
     Code,
     CodeEdition,
@@ -76,11 +77,40 @@ class TestAnonymousGetsAValidator:
         second = client.get(PERMALINK, HTTP_IF_MODIFIED_SINCE=first["Last-Modified"])
         assert second.status_code == 304
 
-    def test_the_response_varies_on_cookie(self, client: Client, corpus):
-        # Without this a shared cache could hand a free-tier body to a Pro
-        # subscriber, because the validator deliberately differs by reader.
+    def test_the_edge_may_store_it(self, client: Client, corpus):
         response = client.get(PERMALINK)
-        assert "Cookie" in response.get("Vary", "")
+        assert f"s-maxage={EDGE_MAX_AGE}" in response["Cache-Control"]
+        assert "public" in response["Cache-Control"]
+
+    def test_the_reader_own_browser_still_revalidates(self, client: Client, corpus):
+        # A reader should see a new edition the moment it lands, so their own
+        # browser asks every time; only the shared copy at the edge is held.
+        response = client.get(PERMALINK)
+        assert "max-age=0" in response["Cache-Control"]
+        assert "must-revalidate" in response["Cache-Control"]
+
+    def test_it_does_not_vary_on_cookie(self, client: Client, corpus):
+        """Cloudflare honours ``Vary`` only on ``Accept-Encoding``.
+
+        Any other ``Vary`` on HTML makes the response uncacheable at the edge,
+        which is the entire cost problem.  The tier guarantee is carried by
+        ``private, no-store`` on the signed-in path instead.
+        """
+        response = client.get(PERMALINK)
+        assert "Cookie" not in response.get("Vary", "")
+
+    def test_no_cookie_is_set_on_a_read_page(self, client: Client, corpus):
+        """The property that makes the page cacheable at all.
+
+        A shared cache stores nothing that carries ``Set-Cookie``.  One
+        ``{% csrf_token %}`` rendered into a hidden dialog is enough to attach
+        one, which is why the report form is fetched rather than rendered
+        (:func:`core.views.feedback.report_form`).  This fails the moment
+        somebody puts a form back on a read surface.
+        """
+        response = client.get(PERMALINK)
+        assert response.status_code == 200
+        assert not response.cookies
 
     def test_a_304_renders_nothing_and_records_no_view(
         self, client: Client, corpus
@@ -132,6 +162,19 @@ class TestSignedInReadersAreNeverCached:
         response = client.get(PERMALINK)
         assert response.status_code == 200
         assert response.get("Last-Modified") is None
+
+    def test_a_signed_in_page_is_never_stored(self, client: Client, corpus):
+        """The tier guarantee, stated as a refusal rather than a cache key.
+
+        This is what replaced ``Vary: Cookie``, and it is stronger: it holds
+        even if the edge rule that bypasses the cache for signed-in readers is
+        missing or wrong, because no shared cache may store the body at all.
+        """
+        user = User.objects.create_user(email="pro2@example.com", password="pw12345!")
+        client.force_login(user)
+        response = client.get(PERMALINK)
+        assert "no-store" in response["Cache-Control"]
+        assert "private" in response["Cache-Control"]
 
     def test_an_anonymous_stamp_cannot_freeze_a_subscriber(
         self, client: Client, corpus

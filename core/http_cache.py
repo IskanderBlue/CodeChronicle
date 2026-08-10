@@ -38,7 +38,6 @@ from datetime import datetime
 from typing import Any
 
 from django.http import HttpRequest, HttpResponse
-from django.utils.cache import patch_vary_headers
 from django.views.decorators.http import last_modified
 
 from core.models import CorpusCurrency
@@ -69,22 +68,54 @@ def corpus_last_modified(
     return currency.refreshed_at.replace(microsecond=0)
 
 
+#: How long the edge may serve a stored copy before it revalidates.  Short,
+#: because nothing purges the edge on deploy: an hour bounds how long a
+#: template change can stay invisible.  Going stale is cheap — Cloudflare
+#: revalidates with ``If-Modified-Since`` and the origin answers 304, so an
+#: expired entry costs one conditional request rather than a re-render.
+EDGE_MAX_AGE = 3600
+
+
 def corpus_conditional(
     view: Callable[..., HttpResponse],
 ) -> Callable[..., HttpResponse]:
-    """Give a read surface a corpus-scoped validator and a ``Vary: Cookie``.
+    """Give a read surface a corpus-scoped validator and a cache policy.
 
     The two belong together.  The validator deliberately differs between an
-    anonymous reader and a signed-in one, so any shared cache must key on the
-    cookie — otherwise it hands a free-tier page to a Pro subscriber.  Keeping
-    them in one decorator means a new surface cannot pick up half of it.
+    anonymous reader and a signed-in one, so a shared cache that ignored the
+    difference would hand a free-tier page to a Pro subscriber.  Keeping both
+    in one decorator means a new surface cannot pick up half of it.
+
+    The policy says so directly rather than through ``Vary: Cookie``:
+
+    * **Signed in — ``private, no-store``.**  No shared cache may keep it, so
+      the tier gate holds even if the edge is misconfigured.  This is the
+      guarantee ``Vary: Cookie`` used to make, stated as a refusal instead of
+      as a cache key, which is stronger because it does not depend on the
+      cache honouring a key it may not support.
+    * **Anonymous — ``public``, revalidated by the browser, stored by the
+      edge.**  ``max-age=0, must-revalidate`` keeps a reader's own browser
+      asking (they should see a new edition immediately); ``s-maxage`` lets
+      Cloudflare answer without touching Django at all.
+
+    ``Vary: Cookie`` is dropped by :class:`PublicCacheVary`, which has to run
+    outside the middleware that adds it.  See that class for why.
     """
     conditional = last_modified(corpus_last_modified)(view)
 
     @functools.wraps(view)
     def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         response = conditional(request, *args, **kwargs)
-        patch_vary_headers(response, ("Cookie",))
+        if getattr(request.user, "is_authenticated", False):
+            response["Cache-Control"] = "private, no-store"
+        elif response.status_code in (200, 304):
+            response["Cache-Control"] = (
+                f"public, max-age=0, must-revalidate, s-maxage={EDGE_MAX_AGE}"
+            )
+        else:
+            # A redirect to the login page is about the reader, not the
+            # corpus.  Stored publicly it would be served to everybody.
+            response["Cache-Control"] = "private, no-store"
         # Django's ``condition`` decorator stamps every safe-method response,
         # whatever its status.  Only a body we would serve again should carry
         # a validator: a 404 that handed one out could later be answered 304,
@@ -98,3 +129,49 @@ def corpus_conditional(
         return response
 
     return wrapper
+
+
+class PublicCacheVary:
+    """Drop ``Vary: Cookie`` from responses we marked publicly cacheable.
+
+    Cloudflare honours ``Vary`` only on ``Accept-Encoding``.  Any other value
+    on an HTML response makes it uncacheable at the edge — which is the entire
+    cost problem this work exists to fix.
+
+    ``SessionMiddleware`` adds the header whenever anything reads the session,
+    and :func:`corpus_conditional` reads ``request.user`` to decide whether the
+    reader gets a validator at all.  So the header is added *after* the view
+    and its decorators have finished, and only a middleware outside that one
+    can take it off again.  This must therefore sit **first** in
+    ``MIDDLEWARE``, so its ``process_response`` runs last.
+
+    Two conditions keep it narrow, and both matter:
+
+    * **Only responses that say ``public``.**  That marking is made in one
+      place, for anonymous readers, on a corpus page.  A signed-in reader's
+      page says ``private, no-store`` and is untouched.
+    * **Never a response carrying ``Set-Cookie``.**  A response that hands out
+      a cookie is one no shared cache will store anyway, so removing the
+      ``Vary`` would gain nothing and would strip a real signal from any
+      private cache that does store it.
+    """
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        response = self.get_response(request)
+        if "public" not in response.get("Cache-Control", ""):
+            return response
+        if response.cookies or response.has_header("Set-Cookie"):
+            return response
+        varies = [
+            part.strip()
+            for part in response.get("Vary", "").split(",")
+            if part.strip() and part.strip().lower() != "cookie"
+        ]
+        if varies:
+            response["Vary"] = ", ".join(varies)
+        elif response.has_header("Vary"):
+            del response["Vary"]
+        return response

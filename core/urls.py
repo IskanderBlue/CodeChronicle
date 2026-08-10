@@ -31,6 +31,9 @@ urlpatterns = [
     path("edition-request/", views.edition_request, name="edition_request"),
     # Reader reports — "this looks wrong" on a specific text.
     path("report/", views.report_problem, name="report_problem"),
+    # The form itself, fetched when the dialog opens.  Kept off the page so a
+    # provision response carries no CSRF cookie and stays cacheable.
+    path("report/form/", views.report_form, name="report_form"),
     path("report/<int:pk>/status/", views.feedback_status, name="feedback_status"),
     # Exports — the four ways to take something out of the product.  The
     # target is the same ``?v=OBC_2006/B/3.2.5.7./v0`` reference /compare/

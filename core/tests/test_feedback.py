@@ -158,21 +158,84 @@ class TestFilingAReport:
 
 
 @pytest.mark.django_db
+class TestTheFetchedForm:
+    """``report_form`` — the panel the dialog fetches when it opens."""
+
+    def test_it_carries_the_target_it_was_given(self, client):
+        body = client.get(
+            reverse("core:report_form"),
+            {
+                "code_edition": "OBC_2006",
+                "division": "B",
+                "provision_id": "3.2.4.5.",
+                "version": "0",
+            },
+        ).content.decode()
+        assert 'name="note"' in body
+        assert 'value="3.2.4.5."' in body
+        assert 'name="version" value="0"' in body
+
+    def test_a_regulation_target_renders_no_provision_fields(self, client):
+        """The same split the panel has always made: a regulation report must
+        not post a blank provision id that reads like a missing number."""
+        body = client.get(
+            reverse("core:report_form"),
+            {"code_edition": "OBC_2006", "reg_id": "403/97"},
+        ).content.decode()
+        assert 'name="reg_id"' in body
+        assert 'name="provision_id"' not in body
+
+    def test_it_does_not_check_the_target_against_the_corpus(self, client):
+        """A reader disputing a provision we hold wrongly must still be able
+        to name it, and the report stores its target as text on purpose."""
+        response = client.get(
+            reverse("core:report_form"),
+            {"code_edition": "OBC_2006", "provision_id": "9.9.9.9.", "version": "0"},
+        )
+        assert response.status_code == 200
+
+    def test_an_unknown_surface_falls_back(self, client):
+        body = client.get(
+            reverse("core:report_form"),
+            {"code_edition": "OBC_2006", "provision_id": "1.1.1.1.",
+             "version": "0", "surface": "nonsense"},
+        ).content.decode()
+        assert 'name="surface" value="permalink"' in body
+
+    def test_this_is_where_the_csrf_cookie_is_minted(self, client):
+        """The point of the endpoint.  The token has to be issued somewhere;
+        issuing it here keeps it off the cacheable corpus pages."""
+        response = client.get(
+            reverse("core:report_form"),
+            {"code_edition": "OBC_2006", "provision_id": "1.1.1.1.", "version": "0"},
+        )
+        assert "csrftoken" in response.cookies
+
+
+@pytest.mark.django_db
 class TestTheTriggerOnEachSurface:
     """The affordance must reach all three reading surfaces, and must not
     appear on the pages that only exhibit a component."""
 
     def test_the_provision_permalink_offers_it(self, client, provision):
+        """The trigger and the target are on the page; the form is not.
+
+        The form carries a CSRF token, and rendering one attaches a cookie
+        that stops any shared cache storing the page — see
+        :mod:`core.http_cache`.  So the page carries the fetch, and the fetch
+        carries the target.
+        """
         body = client.get("/provision/OBC_2006/B/3.2.4.5./v0/").content.decode()
         assert "This looks wrong" in body
-        assert 'name="note"' in body
+        assert 'name="note"' not in body
+        assert "provision_id=3.2.4.5." in body
 
     def test_the_regulation_page_offers_it(self, client, provision):
         body = client.get(
             reverse("core:regulation_detail", args=[provision["regulation"].pk])
         ).content.decode()
         assert "This looks wrong" in body
-        assert 'name="reg_id"' in body
+        assert f"reg_id={provision['regulation'].reg_id}" in body
 
     def test_the_landing_specimen_does_not_offer_it(self, client):
         """The landing page mounts a real band as a worked example. A report

@@ -77,6 +77,41 @@ def _target(request: HttpRequest) -> dict[str, Any]:
     }
 
 
+def report_form(request: HttpRequest) -> HttpResponse:
+    """The empty report form, fetched when the reader opens the dialog.
+
+    The panel is not rendered with the page, and the reason is caching rather
+    than weight.  The panel carries ``{% csrf_token %}``; rendering that tag
+    makes Django attach ``Set-Cookie: csrftoken`` to the response, and a
+    response carrying a cookie is one no shared cache will store.  One hidden
+    form on a dialog nobody opened is enough to make every provision page
+    uncacheable at the edge, which is most of what the corpus costs to serve.
+
+    Fetching it here moves the cookie onto this request, which is never
+    cached.  The reader sees the same dialog; it fills a moment later.
+
+    The target arrives in the query string, the same pieces the hidden fields
+    post back.  It is not checked against the corpus, because a report stores
+    its target as text on purpose — see ``ProvisionFeedback`` — and a reader
+    disputing a provision we hold wrongly must still be able to name it.
+    """
+    surface = request.GET.get("surface") or ProvisionFeedback.Surface.PERMALINK
+    if surface not in ProvisionFeedback.Surface.values:
+        surface = ProvisionFeedback.Surface.PERMALINK
+    return render(
+        request,
+        "partials/_report_problem_panel.html",
+        {
+            "surface": surface,
+            "code_edition": (request.GET.get("code_edition") or "").strip()[:50],
+            "division": (request.GET.get("division") or "").strip()[:10],
+            "provision_id": (request.GET.get("provision_id") or "").strip()[:50],
+            "version": _version(request.GET.get("version")),
+            "reg_id": (request.GET.get("reg_id") or "").strip()[:50],
+        },
+    )
+
+
 @require_POST
 def report_problem(request: HttpRequest) -> HttpResponse:
     """Record one "this looks wrong" report."""

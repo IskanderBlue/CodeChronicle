@@ -49,6 +49,10 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # First on purpose, so its process_response runs last: it removes the
+    # ``Vary: Cookie`` that SessionMiddleware adds below, and only from the
+    # responses core.http_cache marked public.  See core.http_cache.
+    "core.http_cache.PublicCacheVary",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

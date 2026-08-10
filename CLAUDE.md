@@ -447,6 +447,34 @@ is what guarantees that. Where there is no `CorpusCurrency` row — the window
 after a restore, before `load_edition --all` — there is no such guarantee, so
 the validator is withheld rather than invented.
 
+**The edge stores the anonymous copy.** A 304 still costs a render; an edge
+hit costs nothing at Django. `modules/cloudflare/main.tf` marks the five read
+surfaces cacheable, and `core/http_cache.py` decides for how long
+(`EDGE_MAX_AGE`, one hour). Four rules:
+
+- **The app owns the TTL**, not the rule. The rule says `respect_origin`,
+  because the app is what knows when the corpus changed. A TTL in Cloudflare
+  would put that decision in two places that cannot see each other.
+- **The tier gate is stated twice, on purpose.** The rule bypasses the cache
+  when a `sessionid` cookie is present, *and* the app sends
+  `private, no-store` to a signed-in reader. Either alone is sufficient, so a
+  wrong rule cannot serve a free-tier page to a subscriber.
+- **`Vary: Cookie` is gone.** Cloudflare honours `Vary` only on
+  `Accept-Encoding`, so any other value made the page uncacheable — the whole
+  cost problem. `SessionMiddleware` adds the header after the view runs, so
+  `core.http_cache.PublicCacheVary` removes it from the outside and must stay
+  **first** in `MIDDLEWARE`.
+- **No form renders on a read page.** A response carrying `Set-Cookie` is one
+  no shared cache stores, and one `{% csrf_token %}` in a hidden dialog is
+  enough to attach one. Both dialogs fetch their panel instead
+  (`core:citation_panel`, `core:report_form`); `test_no_cookie_is_set_on_a_read_page`
+  fails if a form comes back.
+
+Nothing purges the edge on deploy, so a template change can stay invisible for
+up to `EDGE_MAX_AGE`. Going stale is cheap — Cloudflare revalidates with
+`If-Modified-Since` and the origin answers 304 — so this is a staleness
+window, not a cost.
+
 **`templates/robots.txt` refuses what costs and returns nothing**: the print
 routes (every provision links its own, and an anonymous request is a login
 redirect), and the backlink crawlers. Search and AI crawlers are deliberately
