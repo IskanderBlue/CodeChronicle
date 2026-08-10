@@ -15,4 +15,42 @@ Disallow: /stripe/
 Disallow: /search-results/
 Disallow: /viewer/
 
+# The exhibits.  Every provision page links its own print route, so a crawler
+# walking the corpus asks for both.  An anonymous request is redirected to the
+# login page, which is the same three lines every time and worth indexing once
+# at most.  Measured over 72 hours to 10 August 2026: 4,034 fetches, every one
+# a redirect carrying nothing.  The provision rule needs a "*" because the
+# edition and provision sit between the prefix and the suffix.
+Disallow: /provision/*/print/
+Disallow: /compare/print/
+
+# /compare/ itself is deliberately NOT disallowed.  The reachable set is small
+# and bounded: the links are order-normalised (the earlier version is always
+# "a"), and they only join versions of one provision plus one lineage hop, so
+# the free-tier corpus offers 408 comparisons from the 308 provisions that have
+# more than one version — not the corpus squared.  A comparison also costs
+# about 16 kB to render against a provision permalink's 26 kB average, because
+# it draws two versions rather than a whole subtree.  And it is the one page
+# here that answers a question no other page on the web answers: what changed
+# in this article, and which instrument changed it.
+
+# Bulk SEO and backlink crawlers.  These read the corpus to sell link graphs
+# and send no readers; MJ12bot alone fetched 4,504 pages in the 72 hours
+# above, against 1,745 for Googlebot.  Refused rather than slowed, because a
+# crawl-delay still costs a render per hit and buys us nothing either way.
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: SERankingBacklinksBot
+Disallow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
 Sitemap: {{ sitemap_url }}

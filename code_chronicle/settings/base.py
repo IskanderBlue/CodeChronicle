@@ -127,6 +127,13 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # directly during local dev — the layout is identical, so no sync is needed.
 ASSET_ROOT = Path(os.environ.get("ASSET_ROOT", BASE_DIR / "assets"))
 
+# Shared secret behind the asset tokens (see ``core.asset_signing``).  The edge
+# Worker holds the same string as its ASSET_SIGNING_KEY secret; the two must
+# match or every gated scan 403s.  Empty falls back to SECRET_KEY, which is what
+# a developer checkout wants — dev serves the assets from Django, so nothing
+# checks the token there.
+ASSET_SIGNING_KEY = os.environ.get("ASSET_SIGNING_KEY", "")
+
 
 # ===================
 # Cloudflare R2 — asset object storage (upload/sync side only)

@@ -19,6 +19,25 @@ from pathlib import Path
 # application static files.  Order is not significant.
 MIRRORED_PREFIXES: tuple[str, ...] = ("documents", "elaws", "amended", "laws")
 
+# Prefixes the edge Worker refuses to serve without a valid token (see
+# ``core.asset_signing``).  ``documents/`` holds the whole-page scans of the
+# pre-e-Laws editions — the primary evidence, one image per printed page — and
+# its keys are sequential, so anybody can walk an edition without ever loading
+# a page we gated.  A token cannot be guessed, and Django only mints one while
+# rendering a page ``core.access`` already allowed, so the asset gate is the
+# page gate.
+#
+# The other three stay open on purpose.  ``laws/`` and ``elaws/`` are figure
+# *fragments* referenced from free and paid editions alike, and ``laws/`` paths
+# are baked into stored e-Laws HTML that this product renders verbatim — signing
+# them would mean rewriting that HTML, which is the one thing the render path
+# must not do.
+#
+# This list must match ``signed_path_prefixes`` in the Terraform Cloudflare
+# module.  A prefix added here and not there stays open in production; added
+# there and not here, every one of its images breaks.
+SIGNED_PREFIXES: tuple[str, ...] = ("documents",)
+
 # CCM does not gather the trees under one root: ``laws/`` is a build *output*,
 # while ``documents/`` and ``elaws/`` are *intermediates*.  The sync searches
 # these roots in order and takes each prefix from the first root that holds it.

@@ -57,6 +57,52 @@ class TestRobots:
         for path in ("/accounts/", "/admin/", "/history/", "/insights/", "/viewer/"):
             assert f"Disallow: {path}" in body
 
+    def test_disallows_the_exhibits(self, client):
+        """Every provision links its own print route, and every fetch of one
+        by an anonymous crawler is a login redirect carrying nothing."""
+        body = client.get("/robots.txt").content.decode()
+        assert "Disallow: /provision/*/print/" in body
+        assert "Disallow: /compare/print/" in body
+
+    def test_the_comparison_page_stays_indexable(self, client):
+        """Pinned, because "compare looks expensive" is an easy wrong call.
+
+        The reachable set is bounded — links are order-normalised and only
+        join versions of one provision plus one lineage hop — and a comparison
+        renders two versions rather than a subtree, so it is cheaper than the
+        average permalink.  It is also the only page that answers what changed
+        between two versions.
+        """
+        body = client.get("/robots.txt").content.decode()
+        assert "Disallow: /compare/\n" not in body
+
+    def test_the_costly_rules_sit_in_the_wildcard_group(self, client):
+        """They must precede the first named agent, or they bind to nobody.
+
+        A rule after a ``User-agent:`` line belongs to that agent's group.
+        Putting these below the named crawlers would silently exempt every
+        crawler that matters.
+        """
+        body = client.get("/robots.txt").content.decode()
+        first_named = body.index("User-agent: MJ12bot")
+        assert body.index("Disallow: /compare/print/") < first_named
+        assert body.index("Disallow: /provision/*/print/") < first_named
+
+    def test_refuses_the_backlink_crawlers(self, client):
+        body = client.get("/robots.txt").content.decode()
+        for agent in ("MJ12bot", "SemrushBot", "AhrefsBot"):
+            assert f"User-agent: {agent}" in body
+
+    def test_the_search_and_ai_crawlers_are_still_welcome(self, client):
+        """Googlebot brings readers; the AI answer engines may yet.
+
+        Pinned because refusing them is a product decision, not a cost one,
+        and it should not arrive as a side effect of tidying this file.
+        """
+        body = client.get("/robots.txt").content.decode()
+        for agent in ("Googlebot", "GPTBot", "ClaudeBot", "PerplexityBot"):
+            assert f"User-agent: {agent}" not in body
+
 
 @pytest.mark.django_db
 class TestSitemap:

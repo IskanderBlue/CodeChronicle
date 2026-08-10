@@ -31,6 +31,7 @@ from core.compare import (
 )
 from core.cross_refs import annotate_versions
 from core.events import record_event
+from core.http_cache import corpus_conditional
 from core.models import CodeEditionProvisionVersion, EngagementEvent
 from core.page_crops import build_crops
 from core.permalinks import provision_permalink_url
@@ -96,6 +97,7 @@ def _missing(request: HttpRequest, message: str) -> HttpResponse:
     )
 
 
+@corpus_conditional
 def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpResponse:
     """Compare the two versions named by ``?a=`` and ``?b=``.
 

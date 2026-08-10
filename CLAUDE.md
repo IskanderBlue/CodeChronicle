@@ -405,6 +405,87 @@ its table rows, an HTML-rendered one keeps them (there the tables are not in
 `version.html` and appear nowhere else). `?tables=on` / `?tables=off` override
 it, and the print page carries the link.
 
+## Crawlers: what they cost, and what they can reach
+
+Almost all traffic is machines. In 13 days to 10 August 2026 the site served
+**21,467 provision page views against 27 searches**, and the nginx user agents
+name the callers: GoogleOther, MJ12bot, meta-externalagent and Amazonbot each
+outrank Googlebot, which is under 10% of the load. Every one of them declares
+itself and obeys `robots.txt`.
+
+**A permalink is a subtree, not a provision.** `provision_permalink` renders
+the matched provision and all its descendants, so `OBC_2006/B/Part 9` is 1,339
+provisions and about 1.9 MB of database reads in one request. That is why the
+crawl cost 545 MB of reads while the whole database is 142 MB, and it is the
+first thing to weigh before adding a query to that view.
+
+**The read surfaces answer 304.** `core/http_cache.py` gives
+`provision_permalink`, `regulation_detail`, `compare_versions`,
+`edition_contents` and `edition_chain` a `Last-Modified` taken from
+`CorpusCurrency.refreshed_at`. Four rules:
+
+- **Anonymous readers only.** The tier gate makes the same URL render
+  differently for a Pro reader, so a reader-blind validator would let somebody
+  who has just subscribed keep a cached locked page. Anonymous readers are
+  uniformly free-tier, so one stamp describes them all.
+- **A deploy bumps the stamp**, because `scripts/entrypoint.sh` runs
+  `refresh_corpus_currency`. Without that a template change would keep
+  answering 304 and serve the previous image's markup.
+- **The print routes carry no validator.** They send an anonymous reader to
+  the login page, so they have no anonymous body to validate.
+- **Only a 200 or a 304 carries the validator.** Django's `condition`
+  decorator stamps every safe-method response whatever its status, so the
+  decorator strips it again. A 404 that handed out a `Last-Modified` can later
+  be answered 304, which tells a crawler its cached miss is still current.
+- **A 304 records no `EngagementEvent`**, which is correct — a 304 is not a
+  reading — but it does lower the `/insights/` view totals against their own
+  history. The drop is bots leaving the count, not readers.
+
+The stamp must move whenever anything a decorated view could return changes,
+including a provision ceasing to exist; `CorpusCurrency` moving on every load
+is what guarantees that. Where there is no `CorpusCurrency` row — the window
+after a restore, before `load_edition --all` — there is no such guarantee, so
+the validator is withheld rather than invented.
+
+**`templates/robots.txt` refuses what costs and returns nothing**: the print
+routes (every provision links its own, and an anonymous request is a login
+redirect), and the backlink crawlers. Search and AI crawlers are deliberately
+left welcome — refusing those is a product decision, not a cost one. Rules for
+everybody must sit **above** the first named `User-agent:` line, or they bind
+to nobody.
+
+**`/compare/` stays indexable, and that is measured rather than assumed.** It
+looks like the expensive, unbounded surface and is neither. `annotate_chain_comparisons`
+**order-normalises** the pair (the earlier version is always `a`), and links
+only join versions of one provision plus one lineage hop, so the free-tier
+corpus offers **408** comparisons from the 308 provisions with more than one
+version. A comparison renders two versions, not a subtree: **~16 kB** against a
+permalink's 26 kB average and a root permalink's 1.9 MB. It is also the only
+page that answers what changed between two versions, which is the product.
+
+**The scans are gated at the edge** (`core/asset_signing.py`,
+`config/assets.py` `SIGNED_PREFIXES`). In production a Cloudflare Worker
+answers the mirrored asset trees from R2, so Django is not in the path and
+`edition_allowed` never runs on an image. `documents/` holds the whole-page
+scans — the primary evidence, for an edition we gate — and its keys are
+sequential, so the edition could be walked page by page without ever loading a
+gated page. Django now signs those URLs and the Worker refuses an unsigned one.
+
+- **The asset gate is the page gate.** A token is only minted while rendering
+  a page `core.access` already allowed, so the two cannot drift.
+- **The token does not expire.** An expiring token cannot survive the 304s
+  above, or a printed exhibit outliving its footnotes. What it defeats is
+  enumeration, not somebody re-posting a URL they were given.
+- **`laws/`, `elaws/` and `amended/` stay open**: figure fragments shared by
+  free and paid editions, and `laws/` paths are baked into stored e-Laws HTML
+  that this product renders verbatim.
+- **Three lists must agree** — `SIGNED_PREFIXES` here, `SIGNED_PREFIXES` in
+  the Worker's `asset-proxy.js`, and the secret on both sides
+  (`ASSET_SIGNING_KEY`, re-resolved in `production.py` through the
+  `app_runtime_secrets` bundle). A mismatched secret 403s every scan; the
+  Worker also refuses outright when its binding is missing, so a half-applied
+  change fails closed rather than open.
+
 ## Temporary Files
 
 Write throwaway scripts, debug helpers, and scratch files to `.tmp/` (gitignored). Never create them in the project root.

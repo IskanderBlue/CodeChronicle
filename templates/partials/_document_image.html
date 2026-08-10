@@ -16,9 +16,10 @@
    to open scrolled to the content's start. The page renders once at full opacity;
    the inherited `showHighlights` flag just toggles the small-opacity bbox
    overlays on top. {% endcomment %}
+{% load asset_tags %}
 {% if img_entry.bboxes %}
 <div class="relative document-image">
-    <img src="/{{ img_entry.image }}" alt="{{ alt_text }}"
+    <img src="{{ img_entry.image|asset_url }}" alt="{{ alt_text }}"
         class="w-full fade-in-image" loading="lazy">
     {% for bbox in img_entry.bboxes %}
     <div x-show="showHighlights" class="absolute border border-secondary/50 bg-secondary/10 pointer-events-none"
@@ -28,5 +29,5 @@
 </div>
 {% elif img_entry.image %}
 {# No bboxes — show image as-is (e.g. a pre-composited e-Laws table JPG). #}
-<img src="/{{ img_entry.image }}" alt="{{ alt_text }}" class="w-full fade-in-image" loading="lazy">
+<img src="{{ img_entry.image|asset_url }}" alt="{{ alt_text }}" class="w-full fade-in-image" loading="lazy">
 {% endif %}

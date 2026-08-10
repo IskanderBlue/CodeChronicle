@@ -26,6 +26,7 @@ from core.compare import (
 )
 from core.cross_refs import annotate_versions, cited_by
 from core.events import record_event
+from core.http_cache import corpus_conditional
 from core.models import (
     CodeEdition,
     CodeEditionProvision,
@@ -849,6 +850,7 @@ def _locked_edition_response(
     )
 
 
+@corpus_conditional
 def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     """Show a single regulation with all its clauses."""
     regulation = get_object_or_404(
@@ -985,6 +987,7 @@ def _print_response(
     })
 
 
+@corpus_conditional
 def provision_permalink(
     request: HttpRequest,
     code_edition: str,
@@ -1242,6 +1245,7 @@ def provision_permalink(
     })
 
 
+@corpus_conditional
 def edition_contents(request: HttpRequest, code_edition: str) -> HttpResponse:
     """One edition's structure: its roots, and the editions either side of it.
 
@@ -1314,6 +1318,7 @@ def edition_contents(request: HttpRequest, code_edition: str) -> HttpResponse:
     })
 
 
+@corpus_conditional
 def edition_chain(request: HttpRequest, pk: int) -> HttpResponse:
     """Show the amendment chain timeline for a code edition."""
     edition = get_object_or_404(

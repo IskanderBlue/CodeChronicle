@@ -23,17 +23,18 @@
    a scroll box: a max-height that clips on screen clips in print too, and
    prints the top of a provision as though it were all of it.
 {% endcomment %}
+{% load asset_tags %}
 <div class="doc-crops">
     {% for crop in crops %}
     {% if crop.full %}
     <figure class="doc-crop-figure" style="width: {{ crop.width_pct }}%">
-        <img src="/{{ crop.image }}" alt="{{ alt_text }}" class="w-full">
+        <img src="{{ crop.image|asset_url }}" alt="{{ alt_text }}" class="w-full">
         <figcaption>Page {{ crop.page }}</figcaption>
     </figure>
     {% else %}
     <figure class="doc-crop-figure" style="width: {{ crop.width_pct }}%">
         <div class="doc-crop" data-crop-w="{{ crop.w }}" data-crop-h="{{ crop.h }}">
-            <img src="/{{ crop.image }}" alt="{{ alt_text }}"
+            <img src="{{ crop.image|asset_url }}" alt="{{ alt_text }}"
                  style="width: {{ crop.image_width_pct }}%; left: {{ crop.offset_left_pct }}%; top: {{ crop.offset_top_pct }}%">
         </div>
         <figcaption>Page {{ crop.page }}</figcaption>
