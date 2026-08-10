@@ -102,6 +102,7 @@ this page states each string once.
             <div class="mt-3 border border-rule">
                 {% include "partials/_viewer_section_content.html" %}
             </div>
+            {% if contents %}{% include "partials/_provision_contents.html" %}{% endif %}
             {% comment %} Fan-in for the pinned version, below lg only. On lg+
                it is in the rail — see there for why. {% endcomment %}
             {% if cited_by %}

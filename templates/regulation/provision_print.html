@@ -90,6 +90,10 @@ a print stylesheet might drop.
     <div class="mt-4">
         {% include "partials/_viewer_section_content.html" %}
     </div>
+    {% comment %} An oversized provision prints its contents rather than its
+       whole subtree, exactly as the page shows it. The alternative for
+       OBC 2006 Part 9 is a 1,339-provision exhibit. {% endcomment %}
+    {% if contents %}{% include "partials/_provision_contents.html" %}{% endif %}
 </div>
 {% endblock %}
 {% block extra_js %}

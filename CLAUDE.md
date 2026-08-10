@@ -419,6 +419,42 @@ provisions and about 1.9 MB of database reads in one request. That is why the
 crawl cost 545 MB of reads while the whole database is 142 MB, and it is the
 first thing to weigh before adding a query to that view.
 
+**Over `CONTENTS_THRESHOLD` (40) the page shows what is inside instead**
+(`core.views.regulation`, `templates/partials/_provision_contents.html`). Not
+pagination: page 3 of Part 9 is not a thing a code consultant can ask for, and
+`?page=` would multiply the URL count when the point is to cut the work.
+Measured over the free-tier corpus, this takes provision renders from
+**15,170 to 7,472** across the same 3,225 URLs, and the worst single page from
+**2,934 provisions to 84 rows**. Four rules:
+
+- **The switch is by measured size, not by level name.** A "section" runs from
+  0 to 201 descendants here, so the name does not predict the cost. Measuring
+  also means a differently-shaped edition needs no new rule.
+- **Nothing becomes unreachable.** Every child is still linked, one hop
+  further on, so a crawler still walks the whole corpus. **Nothing above
+  article level carries text** — every division, part, section and subsection
+  has an empty body — so a container page *is* its links. The rendered
+  sub-provisions link to their own permalinks (`section.url`), because the
+  rail's "Subprovisions" names only the direct children and left everything
+  deeper reachable only by going back up.
+- **The page states the number it is withholding.** "Too much to show" is a
+  judgement a reader cannot check. `_descendant_count` asks for the total with
+  one recursive query, because the walk stops early on purpose and so never
+  learns it. An empty body is also never reported as missing text on a
+  container (`is_container`); that message claimed a fault on every part and
+  division page in the product.
+- **It removes a duplicate-text problem, not only a cost one.** An article's
+  text used to appear on five URLs — its own, and each of its four ancestors'
+  — with nothing to say which is the subject, because the canonical rule picks
+  the highest *version* and says nothing about containment.
+- **The exhibit follows the page**, through the same partial. The alternative
+  is a 1,339-provision PDF.
+
+The walk already ran a generation at a time, so the limit is a stopping
+condition rather than a second query. It stops on the generation that would
+breach the limit, so at worst it loads one generation too many — bare
+provision rows, where the cost avoided is their versions, tables and scans.
+
 **The read surfaces answer 304.** `core/http_cache.py` gives
 `provision_permalink`, `regulation_detail`, `compare_versions`,
 `edition_contents` and `edition_chain` a `Last-Modified` taken from

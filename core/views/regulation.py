@@ -7,7 +7,8 @@ from datetime import date
 from typing import Any
 
 from django.contrib.auth.views import redirect_to_login
-from django.db.models import prefetch_related_objects
+from django.db import connection
+from django.db.models import Count, prefetch_related_objects
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -315,6 +316,124 @@ def _related_links(
             for v in versions
         ],
     }
+
+
+#: How many provisions a permalink may render as text before it renders a
+#: table of contents instead.
+#:
+#: A permalink shows the matched provision *and its whole subtree*, which is
+#: right at the leaf end — an article and its sentences read as one thing —
+#: and wrong at the top.  In OBC 2006, 95% of provisions have fewer than a
+#: dozen descendants, while ``B`` has 2,934 and ``Part 9`` has 1,338.  Nobody
+#: reads Part 9 on a screen from top to bottom; they want to know what is in
+#: it.  So the page changes character rather than paginating: page 3 of Part 9
+#: is not a thing a code consultant can ask for, and ``?page=`` would multiply
+#: the URL count when the point is to cut the work.
+#:
+#: The switch is by measured size, not by level name, because "section" runs
+#: from 0 to 201 descendants in this corpus — the name does not predict the
+#: cost.  Measuring also means a differently-shaped edition needs no new rule.
+#:
+#: This also removes a duplicate-text problem.  An article's text used to
+#: appear on its own page, its subsection's, its section's, its part's and its
+#: division's — five URLs for one text, with nothing to say which is the
+#: subject, because the canonical rule picks the highest *version* and says
+#: nothing about containment.
+CONTENTS_THRESHOLD = 40
+
+
+def _plural(noun: str, count: int) -> str:
+    """``"section"`` or ``"sections"``.  Empty noun stays empty."""
+    if not noun:
+        return ""
+    return noun if count == 1 else f"{noun}s"
+
+
+def _descendant_count(matched: CodeEditionProvision, division: str) -> int:
+    """How many provisions sit under ``matched``, at any depth.
+
+    The subtree walk stops early once it knows the answer is "too many", which
+    is the point of it — so the total is not a by-product and has to be asked
+    for.  One recursive query answers it server-side rather than dragging
+    every id back to say how many there were.
+
+    Worth the query only because the page states the number: a reader told
+    their text is not being shown is owed the size of what is being withheld.
+    """
+    table = CodeEditionProvision._meta.db_table
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            WITH RECURSIVE descendants AS (
+                SELECT id FROM {table} WHERE id = %s
+                UNION ALL
+                SELECT child.id
+                FROM {table} child
+                JOIN descendants ON child.parent_id = descendants.id
+                WHERE child.edition_id = %s AND child.division = %s
+            )
+            SELECT count(*) - 1 FROM descendants
+            """,
+            [matched.pk, matched.edition_id, division],
+        )
+        row = cursor.fetchone()
+    return int(row[0]) if row else 0
+
+
+def _contents_rows(
+    matched: CodeEditionProvision,
+    ref: CodeEditionProvisionVersion,
+    code_name: str,
+    division: str,
+) -> list[dict[str, Any]]:
+    """The direct children of ``matched``, as rows for a table of contents.
+
+    Each row is a :func:`_related_links` entry — so the number, the title and
+    one link per overlapping version, exactly as the navigation renders a
+    neighbour — plus a count of what sits under it.
+
+    The count's noun comes from the rows themselves rather than from an
+    assumed part/section/subsection/article ladder.  An edition that nests
+    differently then describes itself correctly instead of being mislabelled.
+    """
+    children = sorted(
+        CodeEditionProvision.objects
+        .filter(parent_id=matched.pk, edition=matched.edition, division=division)
+        .prefetch_related("versions"),
+        key=lambda p: _natural_key(p.provision_id),
+    )
+    if not children:
+        return []
+
+    # One grouped query for the whole generation below.  Grouping by level as
+    # well as by parent is what lets the row name what it is counting.
+    tallies: dict[int, dict[str, int]] = {}
+    grandchildren = (
+        CodeEditionProvision.objects
+        .filter(
+            parent_id__in=[c.pk for c in children],
+            edition=matched.edition,
+            division=division,
+        )
+        .values("parent_id", "level")
+        .annotate(n=Count("pk"))
+    )
+    for row in grandchildren:
+        tallies.setdefault(row["parent_id"], {})[row["level"]] = row["n"]
+
+    rows = []
+    for child in children:
+        by_level = tallies.get(child.pk, {})
+        total = sum(by_level.values())
+        # The commonest level present, so a generation that mixes levels is
+        # named by what most of it is rather than by whichever sorted first.
+        noun = max(by_level, key=lambda k: by_level[k]) if by_level else ""
+        row = _related_links(child, ref, code_name)
+        row["level"] = child.level
+        row["child_count"] = total
+        row["child_noun"] = _plural(noun, total)
+        rows.append(row)
+    return rows
 
 
 def _edition_roots(edition: CodeEdition) -> list[CodeEditionProvision]:
@@ -916,6 +1035,9 @@ def _print_response(
     division: str,
     provision_id: str,
     version: int,
+    contents: list[dict[str, Any]],
+    contents_total: int,
+    contents_noun: str,
 ) -> HttpResponse:
     """Render the subtree as an exhibit.
 
@@ -972,6 +1094,13 @@ def _print_response(
             code_name, division, provision_id, version
         ),
         "sections": sections,
+        # An exhibit of an oversized provision is its own text plus what it
+        # contains, for the same reason the page is: the printed alternative
+        # is 1,339 provisions, and the guarantee this export makes is that
+        # paper shows what the page shows.
+        "contents": contents,
+        "contents_total": contents_total,
+        "contents_noun": contents_noun,
         "active_node_id": provision_id,
         "active_provision_id": provision_id,
         "transition_active": False,
@@ -1127,9 +1256,17 @@ def provision_permalink(
             if idx < len(siblings) - 1:
                 nav_next = _sibling_link(siblings[idx + 1], anchor_date, code_name)
 
-    # Subtree: matched provision + all descendants (same edition/division).
+    # Subtree: matched provision + all descendants (same edition/division),
+    # unless that is more than a reader would ever scroll — see
+    # CONTENTS_THRESHOLD.  The walk already ran a generation at a time, so the
+    # limit is a stopping condition rather than a different query.
+    #
+    # It stops on the generation that would breach the limit, so at worst it
+    # loads one generation too many.  Those are bare provision rows; the cost
+    # this avoids is their versions, tables, assets and rendering.
     all_provisions: list[CodeEditionProvision] = [matched]
     frontier = [matched.pk]
+    oversized = False
     while frontier:
         children = list(
             CodeEditionProvision.objects
@@ -1137,8 +1274,33 @@ def provision_permalink(
         )
         if not children:
             break
+        if len(all_provisions) + len(children) > CONTENTS_THRESHOLD:
+            oversized = True
+            break
         all_provisions.extend(children)
         frontier = [c.pk for c in children]
+
+    # Too big to read: the page shows this provision's own text and a table of
+    # contents for what is under it.  Nothing becomes unreachable — every
+    # child is still linked, one hop further on.
+    contents: list[dict[str, Any]] = []
+    contents_total = 0
+    contents_noun = ""
+    if oversized:
+        all_provisions = [matched]
+        contents = _contents_rows(matched, target_version, code_name, division)
+        # The page states the size of what it is not showing.  A reader told
+        # their text is being withheld is owed the number, and "more than one
+        # page can carry" is a judgement they cannot check.
+        contents_total = _descendant_count(matched, division)
+        levels = [row["level"] for row in contents if row["level"]]
+        contents_noun = _plural(
+            max(set(levels), key=levels.count) if levels else "", len(contents)
+        )
+        # The "Subprovisions" nav lists the same children as links.  Two lists
+        # of one thing on one page is worse than either alone, and the
+        # contents rows say more.
+        nav_down = []
 
     # Descendants: the version in force on the linked version's effective
     # date.  The matched provision itself is pinned to exactly the linked
@@ -1168,13 +1330,39 @@ def provision_permalink(
     # and behind a URL that named a permalink with a modifier rather than
     # naming a comparison.  The rail's per-row ``compare`` links now go to
     # ``/compare/``.
+    # Which of these provisions contain another one, so an empty body can be
+    # told apart from a missing one.
+    parent_pks = {p.parent_id for p in all_provisions if p.parent_id}
+
     sections: list[dict[str, Any]] = []
     for prov in sorted(all_provisions, key=lambda p: _natural_key(p.provision_id)):
         prov_versions = by_provision.get(prov.pk, [])
         sections.append({
             "provision_id": prov.provision_id,
             "node_id": prov.provision_id,
-            "title": (prov_versions[-1].title if prov_versions else "") or prov.provision_id,
+            # No fallback to the provision id.  The id is printed beside the
+            # title, so falling back rendered "Part 2 — Part 2".  An untitled
+            # provision has no title; the template omits the dash.
+            "title": prov_versions[-1].title if prov_versions else "",
+            # Whether anything sits under this provision.  A container has no
+            # text of its own — every part, section and division in this
+            # corpus has an empty body — so it must not be reported as text we
+            # failed to supply.  ``contents`` is the oversized case, where the
+            # children are listed rather than rendered.
+            "is_container": prov.pk in parent_pks or (bool(contents) and prov.pk == matched.pk),
+            # Its own permalink.  Nothing above article level carries text, so
+            # a container page *is* its links — and the rail's "Subprovisions"
+            # names only the direct children, which left every deeper
+            # provision on the page unreachable without going back up.  The
+            # matched provision links nowhere: it is already here.
+            "url": (
+                ""
+                if prov.pk == matched.pk or not prov_versions
+                else provision_permalink_url(
+                    code_name, prov.division, prov.provision_id,
+                    prov_versions[-1].version,
+                )
+            ),
             "division": prov.division,
             "active_versions": prov_versions,
             "is_active": prov.pk == matched.pk,
@@ -1190,6 +1378,9 @@ def provision_permalink(
             division=division,
             provision_id=provision_id,
             version=version,
+            contents=contents,
+            contents_total=contents_total,
+            contents_noun=contents_noun,
         )
 
     return render(request, "regulation/provision_permalink.html", {
@@ -1204,6 +1395,9 @@ def provision_permalink(
         "never_in_force": target_version.never_in_force,
         "nav_up": nav_up,
         "nav_down": nav_down,
+        "contents": contents,
+        "contents_total": contents_total,
+        "contents_noun": contents_noun,
         "nav_prev": nav_prev,
         "nav_next": nav_next,
         # The top of the ladder, reachable from any depth. "Within" climbs one

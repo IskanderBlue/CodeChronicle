@@ -25,8 +25,18 @@
            provision body read as an error. {% endcomment %}
         class="px-4 py-4 {% if section.is_active %}border-l-[3px] border-secondary{% else %}border-l-[3px] border-transparent{% endif %}">
         <p class="mb-2">
-            <span class="font-mono text-[13px] font-semibold {% if section.is_active %}text-secondary{% else %}text-ink{% endif %}">{{ section.provision_id }}</span>
-            <span class="font-serif italic text-ink-2"> — {{ section.title }}</span>
+            {% comment %} The id links to the provision's own permalink.
+               Nothing above article level carries text, so a container page is
+               its links — and the rail's "Subprovisions" names only the direct
+               children, which left everything deeper on the page reachable
+               only by going back up. The matched provision links nowhere: the
+               reader is already on it. {% endcomment %}
+            {% if section.url %}<a href="{{ section.url }}" class="font-mono text-[13px] font-semibold text-ink ui-cite">{{ section.provision_id }}</a>{% else %}<span class="font-mono text-[13px] font-semibold {% if section.is_active %}text-secondary{% else %}text-ink{% endif %}">{{ section.provision_id }}</span>{% endif %}
+            {% comment %} Guarded: an untitled provision has no title, and the
+               id is already printed to the left. Unguarded, and with the view
+               falling back to the id, this rendered "Part 2 — Part 2".
+            {% endcomment %}
+            {% if section.title %}<span class="font-serif italic text-ink-2"> — {{ section.title }}</span>{% endif %}
         </p>
         {% comment %} A `section.compare` branch used to sit here, rendering
            the permalink's in-place ``?compare=`` diff. That comparison now
@@ -37,7 +47,7 @@
             {% include "provenance/_transition_view.html" with versions=section.active_versions %}
         {% elif section.active_versions %}
             {% with version=section.active_versions.0 %}
-                {% include "provenance/_provision_content.html" with version=version %}
+                {% include "provenance/_provision_content.html" with version=version is_container=section.is_container %}
             {% endwith %}
         {% else %}
         <p class="font-serif text-sm italic text-ink-3">

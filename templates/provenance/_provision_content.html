@@ -44,10 +44,38 @@
 {% include "partials/_cross_ref_list.html" with entries=version.cross_ref_cites label="Cites" %}
 {% endif %}
 
-{% if not version.html and not version.page_images %}
+{% comment %}
+A provision with no body.  Two different things wear that shape, and saying
+one sentence for both was wrong.
+
+A *container* — a division, a part, a section — carries no text of its own
+anywhere in this corpus; its text is its children's.  Saying "not available"
+there reported a fault on every one of those pages, when what is under it is
+right below (or listed, when the subtree is too large to render — see
+core.views.regulation.CONTENTS_THRESHOLD).  So a container says nothing.
+
+A *reserved* provision is the code's own doing: e-Laws numbers it and leaves it
+empty, so the number stays available for later use.  OBC 2012 alone has 34 of
+them, from Section 1.2. down to single sentences.  That is a fact about the
+code, not a gap in our record, and it must not be reported as one.  We know it
+because the source says so — CCM ships "Reserved" as the title.
+
+Anything else genuinely has no text in what we hold.  The wording says that
+much and no more: from here we cannot tell whether the code reserved the
+provision without saying so, or whether our source dropped it, and guessing
+either way would put a claim on the page that nothing supports.  "This looks
+wrong" is in the rail beside this, and the reader is better placed to say.
+{% endcomment %}
+{% if not version.html and not version.page_images and not is_container %}
+{% if "reserved" in version.title|lower %}
 <p class="mt-3 font-serif text-sm italic text-ink-3">
-    Content not available for this version.
+    This provision is reserved: the code gives it a number and no text.
 </p>
+{% else %}
+<p class="mt-3 font-serif text-sm italic text-ink-3">
+    No text is recorded for this provision in this edition.
+</p>
+{% endif %}
 {% endif %}
 
 {# Provenance & legal notes for this version (no permalink — already here). #}

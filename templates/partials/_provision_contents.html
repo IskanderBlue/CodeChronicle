@@ -1,0 +1,77 @@
+{% load humanize %}
+{% comment %}
+What a provision contains, when the provision is too big to show as text.
+
+`contents`: rows from core.views.regulation._contents_rows — a
+_permalink_nav_item item ({provision_id, title, versions:[…]}) plus
+`child_count` and `child_noun`.
+
+Shared by the reading page and the exhibit, because an exhibit must not show
+something the page does not.  Both mount this file; neither builds its own.
+
+The register is the navigation's — mono ids, italic titles, `ui-cite` links —
+because these rows point at other provisions, which is exactly what a nav row
+does.  The layout is not the navigation's: that partial is built for the
+narrow `--ws-nav` rail and truncates on one line, and this block sits in the
+centre column where a title has room to finish.
+
+The right-hand measure carries two facts, and the second is the argument for
+this page existing at all: how much is inside, and whether the text changed
+while it stood.  A row that names two versions is an invitation to compare —
+the one question no other website answers about this corpus.
+
+A row with a single overlapping version links as a whole.  With several there
+is no single target, so the id and title become text and each version gets its
+own dated link, the same rule `_permalink_nav_item.html` follows.
+{% endcomment %}
+<section class="mt-3 border border-rule">
+    <div class="border-b border-rule-2 px-4 py-2">
+        <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Contents</h2>
+        {% comment %} The number is stated, not implied. A reader told their
+           text is being withheld is owed the size of what is withheld, and
+           "too much to show" is a judgement they have no way to check.
+        {% endcomment %}
+        <p class="mt-1 font-serif text-[13px] text-ink-2">
+            This provision contains <strong class="font-semibold">{{ contents_total|intcomma }}</strong>
+            provisions &mdash; too many to show on one page. Its
+            {{ contents|length }} {{ contents_noun }} are listed here; open one to read it.
+        </p>
+    </div>
+    <ol class="divide-y divide-rule-2">
+        {% for item in contents %}
+        <li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2">
+            {% if item.versions|length == 1 %}
+                {% with v=item.versions.0 %}
+                <a href="{{ v.url }}" class="flex min-w-0 flex-1 items-baseline gap-2 ui-cite"
+                   title="{{ item.provision_id }}{% if v.title %} &mdash; {{ v.title }}{% endif %} &middot; v{{ v.version }}, {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.last_day %} to {{ v.last_day|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">
+                    <span class="shrink-0 font-mono text-[13px] font-semibold tabular-nums">{{ item.provision_id }}</span>
+                    {% if v.title %}<span class="min-w-0 font-serif text-[15px] italic">{{ v.title }}</span>{% endif %}
+                </a>
+                {% endwith %}
+            {% else %}
+                <span class="flex min-w-0 flex-1 items-baseline gap-2">
+                    <span class="shrink-0 font-mono text-[13px] font-semibold tabular-nums text-ink">{{ item.provision_id }}</span>
+                    {% if item.title %}<span class="min-w-0 font-serif text-[15px] italic text-ink">{{ item.title }}</span>{% endif %}
+                </span>
+            {% endif %}
+
+            {% comment %} The measure. `child_noun` is empty for a row with
+               nothing under it, and then the count is not stated at all —
+               "0 articles" reads as a fault in the data rather than as a
+               provision that simply carries its own text. {% endcomment %}
+            <span class="ml-auto flex shrink-0 items-baseline gap-3 font-mono text-[11px] tracking-[0.04em] text-ink-3">
+                {% if item.child_count %}<span>{{ item.child_count }} {{ item.child_noun }}</span>{% endif %}
+                {% if item.versions|length > 1 %}
+                <span class="flex items-baseline gap-2">
+                    <span>{{ item.versions|length }} versions</span>
+                    {% for v in item.versions %}
+                    <a href="{{ v.url }}" class="ui-cite"
+                       title="v{{ v.version }}{% if v.title %} &mdash; {{ v.title }}{% endif %} &middot; {% if v.never_in_force %}never in force{% else %}in force {{ v.effective_date|date:'j M Y' }}{% if v.last_day %} to {{ v.last_day|date:'j M Y' }}{% else %} onward{% endif %}{% endif %}">{% if v.never_in_force %}never in force{% else %}{{ v.effective_date|date:'Y' }}{% endif %}</a>
+                    {% endfor %}
+                </span>
+                {% endif %}
+            </span>
+        </li>
+        {% endfor %}
+    </ol>
+</section>
