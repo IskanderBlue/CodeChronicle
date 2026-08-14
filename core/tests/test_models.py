@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from django.utils import timezone
@@ -174,3 +174,55 @@ class TestNeverInForce:
         )
         assert closed.never_in_force is False
         assert open_ended.never_in_force is False
+
+
+class TestForceState:
+    """force_state — the tense the provenance band's badge is allowed to use.
+
+    Measured against today, because the badge carries no date of its own and
+    a reader resolves it against now.  One property, because two private
+    copies of the half-open rule would eventually disagree about what the law
+    is.
+    """
+
+    def test_a_closed_window_is_past(self):
+        v = CodeEditionProvisionVersion(
+            effective_date=date(2014, 1, 1), ineffective_date=date(2020, 1, 1),
+        )
+        assert v.force_state == "past"
+
+    def test_a_window_ending_today_is_already_past(self):
+        # Half-open [effective, ineffective): today is not inside it.
+        today = timezone.localdate()
+        v = CodeEditionProvisionVersion(
+            effective_date=today - timedelta(days=100), ineffective_date=today,
+        )
+        assert v.force_state == "past"
+
+    def test_an_open_window_is_current(self):
+        today = timezone.localdate()
+        open_ended = CodeEditionProvisionVersion(
+            effective_date=today - timedelta(days=100), ineffective_date=None,
+        )
+        ends_tomorrow = CodeEditionProvisionVersion(
+            effective_date=today - timedelta(days=100),
+            ineffective_date=today + timedelta(days=1),
+        )
+        assert open_ended.force_state == "current"
+        assert ends_tomorrow.force_state == "current"
+
+    def test_a_window_that_has_not_started_is_future(self):
+        today = timezone.localdate()
+        v = CodeEditionProvisionVersion(
+            effective_date=today + timedelta(days=30), ineffective_date=None,
+        )
+        assert v.force_state == "future"
+
+    def test_an_empty_window_is_never_whatever_the_dates_say(self):
+        # "never" wins over the date comparison: an inverted window starts in
+        # the future and would otherwise read as "not yet in force", which
+        # promises a commencement that was revoked.
+        v = CodeEditionProvisionVersion(
+            effective_date=date(2016, 1, 1), ineffective_date=date(2014, 1, 1),
+        )
+        assert v.force_state == "never"

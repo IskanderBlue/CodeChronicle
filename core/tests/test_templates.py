@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -6,6 +6,7 @@ import pytest
 from django.conf import settings
 from django.template import Context, Template
 from django.template.loader import render_to_string
+from django.utils import timezone
 
 from core.models import (
     Code,
@@ -969,7 +970,11 @@ class TestProvenanceBand:
             ),
             "clause": {"commencement": None},
         })
-        assert "Never in force" in html
+        # The label stacks, so the phrase spans elements: the tense word, then
+        # "In force", then its period mark — a bare stop tick, no bar.
+        assert ">Never</span>" in html
+        assert "In force" in html
+        assert "fmark-never" in html
         assert "amended" not in html
         assert "Scheduled" in html
         assert "Superseded" in html
@@ -977,6 +982,67 @@ class TestProvenanceBand:
         assert "1 January 2014" in html
         # No duration for a period that never ran ("0 minutes" was nonsense).
         assert "Dur." not in html
+
+    def test_the_label_is_tensed_against_today(self):
+        # A bare "In force" was a present-tense claim, and the corpus is
+        # entirely historical: no loaded version governs today, so the badge
+        # was false on every page in the product. The tense comes from
+        # version.force_state, so all four states are named.
+        today = timezone.localdate()
+        start = today - timedelta(days=800)
+        cases = [
+            (start, today - timedelta(days=1), "Was", "fmark-past"),
+            # Half-open [effective, ineffective): a window ENDING today did not
+            # govern today, so it reads as past already.
+            (start, today, "Was", "fmark-past"),
+            (start, today + timedelta(days=1), "Currently", "fmark-current"),
+            (start, None, "Currently", "fmark-current"),
+            (today + timedelta(days=30), None, "Not yet", "fmark-future"),
+        ]
+        for effective, ineffective, word, mark in cases:
+            html = _band({"version": CodeEditionProvisionVersion(
+                version=0, effective_date=effective, ineffective_date=ineffective,
+            )})
+            assert f">{word}</span>" in html, (effective, ineffective)
+            assert mark in html, (effective, ineffective)
+            # The verb keeps its own row, so the tense qualifies one phrase.
+            assert "In force" in html, (effective, ineffective)
+
+    def test_the_period_mark_draws_a_bar_only_where_days_were_governed(self):
+        # The mark carries the state without colour, and reads before a word
+        # does: a bar for the days governed, then what happens at its end —
+        # an arrow where the window has none, a stop tick where it closed.
+        # A never-in-force version gets the tick alone; it governed nothing.
+        today = timezone.localdate()
+        past = _band({"version": CodeEditionProvisionVersion(
+            version=0, effective_date=date(2014, 1, 1), ineffective_date=date(2025, 1, 1),
+        )})
+        assert 'class="bar"' in past and 'class="stop"' in past
+        assert 'class="run"' not in past
+
+        current = _band({"version": CodeEditionProvisionVersion(
+            version=0, effective_date=today - timedelta(days=10), ineffective_date=None,
+        )})
+        assert 'class="bar"' in current and 'class="run"' in current
+        assert 'class="stop"' not in current
+
+        # Neither empty state draws a bar, and they are told apart by which
+        # side of the gap the tick sits on. Drawn the obvious way, a
+        # not-yet-commenced version showed the same bar-and-stop as a closed
+        # one — it claimed a period it has not had.
+        never = _band({"version": CodeEditionProvisionVersion(
+            version=0, effective_date=date(2016, 1, 1), ineffective_date=date(2014, 1, 1),
+        )})
+        assert 'class="stop"' in never
+        assert 'class="bar"' not in never
+        assert "fmark-never" in never
+
+        future = _band({"version": CodeEditionProvisionVersion(
+            version=0, effective_date=today + timedelta(days=30), ineffective_date=None,
+        )})
+        assert 'class="stop"' in future
+        assert 'class="bar"' not in future
+        assert "fmark-future" in future
 
 
 class TestNeverInForceRail:

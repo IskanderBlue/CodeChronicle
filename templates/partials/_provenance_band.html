@@ -23,13 +23,44 @@
            "· amended" suffix — the pane header already names the amending
            regulation, and the suffix's extra width made the two bands wrap
            (and so size) differently at equal pane widths. {% endcomment %}
-        {% comment %} never_in_force: an empty half-open window (zero-duration
-           or revoked before commencement) — the version is a chain link that
-           never operated, so the band must not assert an in-force period.
-           Edge labels switch to Scheduled/Superseded; rail and Dur. drop. {% endcomment %}
-        <div class="flex items-center bg-secondary px-3.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-secondary-contrast">
-            {% if result.version.never_in_force %}Never in force{% elif result.is_added and not compare_pane %}In force &middot; added{% elif result.clause and not compare_pane %}In force &middot; amended{% else %}In force{% endif %}
+        {% comment %} The cell STACKS: tense word, then "In force", then the
+           provenance suffix. Set inline it read "In force · amended" at 18
+           characters and was the widest thing in the band; stacked it is only
+           as wide as its widest single word, so adding a tense costs nothing.
+           Height is free — the cell is items-stretch in a band the rail sizes.
+
+           The tense comes from version.force_state, never from a date
+           comparison here. Bare "In force" was a present-tense claim on every
+           page in a product where no loaded version is in force today: the
+           corpus ends 31 March 2025. Four states, and the mark above the words
+           draws the same distinction without colour.
+
+           never_in_force: an empty half-open window (zero-duration or revoked
+           before commencement) — the version is a chain link that never
+           operated, so the band must not assert an in-force period. Edge
+           labels switch to Scheduled/Superseded; rail and Dur. drop. It takes
+           no suffix, as before: "Never in force · amended" invites the reading
+           that it was amended while it governed, and it governed nothing.
+
+           compare_pane: the side-by-side transition panes drop the suffix. It
+           costs a ROW here rather than width, which is harmless while the rail
+           sets the height — but the rail hides below @xl, and there the extra
+           row would make two equal-width panes size differently. The pane
+           header already names the amending regulation. {% endcomment %}
+        {% with state=result.version.force_state %}
+        <div class="flex flex-col justify-center gap-1 bg-secondary px-3.5 py-2 font-mono text-[10px] font-bold uppercase leading-tight tracking-[0.1em] text-secondary-contrast">
+            {% comment %} The bar is the days governed, so only "current" and
+               "past" draw one; see base.html for why never and future are
+               mirrored ticks rather than the same mark. {% endcomment %}
+            <span class="fmark fmark-{{ state }}" aria-hidden="true">
+                {% if state == "current" or state == "past" %}<span class="bar"></span>{% endif %}
+                {% if state == "current" %}<span class="run"></span>{% else %}<span class="stop"></span>{% endif %}
+            </span>
+            {% if state == "past" %}<span>Was</span>{% elif state == "never" %}<span>Never</span>{% elif state == "future" %}<span>Not yet</span>{% else %}<span>Currently</span>{% endif %}
+            <span>In force</span>
+            {% if not compare_pane and state != "never" %}{% if result.is_added %}<span>&middot; added</span>{% elif result.clause %}<span>&middot; amended</span>{% endif %}{% endif %}
         </div>
+        {% endwith %}
 
         {% comment %} The attestation rail (result.rail) now carries From / Until /
            query-date / coverage — superseding the old From·rail·Until·Dur cells

@@ -536,6 +536,43 @@
            reason .pnav-row lives here. */
         .prov-row-current { margin-left: -6px; margin-right: -6px; padding: 2px 6px; }
 
+        /* ── Period mark (provenance band label cell) ──────────────────────
+           A one-glyph reduction of the attestation rail 40px to its right:
+           a bar for the days the version governed, and what happens at the
+           end of it. The reader meets the full version of this idiom on the
+           same band, so the mark needs no legend and no colour of its own.
+
+             .fmark-current  bar → arrow   the window has no end
+             .fmark-past     bar → tick    the window closed
+             .fmark-never    tick, right   zero days governed, and it is over
+             .fmark-future   tick, left    zero days governed, and it is ahead
+
+           The bar is the days the version governed, so only the two states
+           that governed any days draw one. That is why `never` and `future`
+           are MIRRORS rather than the same mark: the tick is all that is left
+           of an empty window, and which side of the gap it sits on says
+           whether the window is behind the reader or in front. Drawn the
+           obvious way — a bar and a stop for anything not current — a
+           not-yet-commenced version claimed a period it has not had, which is
+           the very fault this mark exists to stop.
+
+           The eye reads the LENGTH of the bar, so the signal lands before a
+           word does. Every part is `currentColor`, inherited from whatever
+           the cell sets, so a theme change carries it. Do not give it a
+           palette colour: the band spends its accent on the cell fill, and
+           --strike / --insert mean redline here, not time.
+
+           `aria-hidden` in the markup: the words below say the same thing. */
+        .fmark { display: flex; align-items: center; width: 30px; height: 9px; }
+        .fmark .bar { flex: 1; height: 3px; border-radius: 1.5px; background: currentColor; }
+        .fmark .stop { width: 2px; height: 9px; background: currentColor; }
+        .fmark .run {
+            width: 0; height: 0; border-left: 5px solid currentColor;
+            border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+        }
+        .fmark-never .stop { margin-left: auto; }
+        .fmark-future .stop { margin-right: auto; }
+
         /* ── Verification "attestation rail" ───────────────────────────────
            Replaces the consolidation line in the provenance band. ALL % come
            precomputed from core.verification.rail_geometry (result.rail); this

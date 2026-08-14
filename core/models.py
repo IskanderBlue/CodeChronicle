@@ -1431,6 +1431,39 @@ class CodeEditionProvisionVersion(models.Model):
         )
 
     @property
+    def force_state(self) -> str:
+        """Whether this version governs today, governed once, or never did.
+
+        One of ``"current"``, ``"past"``, ``"future"`` or ``"never"``.  The
+        provenance band names the state and draws its period mark from it, so
+        that a badge cannot say "in force" about a text that stopped governing
+        in 2012.  Measured against **today**, not against the reader's query
+        date: the badge carries no date of its own, so a reader resolves it
+        against now, and the attestation rail beside it is what answers the
+        query date.
+
+        Every surface asks this property rather than comparing the dates
+        itself.  Two private copies of the half-open rule would eventually
+        disagree, and the disagreement would be a false statement about what
+        the law is — the same reason ``core.seo.last_governed_day`` exists.
+
+        Note that today no loaded version is ``"current"``: the corpus ends on
+        31 March 2025, because the code in force now is Licensed Material this
+        product does not host.  So the caching this enables is safe — a page
+        cannot change its badge without a data load, and a load moves
+        ``CorpusCurrency.refreshed_at``, which is the ``Last-Modified`` the
+        read surfaces answer 304 against.  **Loading a version with an open
+        end breaks that**, because such a page would then go stale on a date
+        no load touches.
+        """
+        if self.never_in_force:
+            return "never"
+        today = timezone.localdate()
+        if self.in_force_on(today):
+            return "current"
+        return "future" if self.effective_date > today else "past"
+
+    @property
     def last_contributing_clause(self) -> "RegulationClause | None":
         """The final clause applied to produce this version, in apply order.
 
