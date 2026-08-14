@@ -58,6 +58,7 @@ STATIC_PAGE_NAMES: tuple[str, ...] = (
     "core:data_sources",
     "core:verification_guide",
     "core:list_punctuation",
+    "core:guard_height",
     "core:terms_of_service",
     "core:privacy_policy",
 )

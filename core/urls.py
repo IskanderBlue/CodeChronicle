@@ -22,6 +22,9 @@ urlpatterns = [
     path("sources/", views.data_sources, name="data_sources"),
     path("verification-rail/", views.verification_guide, name="verification_guide"),
     path("list-punctuation/", views.list_punctuation, name="list_punctuation"),
+    # Proof article: one question, seven texts. Public and indexed; the
+    # historical texts render live from the corpus (core.views.guard_height).
+    path("guard-height-ontario/", views.guard_height, name="guard_height"),
     path("history/", views.history, name="history"),
     # Staff-only traction dashboard.  Also disallowed in robots.txt.
     path("insights/", views.insights, name="insights"),

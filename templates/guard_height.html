@@ -1,0 +1,262 @@
+{% extends 'base.html' %}
+
+{% comment %} The guard-height article. Card: tasks/ao-proof-content-edition-comparison.md.
+
+   Title and description come from the VIEW (meta_title / meta_description), not from
+   a {% templatetag openblock %} block title {% templatetag closeblock %} override.
+   base.html resolves the title as firstof meta_title default_title, and
+   partials/_social_meta.html builds the Open Graph and Twitter tags from the same two
+   names. Overriding the block alone changes the browser tab and leaves every forwarded
+   link carrying the generic site card, and this article travels by being forwarded.
+
+   The page is one question and then every change to its answer. The oldest text renders
+   in full with its attestation band; each amendment after it renders as a redline
+   through the shipping comparison panes. Nothing from the corpus is transcribed.
+
+   The OBC 2024 quotation IS transcribed, because that edition is not in the corpus. It
+   carries the King's Printer attribution, and the page must never imply the product
+   holds the edition.
+
+   No form on this page. One csrf_token attaches a Set-Cookie header and no shared cache
+   stores the response (core.http_cache). The page is decorated corpus_conditional.
+
+   Every container that paints a background re-declares --backdrop, because the
+   attestation rail knocks its ring out against whatever is behind it. {% endcomment %}
+{% block canonical %}{% if canonical_path %}<link rel="canonical" href="{{ site_origin }}{{ canonical_path }}">{% endif %}{% endblock %}
+{% block content %}
+<article class="mx-auto max-w-4xl px-4 py-8">
+
+    <header class="mb-10">
+        <h1 class="font-serif text-4xl font-bold text-ink sm:text-5xl">How high does a guard on a house stair have to be?</h1>
+        <p class="mt-4 text-lg text-ink-2">Seven texts since 1998. The code sets the flight and the landing separately, and for eight years they were 170&nbsp;mm apart.</p>
+        <p class="mt-3 text-sm text-ink-3">Retrieved {{ retrieved|date:"j F Y" }}. Every text below is rendered from our corpus by the components the product ships, except the 2024 one, which is quoted.</p>
+    </header>
+
+    <section class="mb-10">
+        <p class="border-l-2 border-secondary bg-surface py-3 pl-4 pr-3 text-ink-2 [--backdrop:var(--surface)]">
+            What is the minimum height of a guard on a stair inside a house in Ontario?
+        </p>
+        <p class="mt-4 text-ink-2">
+            The answer depends on the date, and on which part of the stair you are asking about. A
+            <strong class="text-ink">flight</strong> is the sloped run of steps. A
+            <strong class="text-ink">landing</strong> is the flat platform at the top, at the foot, or
+            between two flights. The code has set them apart and they have at times varied.
+            For a time starting in 2022, spiral stairs were handled separately.
+        </p>
+        <div class="mt-4 overflow-x-auto">
+            <table class="w-full min-w-[46rem] text-left text-ink-2">
+                <thead>
+                    <tr class="border-b border-rule text-sm text-ink-3">
+                        <th class="py-2 pr-4 font-normal">In force</th>
+                        <th class="py-2 pr-4 font-normal">Flight</th>
+                        <th class="py-2 pr-4 font-normal">Landing</th>
+                        <th class="py-2 pr-4 font-normal">Spiral stair</th>
+                        <th class="py-2 font-normal">Notes</th>
+                    </tr>
+                </thead>
+                <tbody class="align-top">
+                    <tr class="border-b border-rule">
+                        <td class="py-2 pr-4 whitespace-nowrap">6 Apr 1998<br><span class="text-ink-3">to 30 Dec 2006</span></td>
+                        <td class="py-2 pr-4"><strong class="text-ink">800&nbsp;mm</strong></td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 pr-4">800&nbsp;mm</td>
+                        <td class="py-2 text-sm">The only text that allows 800&nbsp;mm. <a class="ui-link" href="#start">1998</a></td>
+                    </tr>
+                    <tr class="border-b border-rule">
+                        <td class="py-2 pr-4 whitespace-nowrap">31 Dec 2006<br><span class="text-ink-3">to 31 Dec 2013</span></td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 text-sm">The flight rises 100&nbsp;mm, and the rule falls under a different article. <a class="ui-link" href="#renumbered">2006</a></td>
+                    </tr>
+                    <tr class="border-b border-rule">
+                        <td class="py-2 pr-4 whitespace-nowrap">1 Jan 2014<br><span class="text-ink-3">to 31 Dec 2021</span></td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 pr-4"><strong class="text-ink">1&nbsp;070&nbsp;mm</strong></td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 text-sm">A new sentence raises the landing to 1&nbsp;070&nbsp;mm. <a class="ui-link" href="#split">2014</a></td>
+                    </tr>
+                    <tr class="border-b border-rule">
+                        <td class="py-2 pr-4 whitespace-nowrap">1 Jan 2022<br><span class="text-ink-3">to 31 Dec 2024</span></td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 pr-4"><strong class="text-ink">1&nbsp;070&nbsp;mm</strong></td>
+                        <td class="py-2 text-sm">The landing drops back to 900&nbsp;mm, and spiral stairs go the other way. <a class="ui-link" href="#resolved">2022</a></td>
+                    </tr>
+                    <tr>
+                        <td class="py-2 pr-4 whitespace-nowrap">1 Jan 2025<br><span class="text-ink-3">to today</span></td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 pr-4">900&nbsp;mm</td>
+                        <td class="py-2 text-sm">A new code, and the spiral-stair exception does not come with it. <a class="ui-link" href="#today">2025</a></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="mt-4 text-ink-2">
+            A building is governed by the code in force when its permit was issued, so the answer varies by date.
+        </p>
+        <p class="mt-3 text-sm text-ink-3">Note, we are assuming the stairs are not exit stairs, so their 920&nbsp;mm rule does not apply.
+        </p>
+        <p class="mt-3 text-ink-2">
+            Below are the actual provision versions each table row comes from. The oldest version is shown whole. After follow the
+            amendments, with their diffs highlighted (and unchanged words dimmed).
+        </p>
+    </section>
+
+    {% if opening %}
+    <section class="mb-10" id="start">
+        <h2 class="mb-2 font-serif text-2xl font-bold text-ink">1998: 800&nbsp;mm</h2>
+        <p class="mb-4 text-ink-2">
+            OBC1997 came into force on 6&nbsp;April 1998. Guard height is Article
+            <strong class="text-ink">9.8.8.2.</strong>, and sentence (4) answers our
+            question. It sets 800&nbsp;mm for indoor stairs in general and 900&nbsp;mm above their landings.
+        </p>
+        <div class="mb-4 border border-rule bg-surface-2 p-4 sm:p-6 [--backdrop:var(--surface-2)]">
+            <h3 class="font-serif text-xl font-bold text-ink">OBC {{ opening.edition_year }} &mdash; {{ opening.provision_id }} {{ opening.version.title }}</h3>
+            <p class="mt-1 text-sm text-ink-3">
+                In force from {{ opening.version.effective_date|date:"j F Y" }}{% if opening.last_day %} to {{ opening.last_day|date:"j F Y" }}{% endif %}.
+            </p>
+            <div class="mt-4">{% include "partials/_provenance_band.html" with result=opening.provenance %}</div>
+            {% include "provenance/_provision_content.html" with version=opening.version %}
+            <p class="mt-4 text-sm">
+                <a class="ui-link" href="{{ opening.url }}">Open this provision{% if opening.locked %} (locked edition){% endif %}</a>
+            </p>
+        </div>
+        <p class="mt-3 text-sm text-ink-3">
+            The band above the text is how CodeChronicle shows when the provision version was in force and what regulation changed it.
+        </p>
+    </section>
+    {% endif %}
+
+    {% if transitions.renumbered %}
+    <section class="mb-10" id="renumbered">
+        <h2 class="mb-2 font-serif text-2xl font-bold text-ink">31 December 2006: the flight rises, and the article shifts</h2>
+        <p class="mb-2 text-ink-2">
+            OBC2006 rewrites the article. Article 9.8.8.2. still exists, and it is now <em>Loads on Guards</em>.
+            Our rule now falls under Article <strong class="text-ink">9.8.8.3.</strong> and the 800&nbsp;mm allowance is dropped. Sentence (2) now covers every guard within a dwelling unit, landings included.
+        </p>
+        {% include "partials/_article_redline.html" with transition=transitions.renumbered %}
+    </section>
+    {% endif %}
+
+    {% if transitions.measured %}
+    <section class="mb-10" id="measured">
+        <h2 class="mb-2 font-serif text-2xl font-bold text-ink">1 January 2010: the article changed, but not our answer</h2>
+        <p class="mb-2 text-ink-2">
+            This amendment updates one sentence, clarifying that you measure from the top of the guard. Guard heights themselves are
+            untouched.
+        </p>
+        {% include "partials/_article_redline.html" with transition=transitions.measured %}
+    </section>
+    {% endif %}
+
+    {% if transitions.split %}
+    <section class="mb-10" id="split">
+        <h2 class="mb-2 font-serif text-2xl font-bold text-ink">1 January 2014: the landing goes to 1&nbsp;070&nbsp;mm</h2>
+        <p class="mb-2 text-ink-2">
+            OBC2012 changes several things, but relevant to our question is sentence (5) which says
+            guards shall be not less than (a) 920&nbsp;mm for required exit stairs
+            [not applicable to our case inside a house], and
+            <strong class="text-ink">(b) 1&nbsp;070&nbsp;mm around landings</strong>.
+        </p>
+        {% include "partials/_article_redline.html" with transition=transitions.split %}
+    </section>
+    {% endif %}
+
+    {% if transitions.exterior %}
+    <section class="mb-10" id="exterior">
+        <h2 class="mb-2 font-serif text-2xl font-bold text-ink">1 July 2017: outside only</h2>
+        <p class="mb-2 text-ink-2">
+            Only one sentence changes, and it's about exterior guards; "serving not more than one dwelling unit"
+            becomes "serving a house or an individual dwelling unit". Not relevant to this question.
+        </p>
+        {% include "partials/_article_redline.html" with transition=transitions.exterior %}
+    </section>
+    {% endif %}
+
+    {% if transitions.resolved %}
+    <section class="mb-10" id="resolved">
+        <h2 class="mb-2 font-serif text-2xl font-bold text-ink">1 January 2022: landings drop back to 900&nbsp;mm</h2>
+        <p class="mb-2 text-ink-2">
+            Sentence (5) is revoked. No exception sets a landing height any more, so a landing inside a house falls to sentence (2)
+            at 900&nbsp;mm.
+        </p>
+        <p class="mb-2 text-ink-2">
+            Words are also added to sentence (2): guards within dwelling units are
+            900&nbsp;mm, <strong class="text-ink">other than guards serving spiral stairs</strong>. So, spiral stairs fall back to the general 1&nbsp;070&nbsp;mm requirement from sentence (1).
+        </p>
+        {% include "partials/_article_redline.html" with transition=transitions.resolved %}
+    </section>
+    {% endif %}
+
+    <section class="mb-10" id="today">
+        <h2 class="mb-2 font-serif text-2xl font-bold text-ink">1 January 2025: the code in force today</h2>
+        <p class="text-ink-2">
+            O.&nbsp;Reg.&nbsp;163/24 is one page. It adopts the National Building Code of Canada 2020, as
+            amended by a separate document that the ministry re-issues under a new date whenever it
+            changes. Guard height keeps the number 9.8.8.3. Ontario replaces one sentence and adds another.
+        </p>
+        <p class="mt-3 text-sm text-ink-3">
+            OBC2024 is not in our corpus yet due to copyright, so this is the one text on the page we quote instead of render.
+        </p>
+
+        <blockquote class="mt-4 border border-rule bg-surface-2 [--backdrop:var(--surface-2)]">
+            <p class="border-b border-rule px-4 py-2 font-serif font-bold text-ink">9.8.8.3. Height of Guards (See Note A-9.8.3.3.)</p>
+            <div class="space-y-3 px-4 py-3 font-serif text-ink-2">
+                <p>(1) Except as provided in Sentences (2) to (3.1), all guards shall be not less than 1&nbsp;070&nbsp;mm high.</p>
+                <p>(2) All guards within dwelling units or within houses with a secondary suite including their common spaces shall be not less than 900&nbsp;mm high.</p>
+                <p>(3) Exterior guards serving not more than one dwelling unit or a house with a secondary suite including their common spaces shall be not less than 900&nbsp;mm high where the walking surface served by the guard is not more than 1&nbsp;800&nbsp;mm above the finished ground level.</p>
+                <p>(3.1) The height of guards for exterior stairs and landings more than 10&nbsp;m above adjacent ground level shall be not less than 1&nbsp;500&nbsp;mm.</p>
+                <p>(4) The height of guards for flights of steps shall be measured vertically from the top of the guard to a line drawn through the tread nosing served by the guard.</p>
+            </div>
+            <footer class="border-t border-rule px-4 py-2 text-sm text-ink-3">
+                Article 9.8.8.3. as printed in the 2024 Building Code Compendium, Division&nbsp;B,
+                Part&nbsp;9. Sentences (1) and (3.1) are Ontario's, from the Ontario Amendments to the National
+                Building Code of Canada 2020, 17&nbsp;July 2026, sections 344(1) and 344(2), which is the
+                document O.&nbsp;Reg.&nbsp;163/24 currently adopts. The rest is the National Building Code of
+                Canada 2020, which Ontario does not amend.
+                &copy;&nbsp;King's Printer for Ontario, 2024. Reproduced with permission.
+            </footer>
+        </blockquote>
+
+        <p class="mt-4 text-ink-2">
+            Sentence (2) answers our question: 900&nbsp;mm on flights, landings, and since they no longer have an exception, spiral stairs.
+        </p>
+    </section>
+
+    <section class="mb-10">
+        <h2 class="mb-3 font-serif text-2xl font-bold text-ink">Check this yourself</h2>
+        <p class="text-ink-2">
+            Every comparison above names both versions, both in-force windows and the regulation behind each
+            one, and opens on our comparison page.
+            <a class="ui-link" href="{% url 'core:verification_guide' %}">How to read the band</a> explains
+            each mark. <a class="ui-link" href="{% url 'core:data_sources' %}">Our sources</a> lists what we
+            hold and where each edition was obtained.
+        </p>
+        <p class="mt-3 text-ink-2">
+            If you think a text here is wrong, say so. Each provision page carries a report link, and a
+            person reads every report.
+        </p>
+        <p class="mt-3 text-sm text-ink-3">
+            The 2024 text comes from the 2024 Building Code Compendium, and the 2024 figures from
+            O.&nbsp;Reg.&nbsp;163/24 and the Ontario Amendments to the National Building Code of Canada 2020,
+            both published by the Ministry of Municipal Affairs and Housing.
+            CodeChronicle is not an official version of the Ontario government.
+        </p>
+    </section>
+
+    <section class="border border-secondary bg-secondary-soft p-6 [--backdrop:var(--secondary-soft)]">
+        <h2 class="font-serif text-2xl font-bold text-ink">Search your own date</h2>
+        <p class="mt-2 text-ink-2">
+            Guard height is one provision. Put in the date the permit was issued and read what applied to it.
+        </p>
+        {% comment %} The date lands inside OBC 2006 (31 Dec 2006 to 31 Dec 2013), which is the whole of
+           FREE_TIER_CODE_NAMES. A 1999 date read OBC 1997 and sent a first-time reader straight to the
+           locked-edition page from the article's one call to action. If the free tier ever moves, move
+           this date with it. {% endcomment %}
+        <p class="mt-4"><a class="ui-btn" href="{% url 'core:search' %}?q=guard+height+for+a+stair+in+a+house&amp;d=2008-06-01">Try it at 1 June 2008</a></p>
+    </section>
+
+</article>
+{% endblock %}

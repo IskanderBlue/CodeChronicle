@@ -12,6 +12,7 @@ from .compare import compare_versions
 from .demand import edition_request
 from .exports import citation_panel, record_export, results_csv
 from .feedback import feedback_status, report_form, report_problem
+from .guard_height import guard_height
 from .history import history
 from .insights import insights
 from .landing import landing
@@ -48,6 +49,7 @@ __all__ = [
     "edition_contents",
     "edition_request",
     "feedback_status",
+    "guard_height",
     "history",
     "insights",
     "landing",

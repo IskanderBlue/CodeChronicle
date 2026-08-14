@@ -1,0 +1,35 @@
+{% comment %} One amendment, drawn the way /compare/ draws it.
+
+   Context: `transition` — one entry from core.views.guard_height's
+   `transitions` map.
+
+   The two panes and the side rows are the shipping components, included here
+   rather than restated, so the article shows the product rather than a picture
+   of it. What is left out is the comparison page's own apparatus — the
+   timeline, the pairing basis, the redline legend — because the article
+   supplies those in prose, and the link at the foot goes to the page that
+   carries them.
+{% endcomment %}
+<div class="mt-4">
+    {% include "partials/_compare_sides.html" with sides=transition.sides %}
+
+    {% comment %} The fallback for two texts too different to redline, in the
+       same words /compare/ uses. No pair on this page currently falls through
+       the floor; the branch is here so a reloaded corpus cannot make the
+       article claim a redline it is not drawing. {% endcomment %}
+    {% if not transition.redline %}
+    <p class="mt-3 border-l-2 border-rule bg-surface-2 px-3 py-2 text-sm text-ink-2 [--backdrop:var(--surface-2)]">
+        These texts share about {{ transition.similarity_pct }}% of their words. A redline would mark
+        nearly all of both, so they are shown side by side.
+    </p>
+    {% endif %}
+
+    <div class="mt-3 grid gap-4 md:grid-cols-2">
+        {% include "provenance/_compare_pane.html" with version=transition.side_a.version diff=transition.old_diff pinned_pk=0 role="Earlier" regulation=transition.side_a.regulation regulation_is_origin=transition.side_a.regulation_is_origin %}
+        {% include "provenance/_compare_pane.html" with version=transition.side_b.version diff=transition.new_diff pinned_pk=0 role="Later" regulation=transition.side_b.regulation regulation_is_origin=transition.side_b.regulation_is_origin %}
+    </div>
+
+    <p class="mt-3 text-sm">
+        <a class="ui-link" href="{{ transition.compare_url }}">Open this comparison{% if transition.locked %} (locked edition){% endif %}</a>
+    </p>
+</div>

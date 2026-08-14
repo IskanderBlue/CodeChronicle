@@ -9,38 +9,15 @@
 
     {% comment %} Twin header — both windows, both regulations, in full. A
        comparison whose two sides are not fully identified is an assertion
-       rather than evidence. {% endcomment %}
+       rather than evidence. The rows themselves live in _compare_sides.html,
+       because the guard-height article draws a comparison too and two copies
+       of "how a comparison names its sides" is how the two came to disagree.
+    {% endcomment %}
     <h1 class="font-mono text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
         Comparing versions
     </h1>
 
-    <div class="mt-3 divide-y divide-rule border-y border-rule">
-        {% for side in sides %}
-        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-sm">
-            <span class="font-mono text-[11px] font-semibold text-secondary">{{ side.label }}</span>
-            <a href="{{ side.url }}" class="ui-cite font-mono text-xs font-semibold">
-                {% if side.provision.division %}{{ side.provision.division }} &middot; {% endif %}{{ side.provision.provision_id }}
-                <span class="font-normal">v{{ side.version.version }}</span>
-            </a>
-            <span class="text-ink-2">{{ side.edition_name }}</span>
-            <span class="font-mono text-xs text-ink-3">
-                {% if side.version.never_in_force %}
-                never in force
-                {% else %}
-                in force {{ side.version.effective_date|date:"Y-m-d" }}
-                {% if side.version.ineffective_date %}&rarr; {{ side.version.ineffective_date|date:"Y-m-d" }}{% else %}&rarr; still{% endif %}
-                {% endif %}
-            </span>
-            {% comment %} The instrument, always named. "base" on its own said
-               which category the version was in and withheld the number,
-               which is the fact a reader takes away. The qualifier stays
-               after it: enacting and amending are different acts. {% endcomment %}
-            <span class="font-mono text-xs text-ink-3">
-                {% if side.regulation %}O. Reg. {{ side.regulation.reg_id }}{% if side.regulation_is_origin %} &middot; base{% endif %}{% else %}base &mdash; regulation not recorded{% endif %}
-            </span>
-        </div>
-        {% endfor %}
-    </div>
+    {% include "partials/_compare_sides.html" with sides=sides %}
 
     {% include "partials/_version_timeline.html" with timeline=timeline %}
 
