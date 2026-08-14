@@ -765,11 +765,64 @@ def test_diff_html_content_marks_unchanged_and_changed():
     # Both panes: unchanged text is lowlighted
     assert 'class="diff-old-unchanged"' in old_diff
     assert 'class="diff-new-unchanged"' in new_diff
-    # Changed text appears unwrapped (no highlight class)
-    assert "requirements" in old_diff
-    assert "standards" in new_diff
-    assert "diff-old-changed" not in old_diff
-    assert "diff-new-changed" not in new_diff
+    # And changed text is MARKED, not merely left un-dimmed. Bare changed
+    # words made the only signal a 30% opacity step on the words the reader
+    # is not looking for, and two real changes in OBC 2012 B 9.8.8.4. could
+    # not be found on the page.
+    assert '<span class="diff-old-changed">requirements</span>' in old_diff
+    assert '<span class="diff-new-changed">standards</span>' in new_diff
+
+
+def test_diff_html_content_coalesces_a_changed_run():
+    # Adjacent changed words and the space between them are ONE mark, so a
+    # struck phrase reads as a phrase. Marked per word it came out striped.
+    old_html = "<p>designed for a concentrated horizontal load of 22 kN today</p>"
+    new_html = "<p>designed and constructed to withstand the values today</p>"
+    old_diff, new_diff = formatters._diff_html_content(old_html, new_html)
+    assert old_diff is not None
+    assert new_diff is not None
+    assert (
+        '<span class="diff-old-changed">for a concentrated horizontal load of 22 kN</span>'
+        in old_diff
+    )
+    assert (
+        '<span class="diff-new-changed">and constructed to withstand the values</span>'
+        in new_diff
+    )
+    # The run stops at the edge of the change: the space before an unchanged
+    # word stays outside the mark, or the band would run past the last word
+    # that actually differs.
+    assert '<span class="diff-old-changed">for' in old_diff
+    assert 'kN</span> <span class="diff-old-unchanged">today</span>' in old_diff
+
+
+def test_diff_html_content_never_spans_a_run_across_a_tag():
+    # A span straddling `</p><p>` is invalid HTML, so a tag always ends a run.
+    old_html = "<p>alpha bravo</p><p>charlie delta</p>"
+    new_html = "<p>alpha xray</p><p>yankee delta</p>"
+    old_diff, _ = formatters._diff_html_content(old_html, new_html)
+    assert old_diff is not None
+    assert "</p><p>" in old_diff
+    for fragment in old_diff.split("<span"):
+        assert "</p>" not in fragment.split("</span>")[0]
+
+
+def test_diff_html_content_keeps_a_search_highlight_intact():
+    # On the search transition panes the diff is built from HTML that
+    # highlight_terms has already marked up. The redline must not eat that
+    # mark — and this is why the changed-run band is a neutral ink wash
+    # rather than the paper-yellow that <mark> already owns.
+    old_html = "<p>a continuous curb not less than 150 mm</p>"
+    new_html = "<p>a continuous curb not less than 140 mm</p>"
+    old_diff, new_diff = formatters._diff_html_content(
+        formatters.highlight_terms(old_html, ["curb"]),
+        formatters.highlight_terms(new_html, ["curb"]),
+    )
+    assert old_diff is not None
+    assert new_diff is not None
+    assert '<mark class="match-highlight">' in old_diff
+    assert '<span class="diff-old-changed">150</span>' in old_diff
+    assert '<span class="diff-new-changed">140</span>' in new_diff
 
 
 def test_diff_html_content_preserves_html_tags():

@@ -200,7 +200,58 @@
         }
         .htmx-indicator { display: none; }
         .htmx-request .htmx-indicator { display: inline; }
-        .diff-old-unchanged, .diff-new-unchanged { opacity: 0.7; }
+        /* ── Redline: what changed between two versions ──────────────────
+           Unchanged text recedes; changed text is MARKED. This was inverted
+           once — only the unchanged words were wrapped and dimmed, and the
+           changed words got nothing at all — which made the whole signal a
+           30% opacity step carried by the words the reader is not looking
+           for. Two real changes in OBC 2012 B 9.8.8.4. were unfindable.
+
+           The band is a neutral ink wash, NOT a hue, and that is load-bearing
+           rather than taste. On a search transition pane the diff is built
+           from HTML that highlight_terms has already marked up (see
+           api/formatters.py), so a yellow band here would sit in the same
+           paragraph as `mark.match-highlight` — one colour meaning both "this
+           changed" and "you searched for this". --strike / --insert are
+           likewise spoken for: they mean deletion and insertion on the
+           regulation surfaces, and spending them here would tie the redline
+           to a second vocabulary.
+
+           So the DIRECTION comes from the rule, not the colour: struck on the
+           left for what went, underlined on the right for what replaced it.
+           That is the legal-redline convention, it needs no legend, and it
+           survives greyscale and a photocopy without a print stylesheet.
+
+           No horizontal padding on the band. A tag breaks a run (a span
+           straddling `</p><p>` is invalid), so one changed phrase containing
+           an `<i>` or a `<mark>` renders as two adjacent spans, and side
+           padding would show a seam between them. box-decoration-break keeps
+           the band whole across a line wrap. */
+           THE TEXT CARRIES THE CONTRAST, the band only gives it a shape.
+           Changed text goes to full --ink and unchanged falls to --ink-3, so
+           the marked words are the brightest thing in the pane in dark and the
+           darkest in light. Leaving both at --ink-2 and asking the band to do
+           the work is what made the dark pane muddy: a pale film sits BETWEEN
+           the panel and the text and flattens the pair.
+
+           So the band is always a step DARKER than the panel, and in dark that
+           means a well rather than a film — the opposite mechanism, for the
+           same reason. A light film in dark mode moves the ground toward the
+           text colour and closes the gap the mark exists to open. */
+        .diff-old-unchanged, .diff-new-unchanged { color: rgb(var(--ink-3)); }
+        .diff-old-changed, .diff-new-changed {
+            color: rgb(var(--ink));
+            background: rgb(var(--ink) / .11);
+            padding: 1px 0;
+            -webkit-box-decoration-break: clone;
+            box-decoration-break: clone;
+        }
+        .diff-old-changed { text-decoration: line-through; text-decoration-thickness: 1px; }
+        .diff-new-changed {
+            text-decoration: underline; text-decoration-thickness: 1.5px;
+            text-underline-offset: 2.5px;
+        }
+        .dark .diff-old-changed, .dark .diff-new-changed { background: rgb(0 0 0 / .45); }
         /* Provenance typography */
         .font-legal { font-family: 'Literata', Georgia, serif; }
         .font-ref { font-family: 'JetBrains Mono', ui-monospace, monospace; }

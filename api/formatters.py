@@ -138,17 +138,33 @@ def _diff_html_content(
     old_html: str | None,
     new_html: str | None,
 ) -> Tuple[str | None, str | None]:
-    """Word-diff two HTML strings, wrapping the *unchanged* words on each side.
+    """Word-diff two HTML strings, wrapping every word on each side.
 
-    The marking is inverted from the usual diff: changed words are left bare and
-    the words both sides share are wrapped in ``diff-old-unchanged`` /
-    ``diff-new-unchanged``, which ``base.html`` dims to 0.7 opacity. So what
-    stands out is what differs — no highlight colour needed, and a pane with no
-    changes reads as uniformly dim rather than uniformly loud.
+    Four classes, styled in ``base.html``: ``diff-old-changed`` /
+    ``diff-new-changed`` carry a band and a rule, and ``diff-old-unchanged`` /
+    ``diff-new-unchanged`` dim to recede.
 
-    The opcodes are shared but each side is walked on its own index range, so the
-    old pane marks deletions and the new pane marks insertions. The two class
-    names differ only as styling hooks; the CSS currently treats them alike.
+    **Changed words are marked, not merely un-dimmed.**  This used to be
+    inverted — only the unchanged words were wrapped, dimmed to 0.7 opacity,
+    and the changed words were left completely bare.  The whole signal was a
+    30% opacity step carried by the words the reader is *not* looking for,
+    which is the hardest possible visual search: on OBC 2012 B 9.8.8.4. v0→v1
+    neither the 150→140 mm change nor a rewritten sentence was findable.  The
+    original reason for inverting — that a heavily rewritten provision would
+    read as a wall of marks — is now answered upstream by the redline floor
+    (``core.compare``), which suppresses the redline entirely below a
+    similarity threshold and says so.
+
+    **A changed run is one mark, not one per word.**  Adjacent changed words
+    and the whitespace between them coalesce into a single span, so a struck
+    phrase reads as a phrase.  Marked per word it came out as stripes.  A
+    whitespace run joins a run only when the words on *both* sides of it
+    changed, and a tag always breaks a run, since a span straddling
+    ``</p><p>`` is not valid HTML.
+
+    The opcodes are shared but each side is walked on its own index range, so
+    the old pane marks deletions and the new pane marks insertions, and the CSS
+    tells them apart: struck on the left, underlined on the right.
 
     All HTML tags and original whitespace are preserved.
     Returns (annotated_old, annotated_new); both None if either input is empty.
@@ -182,22 +198,70 @@ def _diff_html_content(
                 for idx in range(j1, j2):
                     word_status[idx] = op
 
-        parts: list[str] = []
+        side = "old" if is_old else "new"
+
+        # Pass 1 — a role per token. A tag never takes one, which is what stops
+        # a run straddling it.
+        roles: list[str | None] = []
         word_idx = 0
-        for token_text, token_type in tokens:
-            if token_type != "word":
-                # Tags and whitespace pass through unchanged
-                parts.append(token_text)
-            else:
+        for _, token_type in tokens:
+            if token_type == "tag":
+                roles.append(None)
+            elif token_type == "word":
                 status = word_status[word_idx] if word_idx < len(word_status) else "equal"
                 word_idx += 1
-                if status == "equal":
-                    side = "old" if is_old else "new"
-                    parts.append(
-                        f'<span class="diff-{side}-unchanged">{token_text}</span>'
-                    )
-                else:
-                    parts.append(token_text)
+                roles.append("changed" if status != "equal" else "unchanged")
+            else:
+                roles.append("space")
+
+        # A whitespace run joins a changed run only when the words on BOTH
+        # sides of it changed, so the mark closes at the edge of the change
+        # rather than eating the space before an unchanged word. Both
+        # neighbour lookups are single passes: the texts are long enough that
+        # scanning back from each space would be quadratic.
+        before: list[str | None] = [None] * len(roles)
+        seen: str | None = None
+        for idx, role in enumerate(roles):
+            before[idx] = seen
+            if role != "space":
+                seen = role
+        after: list[str | None] = [None] * len(roles)
+        seen = None
+        for idx in range(len(roles) - 1, -1, -1):
+            after[idx] = seen
+            if roles[idx] != "space":
+                seen = roles[idx]
+        for idx, role in enumerate(roles):
+            if role == "space":
+                roles[idx] = (
+                    "changed"
+                    if before[idx] == "changed" and after[idx] == "changed"
+                    else None
+                )
+
+        # Pass 2 — merge neighbours sharing a role, so a changed PHRASE is one
+        # continuous mark rather than one band per word.
+        parts: list[str] = []
+        run: list[str] = []
+        run_role: str | None = None
+
+        def flush() -> None:
+            if not run:
+                return
+            text = "".join(run)
+            parts.append(
+                text
+                if run_role is None
+                else f'<span class="diff-{side}-{run_role}">{text}</span>'
+            )
+            run.clear()
+
+        for (token_text, _), role in zip(tokens, roles):
+            if role != run_role:
+                flush()
+                run_role = role
+            run.append(token_text)
+        flush()
         return "".join(parts)
 
     old_result = _render_side(old_tokens, old_words, opcodes, is_old=True)
