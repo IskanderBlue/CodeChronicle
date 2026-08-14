@@ -235,5 +235,5 @@ valid; they are keyed by the prompt hash.
 
 - `tasks/b-boost-parts-by-building-type.md` — what should replace
   `building_type`.
-- `tasks/ao-proof-content-edition-comparison.md` — the article whose call to
+- `tasks/complete/guard-height-article.md` — the article whose call to
   action produced this measurement.

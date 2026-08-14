@@ -34,7 +34,7 @@ records that, and the template says so rather than springing it on the reader.
 **OBC 2024 is not in the corpus** and this view does not pretend otherwise.
 The current text is quoted in the template from the Compendium, under the
 King's Printer attribution, and it is the one thing on the page the product did
-not render.  See ``tasks/ao-proof-content-edition-comparison.md``.
+not render.  See ``tasks/complete/guard-height-article.md``.
 """
 
 from datetime import date

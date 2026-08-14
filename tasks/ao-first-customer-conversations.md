@@ -73,7 +73,7 @@ consultancies. All public.
 
 ## Related
 
-- `tasks/a-proof-content-edition-comparison.md` — question 4's answers decide
+- `tasks/complete/guard-height-article.md` — question 4's answers decide
   which provision the article uses.
 - `/insights/` — the "most-repeated queries" table is a second, silent source
   of the same information.

@@ -30,7 +30,7 @@ must stand alone and have its own link.
 
 - Log in as a Pro account, so no gate interrupts the demonstration.
 - Choose the provision first. Use the one from
-  `tasks/a-proof-content-edition-comparison.md`, so the video and the article
+  `tasks/complete/guard-height-article.md`, so the video and the article
   tell the same story.
 - Write the chapter list below onto a card. Do not write a full script. A read
   script sounds read.

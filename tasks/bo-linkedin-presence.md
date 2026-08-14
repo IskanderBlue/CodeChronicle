@@ -28,7 +28,7 @@ seconds.
   the real coverage figures from the site, not round numbers.
 - **Featured.** Pin the demo video and the proof article once they exist
   (`tasks/b-demo-video-and-cpd-talk.md`,
-  `tasks/a-proof-content-edition-comparison.md`).
+  `tasks/complete/guard-height-article.md`).
 - **Photo.** A plain head-and-shoulders photo against a plain wall is enough.
   No photo reads as an empty account.
 
