@@ -10,6 +10,7 @@ import anthropic
 from django.conf import settings
 
 from config.keywords import VALID_KEYWORDS
+from config.query_keywords import KEYWORD_SET, plural_variants, typed_keywords
 
 SECTION_REF_RE = re.compile(
     r"\b((?:(?:table|[a-z])-)?\d{1,2}(?:\.\d{1,2}){1,4}\.?(?:\(\d+(?:-\d+|(?:,\d+)*)\))?)(?=\s|$|[,;:!\?)\]])",
@@ -65,6 +66,23 @@ def _merge_refs(existing: list[str], extra: list[str]) -> list[str]:
     return existing + [r for r in extra if r.lower() not in seen]
 
 
+def _merge_keywords(*groups: list[str]) -> list[str]:
+    """One order-stable, de-duplicated list from several keyword groups.
+
+    The reader's own words come first, so a truncation anywhere downstream
+    spends what it has on them rather than on the model's additions.
+    """
+    seen: set[str] = set()
+    merged: list[str] = []
+    for group in groups:
+        for keyword in group:
+            term = keyword.lower()
+            if term not in seen:
+                seen.add(term)
+                merged.append(term)
+    return merged
+
+
 # Tool definition for Claude
 PARSE_QUERY_TOOL = {
     "name": "parse_building_code_query",
@@ -80,12 +98,11 @@ PARSE_QUERY_TOOL = {
             "keywords": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Valid building code keywords. Only use terms from the master keyword list provided in system prompt.",
-            },
-            "building_type": {
-                "type": "string",
-                "enum": ["residential", "commercial", "industrial", "assembly", "institutional"],
-                "description": "Type of building if mentioned",
+                "description": (
+                    "The words already found in the query, plus any you add. "
+                    "Only use terms from the master keyword list provided in "
+                    "the system prompt. Never omit a word you were given."
+                ),
             },
             "province": {
                 "type": "string",
@@ -124,17 +141,28 @@ SYSTEM_PROMPT = f"""You are a building code query parser.
 
 Extract from user query:
 1. Date (when was building constructed/renovated? format YYYY-MM-DD)
-2. Keywords (what code topics are relevant?)
-3. Building type (if mentioned)
-4. Province (if mentioned, default ON)
-5. Table references (only if the user explicitly names a code table, e.g.
+2. Keywords. See the rules below.
+3. Province (if mentioned, default ON)
+4. Table references (only if the user explicitly names a code table, e.g.
    "Table A-1" or "Table 9.10.14.1"). Return each as "Table <id>". Omit when
    the user names no table.
+
+KEYWORDS: the query has already been read for you. The user message gives you
+"Words in the query" — the words the user wrote that the building code itself
+uses. Your job is to SUPPLEMENT that list, never to replace it.
+
+- Return every word you were given, then add your own.
+- Add: other forms of a given word, close synonyms, and the code topics the
+  question is about.
+- Prefer the word the user wrote over a word that describes the user. Do NOT
+  add "residential" because the user wrote "house". A word nobody typed can
+  outrank every word they did.
+- When you are given no words, supply the keywords yourself.
 
 CRITICAL: Keywords must ONLY come from this master list:
 {", ".join(VALID_KEYWORDS)}
 
-Do NOT use keywords outside this list. If query contains no valid keywords, return empty array for keywords.
+Do NOT use keywords outside this list.
 If the user mentions a year but not a specific date, assume January 1st of that year (YYYY-01-01).
 If no date or year is mentioned, use today's date (provided in the user message)."""
 
@@ -193,9 +221,17 @@ def parse_user_query(query: str) -> Dict[str, Any]:
         return {
             "date": date.today().isoformat(),
             "keywords": [],
+            "direct_keywords": [],
             "section_references": references,
             "province": "ON",
         }
+
+    # Read the query before the model does.  These are the words the reader
+    # actually wrote that the code also uses, and nothing below may drop one.
+    # ``remaining_query`` is used, not ``query``: any id the reader named has
+    # already left through the reference channel.
+    direct = typed_keywords(remaining_query)
+    variants = plural_variants(direct)
 
     # 0. Prepare hashes
     # The cache is keyed on the bare query.  Whether a parse depends on "today"
@@ -231,7 +267,15 @@ def parse_user_query(query: str) -> Dict[str, Any]:
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     try:
-        user_message = f"Today's date: {date.today().isoformat()}\n\n{remaining_query}"
+        # The extracted words go to the model as a list to build on.  "none
+        # found" is said in words rather than left blank, because a blank line
+        # reads as a formatting fault and invites the model to ignore the rule.
+        found = ", ".join(direct) if direct else "none found"
+        user_message = (
+            f"Today's date: {date.today().isoformat()}\n"
+            f"Words in the query: {found}\n\n"
+            f"{remaining_query}"
+        )
         # The inline dicts are correct at runtime but don't match anthropic's
         # exact TypedDict param types (e.g. "role" infers str, not the SDK's
         # Literal). cast(Any) tells both checkers "trust these shapes" without
@@ -258,9 +302,17 @@ def parse_user_query(query: str) -> Dict[str, Any]:
             # dict by construction of our tool schema.
             params = cast(dict[str, Any], block.input)
 
-            # Validate keywords against master list (extra safety)
+            # Validate the model's keywords against the master list, then put
+            # the reader's own words back in front of them.  The union is what
+            # makes "supplement, never replace" a property of the code rather
+            # than a request the model may or may not honour: a model that
+            # returns nothing still leaves the typed words searched.
             keywords = params.get("keywords", [])
-            valid_keywords = [k for k in keywords if k.lower() in VALID_KEYWORDS]
+            valid_keywords = _merge_keywords(
+                direct,
+                variants,
+                [k for k in keywords if k.lower() in KEYWORD_SET],
+            )
 
             # Fold the LLM's table picks into the regex-extracted references and
             # drop the raw field — downstream only ever reads section_references.
@@ -279,6 +331,13 @@ def parse_user_query(query: str) -> Dict[str, Any]:
                 )
 
             params["keywords"] = valid_keywords
+            # The direct/indirect split, stated rather than re-derived.  The
+            # engine used to recover it by testing each keyword against the
+            # raw query text, which is right for a whole word and wrong for a
+            # hyphenated one: a typed "spruce-pine-fir" extracts as three
+            # terms, none of which appears verbatim, so all three were filed
+            # as the model's guesses.
+            params["direct_keywords"] = direct
             if references:
                 params["section_references"] = references
             if "province" not in params:

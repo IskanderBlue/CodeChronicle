@@ -186,6 +186,7 @@ def execute_search(
         provision_references=provision_references,
         limit=None,
         raw_query=params.get("raw_query", ""),
+        direct_keywords=params.get("direct_keywords"),
     )
 
     accessible_all, locked_all = _split_by_access(scored, allowed_editions)

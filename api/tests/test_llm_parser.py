@@ -199,6 +199,86 @@ def test_llm_table_reference_folded_into_section_references():
         assert "table_references" not in result
 
 
+class TestTheQueryIsReadBeforeTheModel:
+    """The parser extracts the reader's own words and the model only adds.
+
+    Before this, the model *replaced* the query with terms it inferred, and an
+    inferred word could outrank every word the reader typed: "guard height for
+    a stair in a house" put eight results matching only "residential" above the
+    first result matching "guard".
+    """
+
+    @staticmethod
+    def _parse(mock_anthropic, keywords):
+        block = MagicMock()
+        block.type = "tool_use"
+        block.input = {"date": "2008-06-01", "keywords": list(keywords), "province": "ON"}
+        response = MagicMock()
+        response.content = [block]
+        mock_anthropic.return_value.messages.create.return_value = response
+        return parse_user_query("guard height for a stair in a house")
+
+    @pytest.mark.django_db
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_a_typed_word_survives_a_model_that_drops_it(self):
+        # The union is what makes "supplement, never replace" a property of the
+        # code rather than a request the model may or may not honour.
+        with patch("anthropic.Anthropic") as mock_anthropic:
+            result = self._parse(mock_anthropic, ["residential"])
+        for word in ("guard", "height", "stair", "house"):
+            assert word in result["keywords"]
+
+    @pytest.mark.django_db
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_a_typed_word_survives_a_model_that_returns_nothing(self):
+        with patch("anthropic.Anthropic") as mock_anthropic:
+            result = self._parse(mock_anthropic, [])
+        assert result["keywords"][:4] == ["guard", "height", "stair", "house"]
+
+    @pytest.mark.django_db
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_the_typed_words_come_first(self):
+        # A truncation downstream must spend what it has on the reader's words.
+        with patch("anthropic.Anthropic") as mock_anthropic:
+            result = self._parse(mock_anthropic, ["residential", "dwelling"])
+        assert result["keywords"].index("guard") < result["keywords"].index("residential")
+
+    @pytest.mark.django_db
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_the_direct_terms_are_stated_not_left_to_be_derived(self):
+        # The engine used to recover this split by testing each keyword against
+        # the raw text.  Stating it is what lets a hyphenated word the reader
+        # typed score at full weight.
+        with patch("anthropic.Anthropic") as mock_anthropic:
+            result = self._parse(mock_anthropic, ["residential"])
+        assert result["direct_keywords"] == ["guard", "height", "stair", "house"]
+        assert "residential" not in result["direct_keywords"]
+
+    @pytest.mark.django_db
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_the_model_is_told_which_words_were_found(self):
+        with patch("anthropic.Anthropic") as mock_anthropic:
+            self._parse(mock_anthropic, [])
+            sent = mock_anthropic.return_value.messages.create.call_args
+        message = sent.kwargs["messages"][0]["content"]
+        assert "Words in the query: guard, height, stair, house" in message
+
+    @pytest.mark.django_db
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_a_query_with_no_corpus_word_still_reaches_the_model(self):
+        # Local extraction is a floor, not a gate: this is the query the model
+        # exists to rescue.
+        with patch("anthropic.Anthropic") as mock_anthropic:
+            mock_client = mock_anthropic.return_value
+            mock_client.messages.create.return_value = _tool_use_response(
+                "2008-06-01", keywords=("fire",)
+            )
+            result = parse_user_query("how do I do this in 2008")
+        assert mock_client.messages.create.call_count == 1
+        assert result["direct_keywords"] == []
+        assert "fire" in result["keywords"]
+
+
 @pytest.mark.django_db
 @override_settings(ANTHROPIC_API_KEY="test-key")
 def test_llm_table_reference_survives_cache_hit():

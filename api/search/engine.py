@@ -288,6 +288,7 @@ def score_versions(
     provision_references: list[str] | None = None,
     limit: int | None = SEARCH_RESULT_CAP,
     raw_query: str = "",
+    direct_keywords: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Score provision versions against a query using BM25 + fuzzy matching.
 
@@ -306,11 +307,19 @@ def score_versions(
             saves no work and would hide (a) the true per-edition match counts
             the free-tier notice quotes and (b) the lower-ranked accessible
             results that fill a gated user's list.
-        raw_query: The user's original typed text.  A keyword counts as a
-            *direct* match only if it appears verbatim here; keywords the LLM
-            added (morphological variants, related topics) and engine synonyms
-            are *indirect* and carry the 0.9 weight.  When empty, every keyword
-            is treated as direct (back-compat for callers without the raw text).
+        raw_query: The user's original typed text.  Used only to *derive* the
+            direct terms when ``direct_keywords`` is absent: a keyword counts
+            as direct if it appears verbatim here.  When both are empty, every
+            keyword is treated as direct (back-compat for callers without
+            either).
+        direct_keywords: The words the reader actually typed, as
+            ``config.query_keywords`` extracted them.  These score at full
+            weight; everything else — the model's additions and the engine's
+            synonyms — is *indirect* and carries the 0.9 weight.  Prefer this
+            over the ``raw_query`` derivation, which cannot see through a
+            hyphen: a typed ``spruce-pine-fir`` extracts as three terms, no one
+            of which appears verbatim in the query, so the derivation files all
+            three as the model's guesses.
 
     Returns:
         Scored result dicts sorted by score descending.
@@ -327,16 +336,21 @@ def score_versions(
     query_terms = set(query_lower.split()) if query_lower else set()
     expanded_terms = _expand_query_with_synonyms(query_terms) if query_terms else set()
 
-    # Direct terms = keywords the user literally typed.  The LLM parser expands
-    # a query into a keyword *family* ("defined terms" -> defined / definition /
-    # definitions / terms); only the typed words score at full weight, the rest
-    # join the synonyms in the 0.9-weighted indirect pool.  Without a raw query
-    # (older callers/tests) every keyword is treated as direct.
-    raw_tokens = (
-        set(re.findall(r"[a-z0-9][a-z0-9-]*", raw_query.lower()))
-        if raw_query else set(query_terms)
-    )
-    direct_terms = query_terms & raw_tokens
+    # Direct terms = keywords the user literally typed.  The parser reads those
+    # out of the query itself and the LLM then adds a keyword *family* ("defined
+    # terms" -> defined / definition / definitions / terms); only the typed words
+    # score at full weight, the rest join the synonyms in the 0.9-weighted
+    # indirect pool.  Three sources, in falling order of authority: the parser's
+    # own list, the verbatim derivation from the raw text, and — for a caller
+    # with neither — every keyword treated as direct.
+    if direct_keywords is not None:
+        direct_terms = query_terms & {t.lower() for t in direct_keywords}
+    else:
+        raw_tokens = (
+            set(re.findall(r"[a-z0-9][a-z0-9-]*", raw_query.lower()))
+            if raw_query else set(query_terms)
+        )
+        direct_terms = query_terms & raw_tokens
     indirect_terms = expanded_terms - direct_terms
 
     def get_idf(term: str) -> float:
