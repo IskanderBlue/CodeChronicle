@@ -583,6 +583,18 @@
             </p>
             {% endif %}
 
+            {% comment %} The article, as its own line rather than another Try chip.
+               Every entry in the list above is a dated search the view chose so an
+               anonymous visitor cannot spend their one search on a locked edition;
+               an article link in that list would look like a search and quietly
+               break the contract. It is also the only internal link the article
+               has — without one it is reachable from the sitemap alone, which
+               earns it no standing and lets no reader find it. {% endcomment %}
+            <p class="lp-examples lp-rise" style="--d:290ms">
+                <span>Or read</span>
+                <a href="{% url 'core:guard_height' %}">one question answered across every edition: the minimum guard height for a stair inside a house</a>
+            </p>
+
             {% comment %} The colophon. Every figure is counted by the view from the
                live tables — see core.views.landing. {% endcomment %}
             <div class="lp-figures lp-rise" style="--d:320ms">

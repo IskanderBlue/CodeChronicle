@@ -25,6 +25,76 @@ def _entry(user: User, query: str, params: dict) -> SearchHistory:
     return SearchHistory.objects.create(user=user, query=query, parsed_params=params)
 
 
+def _cards(body: str) -> list[str]:
+    """The replay link of every card on the page, in render order."""
+    return re.findall(r'href="(/search/\?q=[^"]*)"', body)
+
+
+@pytest.mark.django_db
+class TestHistoryGrouping:
+    """A card is a *question* — the words and the date they ran at.
+
+    The same definition ``core.middleware`` uses for the allowance.  Grouping
+    on the words alone made the same question at two dates one card, which
+    showed the later date and hid the earlier search from the reader who ran
+    it.
+    """
+
+    def test_the_same_words_at_two_dates_are_two_cards(self, client, reader):
+        _entry(reader, "guards", {"date": "2010-06-01", "province": "ON"})
+        _entry(reader, "guards", {"date": "2015-06-01", "province": "ON"})
+        client.force_login(reader)
+        body = client.get("/history/").content.decode()
+
+        cards = _cards(body)
+        assert len(cards) == 2
+        assert any("d=2010-06-01" in card for card in cards)
+        assert any("d=2015-06-01" in card for card in cards)
+
+    def test_the_same_question_twice_is_one_card(self, client, reader):
+        _entry(reader, "guards", {"date": "2010-06-01", "province": "ON"})
+        _entry(reader, "guards", {"date": "2010-06-01", "province": "ON"})
+        client.force_login(reader)
+        body = client.get("/history/").content.decode()
+
+        assert len(_cards(body)) == 1
+        assert "2×" in body
+
+    def test_the_card_shows_the_latest_run_of_the_question(self, client, reader):
+        """Re-running a question updates the card the reader comes back to.
+
+        This is what carries a changed ranking parameter — the reader sets it
+        on the search page, and the history card offers the setting they left.
+        Nothing edits the stored row; the page reads the newest one.
+        """
+        _entry(reader, "guards", {"date": "2010-06-01", "keywords": ["guards"]})
+        _entry(reader, "guards", {"date": "2010-06-01", "keywords": ["handrails"]})
+        client.force_login(reader)
+        body = client.get("/history/").content.decode()
+
+        assert len(_cards(body)) == 1
+        assert "handrails" in body
+
+    def test_entries_with_no_stored_date_group_together(self, client, reader):
+        """A parse that read no date leaves the key absent, so the grouping
+        sees NULL.  Those are all one question — the same words at no stated
+        date — and must not fan out into a card each."""
+        _entry(reader, "fire separations", {"province": "ON"})
+        _entry(reader, "fire separations", {"province": "ON"})
+        client.force_login(reader)
+        body = client.get("/history/").content.decode()
+
+        assert len(_cards(body)) == 1
+
+    def test_a_dated_run_does_not_absorb_an_undated_one(self, client, reader):
+        _entry(reader, "fire separations", {"province": "ON"})
+        _entry(reader, "fire separations", {"date": "2010-06-01", "province": "ON"})
+        client.force_login(reader)
+        body = client.get("/history/").content.decode()
+
+        assert len(_cards(body)) == 2
+
+
 @pytest.mark.django_db
 class TestHistoryLinks:
     def test_the_link_carries_the_date_the_search_ran_at(self, client, reader):

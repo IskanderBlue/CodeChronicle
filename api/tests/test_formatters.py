@@ -1416,3 +1416,77 @@ def test_format_search_results_attaches_lineage(monkeypatch):
     without_prov = next(r for r in formatted if r.get("provision") is None)
     assert without_prov["lineage_successors"] is None
     assert without_prov["lineage_predecessors"] is None
+
+
+class TestPartExplanation:
+    """Why a result moved, in a sentence the reader can check.
+
+    A re-ordering nobody can trace back to an article is a number we are
+    asking them to trust, which is the opposite of what this product sells.
+    """
+
+    HOUSE = {"occupancy": "residential", "storeys": 2, "area": 140.0, "area_unit": "m2"}
+    MOVED_UP = {
+        "part_verdict": "applies", "part_number": 9, "part_factor": 1.35,
+        "part_source": "Division A 1.1.2.4.",
+    }
+    MOVED_DOWN = {
+        "part_verdict": "excluded", "part_number": 3, "part_factor": 0.8,
+        "part_source": "Division A 1.1.2.2.",
+    }
+
+    def test_it_names_the_multiplier_the_part_and_the_article(self):
+        out = formatters._build_part_explanation(self.MOVED_UP, self.HOUSE)
+
+        assert "\u00d71.35" in out
+        assert "Part 9 governs" in out
+        assert "Division A 1.1.2.4." in out
+
+    def test_a_demoted_result_says_so(self):
+        out = formatters._build_part_explanation(self.MOVED_DOWN, self.HOUSE)
+
+        assert out.startswith("Ranked down")
+        assert "does not govern" in out
+
+    def test_the_multiplier_always_carries_two_decimals(self):
+        """"×0.8" beside "×1.35" reads as a different kind of number, and the
+        two are meant to be compared."""
+        assert "\u00d70.80" in formatters._build_part_explanation(
+            self.MOVED_DOWN, self.HOUSE
+        )
+
+    def test_it_quotes_the_readers_own_figure_and_unit(self):
+        """Not the converted ``area_m2``: the control, the address and this
+        sentence must all show the number they typed."""
+        sqft = {"occupancy": "residential", "storeys": 1, "area": 1500.0,
+                "area_unit": "sqft", "area_m2": 139.35}
+        out = formatters._build_part_explanation(self.MOVED_UP, sqft)
+
+        assert "1500 ft\u00b2" in out
+        assert "139" not in out
+
+    def test_an_unsized_occupancy_states_no_measurement(self):
+        """Division A 1.1.2.2.(1)(a) applies no size test to Group A, so the
+        sentence must not imply one was used."""
+        out = formatters._build_part_explanation(
+            {"part_verdict": "applies", "part_number": 3, "part_factor": 1.35,
+             "part_source": "Division A 1.1.2.2."},
+            {"occupancy": "assembly"},
+        )
+
+        assert "an assembly building" in out
+        assert "storey" not in out
+
+    def test_an_unknown_verdict_explains_nothing(self):
+        assert formatters._build_part_explanation({"part_verdict": "unknown"}, self.HOUSE) == ""
+
+    def test_a_search_with_no_building_explains_nothing(self):
+        assert formatters._build_part_explanation(self.MOVED_UP, {}) == ""
+
+    def test_one_storey_is_not_pluralised(self):
+        out = formatters._build_part_explanation(
+            self.MOVED_UP, {"occupancy": "residential", "storeys": 1}
+        )
+
+        assert "1 storey " in out or "1 storey(" in out
+        assert "1 storeys" not in out

@@ -9,6 +9,14 @@ from typing import Any
 from django.db import models
 from django.db.models import Prefetch, Q
 
+from config.part_applicability import (
+    PART_BOOST,
+    PART_DEMOTE,
+    Verdict,
+    part_of,
+    source_for,
+    verdict_for,
+)
 from config.search_limits import (
     CLOSE_MATCH_THRESHOLD,
     SCORE_BUCKET_WIDTH,
@@ -189,6 +197,8 @@ def execute_search(
         direct_keywords=params.get("direct_keywords"),
     )
 
+    scored = _apply_part_boost(scored, params, search_date)
+
     accessible_all, locked_all = _split_by_access(scored, allowed_editions)
 
     # Relevance floor. Applied per side and *after* the access split so the two
@@ -266,6 +276,84 @@ def execute_search(
         # owes the reader an explanation for a shorter list than the count.
         "cap_binds": cap_binds,
     }
+
+
+def _apply_part_boost(
+    results: list[dict[str, Any]],
+    params: dict[str, Any],
+    search_date: date,
+) -> list[dict[str, Any]]:
+    """Rank the part that governs the reader's building above the one that does not.
+
+    **Here rather than in the scorer, on purpose.**  ``score_versions`` answers
+    "how well do these words match this text".  This answers "does this part
+    apply to this building".  Two different questions, and folding the second
+    into the BM25F loop would make ``BM25F_TITLE_WEIGHT`` untunable — a title
+    weight and a part weight would only ever be observable as their product.
+
+    **Before the access split**, so everything downstream is measured on the
+    ranking the reader actually sees: the relevance floor, the score
+    distribution the floor control is drawn over, and both sides' counts.  A
+    floor applied to unboosted scores and a page ordered by boosted ones would
+    be two answers to one question.
+
+    A multiplier, never a filter: this function removes nothing, because a
+    house is routinely governed by a Part 3 provision through a cross-reference
+    and an answer that is merely lower down can still be read.
+
+    **That is not a promise that the page is unchanged.**  The relevance floor
+    runs after this, on the scores this leaves behind, so a demoted result can
+    fall under the reader's line and go.  The alternative — flooring the
+    unboosted scores — would order the page by one measure and count it by
+    another, which the whole tier-split design exists to prevent.  So the
+    ordering stays and the copy says so; no surface may claim the results are
+    untouched.
+
+    Every result carries its verdict out, including ``unknown``, so the UI can
+    say why a result moved instead of silently reordering the page.
+    """
+    occupancy = params.get("occupancy")
+    if not occupancy:
+        # No building in the question: nothing to prefer, and no verdict to
+        # report.  The common case, and it must cost nothing.
+        return results
+
+    storeys = params.get("storeys")
+    area_m2 = params.get("area_m2")
+
+    for result in results:
+        # provision__edition is select_related on the in-force queryset, so
+        # this reads from memory rather than firing a query per result.
+        verdict = verdict_for(
+            edition_id=result["provision"].edition.edition_id,
+            division=result["division"],
+            provision_id=result["id"],
+            occupancy=occupancy,
+            storeys=storeys,
+            area_m2=area_m2,
+            on_date=search_date,
+        )
+        result["part_verdict"] = verdict.value
+        if verdict is Verdict.UNKNOWN:
+            continue
+        # The facts a reader needs to check the move: how far it moved, which
+        # part decided it, and the article that says so.  The sentence itself
+        # is the formatter's job, like every other "why this result" line.
+        factor = 1 + PART_BOOST if verdict is Verdict.APPLIES else 1 - PART_DEMOTE
+        result["score"] = round(result["score"] * factor, 3)
+        result["part_factor"] = round(factor, 2)
+        result["part_number"] = part_of(result["id"])
+        result["part_source"] = source_for(
+            edition_id=result["provision"].edition.edition_id,
+            provision_id=result["id"],
+            on_date=search_date,
+        )
+
+    # The engine sorted by score and the scores have just changed.  Sorted
+    # unconditionally: Timsort is linear on an already-ordered list, so a flag
+    # to skip it would be parallel state bought for nothing.
+    results.sort(key=lambda r: r["score"], reverse=True)
+    return results
 
 
 def _split_by_access(

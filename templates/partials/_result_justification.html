@@ -8,6 +8,16 @@
     {% if result.score_explanation %}
     <p class="mt-2 font-serif text-sm text-ink-2">{{ result.score_explanation }}</p>
     {% endif %}
+    {% comment %} Why the result MOVED, when the reader named a building. A
+       separate sentence from the one above: that one answers "why did this
+       match", this one answers "why is it here". It names the multiplier and
+       the article that decided it, because a re-ordering the reader cannot
+       check is worse than none. Absent on every search that named no
+       building, and on every provision the applicability articles do not
+       gate. {% endcomment %}
+    {% if result.part_explanation %}
+    <p class="mt-2 font-serif text-sm text-ink-3">{{ result.part_explanation }}</p>
+    {% endif %}
     {% if result.show_matched_terms and result.matched_terms %}
     <div class="mt-2 flex flex-wrap items-center gap-1.5">
         <span class="font-mono text-[9px] uppercase tracking-[0.08em] text-ink-3">Matched</span>

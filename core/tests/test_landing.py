@@ -234,6 +234,31 @@ class TestLandingRendering:
 
 
 @pytest.mark.django_db
+class TestTheArticleIsReachable:
+    """The article is listed in the sitemap and linked from nowhere else.
+
+    A sitemap entry is a hint; a link is a vote, and an orphan page starts a
+    new property at the back of the crawl queue. This is also the only way a
+    reader browsing the front page can find the article at all.
+    """
+
+    def test_the_landing_page_links_the_article(self, client) -> None:
+        response = client.get(reverse("core:landing"))
+
+        assert reverse("core:guard_height") in response.content.decode()
+
+    def test_the_link_is_not_one_of_the_try_examples(self, client) -> None:
+        """Every Try chip is a dated search the view chose so an anonymous
+        visitor cannot spend their one search on a locked edition. An article
+        link in that list would look like a search and break the contract
+        without anything failing."""
+        body = client.get(reverse("core:landing")).content.decode()
+
+        chips = re.findall(r'<a href="/search/\?q=([^"]*)"', body)
+        assert all("guard-height-ontario" not in chip for chip in chips)
+
+
+@pytest.mark.django_db
 class TestSectionThreeSpecimens:
     """Section III shows the shipping components, not drawings of them.
 

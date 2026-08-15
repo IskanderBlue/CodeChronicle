@@ -153,6 +153,18 @@ Edition names are display prose resolved in the view — the raw code_name
     </span>
     {% endif %}
 
+    {% comment %}
+    What the search ranked by, when the reader named a building or the parser
+    read one out of the query. A reading, not a control: the control is the
+    BUILDING strip in the search form above, where it is available for the
+    first search too. Two sets of fields posting the same names would send
+    both, and the winner would depend on DOM order.
+    {% endcomment %}
+    {% if building.occupancy %}
+    <span class="text-rule">&middot;</span>
+    <span class="ui-note" title="{{ building_help }}">{{ building_label|upper }}{% if building.storeys %}, {{ building.storeys }} STOREY{{ building.storeys|pluralize:"S" }}{% endif %}{% if building_area %}, {{ building_area|upper }}{% endif %}</span>
+    {% endif %}
+
     {% comment %} The result set as a spreadsheet, for somebody auditing a
        building against a date. The form re-posts the query, date and province
        this list was built from; the relevance floor is the reader's stored
@@ -243,6 +255,7 @@ it's gone", with no close-on-success wiring to keep in sync.
     </div>
 </div>
 {% endif %}
+
 </div>
 
 {% comment %}

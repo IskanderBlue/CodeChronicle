@@ -5,12 +5,14 @@ Format search results for frontend display.
 import difflib
 import logging
 import re
+from collections.abc import Mapping
 from datetime import date
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from api.band import parse_iso_date
 from api.search.engine import _ref_parts
 from config.code_metadata import get_code_display_name
+from config.part_applicability import AREA_UNITS, OCCUPANCY_SHORT
 from core.compare import (
     PreparedPair,
     annotate_chain_comparisons,
@@ -474,6 +476,62 @@ def _build_score_explanation(
     return "Matched your search."
 
 
+def _describe_building(building: Mapping[str, Any]) -> str:
+    """The reader's building, as a noun phrase.
+
+    Their own figure in their own unit, not the converted ``area_m2``: the
+    control, the address and this sentence should all show the number they
+    typed, or the explanation is arithmetic they did not do.
+    """
+    label = OCCUPANCY_SHORT.get(str(building.get("occupancy", "")), "")
+    if not label:
+        return ""
+    article = "an" if label[:1] in "aeiou" else "a"
+    sizes = []
+    storeys = building.get("storeys")
+    if storeys:
+        sizes.append(f"{storeys} storey" + ("" if storeys == 1 else "s"))
+    if building.get("area"):
+        unit = AREA_UNITS.get(str(building.get("area_unit", "")), "")
+        sizes.append(f"{building['area']:g} {unit}".strip())
+    measured = f" of {' and '.join(sizes)}" if sizes else ""
+    return f"{article} {label} building{measured}"
+
+
+def _build_part_explanation(
+    result: Mapping[str, Any], building: Mapping[str, Any] | None
+) -> str:
+    """Why this result moved, and by how much.
+
+    Returned only for a result the code's own applicability test decided.  A
+    re-ordering the reader cannot check is worse than none — so the sentence
+    names the multiplier, the part, the building it was measured against, and
+    the article that says so.
+
+    Empty for an ``unknown`` verdict, which is every result of a search that
+    named no building, and every provision the applicability articles do not
+    gate.
+    """
+    verdict = result.get("part_verdict")
+    part = result.get("part_number")
+    if verdict not in ("applies", "excluded") or not part:
+        return ""
+    described = _describe_building(building or {})
+    if not described:
+        return ""
+    # Two decimals always: "×0.8" beside "×1.35" reads as a different kind
+    # of number, and the pair is meant to be compared.
+    factor = f"{float(result.get('part_factor') or 1):.2f}"
+    direction = "Ranked up" if verdict == "applies" else "Ranked down"
+    governs = "governs" if verdict == "applies" else "does not govern"
+    source = result.get("part_source") or ""
+    cite = f" ({source})" if source else ""
+    return (
+        f"{direction} ×{factor} — Part {part} {governs} "
+        f"{described}{cite}."
+    )
+
+
 def _record_covers_provision(
     record: Dict[str, Any], provision_id: str, division: str
 ) -> bool:
@@ -574,6 +632,7 @@ def _format_single_result(
     terms: Iterable[str] | None = None,
     replacement_memo: Dict[int, Any] | None = None,
     consolidation_memo: Dict[int, Any] | None = None,
+    building: Mapping[str, Any] | None = None,
 ) -> Dict[str, Any]:
     code_edition = result.get("code_edition", "Unknown")
     provision = result.get("provision")
@@ -744,6 +803,11 @@ def _format_single_result(
             result.get("matched_terms") or [],
             result.get("matched_terms_indirect") or [],
         ),
+        # Why the result moved, when the reader named a building.  A second
+        # sentence rather than a clause on the first: one answers "why did
+        # this match", the other "why is it here", and a search that named no
+        # building has only the first.
+        "part_explanation": _build_part_explanation(result, building),
         "html_content": html_content,
         # List form of the same citations — the only cross-reference affordance
         # on a version rendered as page images (no html to link into).
@@ -1354,6 +1418,7 @@ def format_search_results(
     query_date: date | str | None = None,
     terms: Iterable[str] | None = None,
     user: Any = None,
+    building: Mapping[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
     """Transform raw search results into a format suitable for the frontend.
 
@@ -1362,6 +1427,8 @@ def format_search_results(
     suppressed.  ``terms`` (parsed query keywords) are highlighted in the
     provision body; omit or pass empty to skip highlighting.  ``user`` feeds the
     free-tier gate on lineage links (None reads as anonymous — most restrictive).
+    ``building`` is what the search ranked for; it names the building in each
+    moved result's explanation, and omitting it only drops that sentence.
     """
     parsed_query_date = parse_iso_date(query_date)
     # Shared per-call memos, both keyed by edition (not recomputed per result):
@@ -1372,7 +1439,12 @@ def format_search_results(
     consolidation_memo: Dict[int, Any] = {}
     formatted = [
         _format_single_result(
-            result, parsed_query_date, terms, replacement_memo, consolidation_memo
+            result,
+            parsed_query_date,
+            terms,
+            replacement_memo,
+            consolidation_memo,
+            building,
         )
         for result in results
     ]

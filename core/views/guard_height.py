@@ -51,7 +51,7 @@ from core.cross_refs import annotate_versions
 from core.http_cache import corpus_conditional
 from core.models import CodeEditionProvisionVersion
 from core.permalinks import provision_permalink_url
-from core.seo import last_governed_day
+from core.seo import article_jsonld, last_governed_day, site_origin
 
 from .compare import _side
 from .regulation import _provenance_result
@@ -111,6 +111,17 @@ META_DESCRIPTION = (
     "2022 it required 1 070 mm around the landing. Every text, its in-force "
     "dates, and what each amendment changed."
 )
+
+
+#: When the article was published, and when its *prose* last changed.
+#:
+#: Declared here, and bumped by hand when the writing changes.  Deliberately
+#: not derived from ``CorpusCurrency``: the historical texts on this page
+#: render live, so a modified date taken from the last data load would claim
+#: the article had been rewritten every time an edition reloaded.  A wrong date
+#: carries further than a missing one once a crawler repeats it.
+PUBLISHED = date(2026, 8, 14)
+MODIFIED = date(2026, 8, 14)
 
 
 def _version(ref: Ref) -> CodeEditionProvisionVersion | None:
@@ -263,5 +274,16 @@ def guard_height(request: HttpRequest) -> HttpResponse:
             "meta_title": META_TITLE,
             "meta_description": META_DESCRIPTION,
             "canonical_path": reverse("core:guard_height"),
+            # ``base.html`` renders this when a view supplies it.  An Article
+            # block, not a Legislation one: the quoted texts are the law, and
+            # the analysis around them is writing about the law.
+            "jsonld": article_jsonld(
+                headline=META_TITLE,
+                description=META_DESCRIPTION,
+                path=reverse("core:guard_height"),
+                origin=site_origin(request),
+                published=PUBLISHED,
+                modified=MODIFIED,
+            ),
         },
     )

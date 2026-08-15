@@ -12,6 +12,7 @@ from coloured_logger import Logger
 from api.formatters import format_search_results
 from api.llm_parser import parse_user_query
 from api.search import execute_search
+from config.part_applicability import DEFAULT_AREA_UNIT, Building, coerce_building
 from config.search_limits import CLOSE_MATCH_THRESHOLD, coerce_match_threshold
 from core.access import allowed_edition_names
 from core.models import CorpusCurrency, SearchHistory
@@ -50,6 +51,7 @@ def run_search(
     date_override: str | None = None,
     province_override: str | None = None,
     match_threshold: float = CLOSE_MATCH_THRESHOLD,
+    building: Building | None = None,
 ) -> dict[str, Any]:
     """
     Execute a full search pipeline: parse → search → format → save history.
@@ -62,6 +64,13 @@ def run_search(
         province_override: If provided, overrides the LLM-parsed province code.
         match_threshold: Relevance floor for a close match; clamped to a
             storable floor.
+        building: What the reader told us about their building —
+            ``occupancy`` (which overrides the parser's reading of the query),
+            ``storeys`` and ``area_m2`` (which the parser never supplies, see
+            ``api.llm_parser``).  Ranking only: the orchestrator prefers the
+            part the code says governs such a building, and nothing here
+            reaches the scored keywords.  Absent keys leave the parser's
+            answer, and an absent occupancy means no preference at all.
 
     Returns:
         A dict with keys: success, results, error, applicable_codes,
@@ -143,6 +152,27 @@ def run_search(
         if province_override:
             params["province"] = province_override
 
+        # The building the reader is asking about.
+        #
+        # **The model only ever fills a blank.**  ``building`` carries a key
+        # only when the reader supplied a usable value (``coerce_building``
+        # drops everything else), so a stated occupancy overwrites whatever the
+        # parser read out of the query text, and a blank one leaves the
+        # parser's reading in place.  That is the whole contract of the
+        # BUILDING strip's "Read from my query" option, and it runs in this
+        # direction — reader over model — for the same reason the AS-OF picker
+        # overrides the parsed date.
+        #
+        # ``storeys`` and ``area_m2`` have no parser value to overwrite. The
+        # tool schema does not offer them and the prompt forbids reporting a
+        # size, because a measurement is a fact about a building rather than a
+        # word in a question, and a guess at one is silently wrong.
+        #
+        # Written into ``params`` rather than passed beside it, so it lands in
+        # ``parsed_params`` on the SearchHistory row and the history link
+        # replays the ranking the reader last set.
+        params.update(building or {})
+
         # Step 2: Execute search.  The free-tier scope goes *in* rather than
         # being applied to the output: the orchestrator splits by access before
         # trimming, so a gated searcher's cards are filled with editions they
@@ -175,6 +205,15 @@ def run_search(
             query_date=params.get("date"),
             terms=params.get("keywords"),
             user=user,
+            # Re-coerced from the merged params rather than passed through, so
+            # the sentence describes exactly what the ranking used — including
+            # an occupancy the parser supplied and the reader never typed.
+            building=coerce_building(
+                params.get("occupancy"),
+                params.get("storeys"),
+                params.get("area"),
+                params.get("area_unit") or DEFAULT_AREA_UNIT,
+            ),
         )
         logger.info("search service payload: %d results", len(formatted))
 

@@ -33,7 +33,31 @@
    NB: multi-line {# #} comments leak as literal text (the tokenizer is not
    re.DOTALL) — use {% comment %} for anything spanning lines.
 {% endcomment %}
-<form {% if mode == 'live' %}id="search-form" hx-post="{% url 'core:search_results' %}" hx-target="#results-area" hx-on::before-request="document.getElementById('results-area').innerHTML=document.getElementById('loading-tpl').innerHTML"{% else %}method="get" action="{% url 'core:search' %}"{% endif %}>
+{% comment %} The BUILDING cell's state lives on the form, because the fields
+   it edits must post with the form and the cell that summarises them sits in
+   the query bar, two elements away. Alpine holds the three values; the modal
+   binds them with x-model and carries the real `name` attributes, so there is
+   one set of inputs and nothing to keep in sync. Live mode only — the landing
+   page hands off `q` and `d` and renders none of this.
+
+   `cc-occupancy-read` arrives on the search response (HX-Trigger) carrying the
+   occupancy the parser read out of the query, and only when the reader chose
+   none. It is what makes the size fields reachable for somebody who typed
+   "house" rather than opening this control first. Guarded again here as well
+   as in the view: a reader's own choice is never overwritten. {% endcomment %}
+{% comment %} What the control cannot read off this form: the windows in which
+   a size decides, the short occupancy labels, and the m²/ft² factor. Through
+   json_script, not inlined into an attribute — a Python `None` rendered into
+   JavaScript is a ReferenceError, and JSON's double quotes would close the
+   attribute. json_script also escapes the three characters that could end the
+   script block early. The component itself is `window.ccBuilding` in
+   search.html, beside `ccDatum`.
+
+   A bare id, not an `id_prefix` one: only live mode renders this, and a page
+   carries one live form. The landing page's two copies are both handoff, which
+   has no modal to feed. {% endcomment %}
+{% if mode == 'live' %}{{ building_data|json_script:"cc-building-data" }}{% endif %}
+<form {% if mode == 'live' %}id="search-form" hx-post="{% url 'core:search_results' %}" hx-target="#results-area" hx-on::before-request="document.getElementById('results-area').innerHTML=document.getElementById('loading-tpl').innerHTML" @cc-occupancy-read.window="adopt($event.detail.occupancy)" x-data="ccBuilding()"{% else %}method="get" action="{% url 'core:search' %}"{% endif %}>
     {% if mode == 'live' %}{% csrf_token %}{% endif %}
     {% comment %} Cellular field: QUERY label · serif query input · Jurisdiction
        and AS-OF cells, divided by 1px rules. AS-OF uses the `highlight` role
@@ -77,16 +101,162 @@
             <label class="flex items-center gap-2 border-t border-rule px-3 py-2 sm:border-l sm:border-t-0 sm:py-0">
                 <span class="font-mono text-[11px] tracking-[0.06em] text-ink-3">AS-OF</span>
                 <input type="date" name="{% if mode == 'live' %}date{% else %}d{% endif %}"
+                    {% if mode == 'live' %}x-model="asOf"{% endif %}
                     value="{% if initial_date %}{{ initial_date|date:'Y-m-d' }}{% else %}{{ coverage_end|date:'Y-m-d' }}{% endif %}"
                     {% if coverage_start %}min="{{ coverage_start|date:'Y-m-d' }}"{% endif %}
                     {% if coverage_end %}max="{{ coverage_end|date:'Y-m-d' }}"{% endif %}
                     class="border border-ink-2 bg-panel px-2 py-1 font-mono text-[11px] font-semibold tracking-[0.04em] text-highlight focus:outline-none focus:ring-0 dark:[color-scheme:dark]">
             </label>
+            {% comment %} BUILDING cell (reader-input role, like AS-OF beside
+               it). The code applies different parts to different buildings,
+               and this is where the reader says which one — in the query bar,
+               so it is met before the first search rather than found later.
+               The cell is a summary and a button; the fields themselves are
+               in the modal below, which keeps a four-cell row readable.
+            {% endcomment %}
+            {% if mode == 'live' and occupancy_choices %}
+            <div class="flex items-center gap-2 border-t border-rule px-3 py-2 sm:border-l sm:border-t-0 sm:py-0">
+                <span class="font-mono text-[11px] tracking-[0.06em] text-ink-3">BUILDING</span>
+                <button type="button" @click="buildingOpen = true" :aria-expanded="buildingOpen"
+                    title="The code applies different parts to different buildings. Tell us which building and we rank the part that governs it first."
+                    class="ui-action border border-ink-2 bg-panel px-2 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.04em] text-highlight">
+                    <span x-text="buildingLabel"></span><span class="ui-caret"></span>
+                </button>
+            </div>
+            {% endif %}
         </div>
         <button type="submit" class="ui-btn px-7 py-[14px] uppercase tracking-[0.1em]">
             Search <span aria-hidden="true">&crarr;</span>
         </button>
     </div>
+    {% comment %} The BUILDING modal, opened from the cell in the query bar.
+
+       It sits INSIDE the form on purpose: these are the real fields, so they
+       post with the search and the relevance-floor control
+       (hx-include="#search-form") carries them through a re-measure. A second
+       set of inputs elsewhere would post the same names and the winner would
+       depend on DOM order.
+
+       The size fields appear only once the reader has NAMED an occupancy
+       the code applies a size test to, on the AS-OF date they are searching.
+       Two consequences, both intended: a blank occupancy shows nothing,
+       because the parser has not read the query yet and a field offered on a
+       guess is a field asking for an answer that may change nothing; and
+       moving the AS-OF date can make them appear or vanish, because a
+       retirement home is sized before 1 July 2017 and unsized after it.
+       They are `:disabled` as well as hidden, so a value the code cannot use
+       is never posted and never reaches the address.
+
+       Each field carries its seeded value in the MARKUP as well as in the
+       Alpine state. The two agree, because both come from `initial_building`
+       — but the auto-run submits on DOMContentLoaded and Alpine initialises
+       on the same event, so a field that relied on x-model alone could be
+       posted empty in the very request the seed exists for. This also leaves
+       a followed link working with no JavaScript at all.
+
+       Three fields, and the split between them is the whole design. The
+       occupancy is a classification of the reader's words, which the parser
+       can do, so a blank select means "read it out of my query". A storey
+       count and an area are facts about a building that no question contains,
+       so a blank one means "do not guess" and nothing infers them. Each title
+       says which of the two it is.
+    {% endcomment %}
+    {% if mode == 'live' and occupancy_choices %}
+    <div x-show="buildingOpen" x-cloak class="cc-modal"
+        @click.self="buildingOpen = false" @keydown.escape.window="buildingOpen = false"
+        role="dialog" aria-modal="true" aria-labelledby="{{ id_prefix }}building-title">
+        <div class="cc-modal-panel">
+            <div class="flex items-baseline gap-3 border-b border-rule px-4 py-3">
+                <h2 id="{{ id_prefix }}building-title" class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">
+                    The building you are asking about
+                </h2>
+                <button type="button" class="ui-disclosure ml-auto" @click="buildingOpen = false" aria-label="Close">ESC</button>
+            </div>
+
+            <div class="px-4 pb-4 pt-4">
+                <label class="mb-1 block font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3" for="{{ id_prefix }}occupancy">
+                    Major occupancy
+                </label>
+                <select name="occupancy" id="{{ id_prefix }}occupancy" x-model="occupancy"
+                    title="The building's major occupancy, as Table 3.1.2.1. classifies it. Leave this blank and we read the building out of your query. Choose one and your choice is used instead — we never overrule it."
+                    class="mb-4 w-full border border-rule bg-surface px-2 py-1 font-serif text-sm text-ink">
+                    <option value="">Read it from my query</option>
+                    {% for key, label in occupancy_choices.items %}
+                    <option value="{{ key }}"{% if key == initial_building.occupancy %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+
+                <div class="mb-4 flex gap-4" x-show="sizeMatters" x-cloak>
+                    <div class="flex-1">
+                        <label class="mb-1 block font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3" for="{{ id_prefix }}storeys">
+                            Storeys
+                        </label>
+                        <input type="number" id="{{ id_prefix }}storeys" name="storeys" x-model="storeys" :disabled="!sizeMatters"
+                            value="{{ initial_building.storeys|default_if_none:'' }}"
+                            min="1" max="{{ max_storeys }}" step="1" placeholder="&mdash;"
+                            title="How many storeys the building has. We never guess this, because no question contains it: a four-storey townhouse is still a house, and Part 9 does not govern it.{% if size_thresholds %} More than {{ size_thresholds.0 }} settles the answer on its own.{% endif %}"
+                            class="w-full border border-rule bg-surface px-2 py-1 font-serif text-sm text-ink">
+                    </div>
+                    <div class="flex-1">
+                        <label class="mb-1 block font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3" for="{{ id_prefix }}area">
+                            Building area
+                        </label>
+                        {% comment %} The unit is the reader's, not ours. The code
+                           states 600 m², and most people doing Ontario residential
+                           work hold the figure in square feet — so a box measured
+                           only in metres invites 1500 to be read as 1500 m², which
+                           is two and a half times the Part 9 limit. It fails
+                           silently: the page just re-ranks. The conversion below
+                           shows the other unit so the mistake is visible either
+                           way. {% endcomment %}
+                        <div class="flex gap-2">
+                            <input type="number" id="{{ id_prefix }}area" name="area" x-model="area" :disabled="!sizeMatters"
+                                value="{{ initial_building.area|default_if_none:'' }}"
+                                min="1" step="1" placeholder="&mdash;"
+                                title="The building area. We never guess this: no question contains it.{% if size_thresholds %} Part 9 needs {{ size_thresholds.1 }} m² or less, and both this and the storeys must be under their limits before Part 9 applies.{% endif %}"
+                                class="w-full min-w-0 flex-1 border border-rule bg-surface px-2 py-1 font-serif text-sm text-ink">
+                            <label class="sr-only" for="{{ id_prefix }}area-unit">Unit</label>
+                            <select id="{{ id_prefix }}area-unit" name="area_unit" x-model="areaUnit" :disabled="!sizeMatters"
+                                title="Which unit the figure beside this is in.{% if size_thresholds %} Part 9's limit is {{ size_thresholds.1 }} m².{% endif %}"
+                                class="border border-rule bg-surface px-2 py-1 font-mono text-[11px] text-ink">
+                                {% for key, label in area_units.items %}
+                                <option value="{{ key }}"{% if key == initial_building.area_unit %} selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <p class="mt-1 font-mono text-[10px] tracking-[0.04em] text-ink-3" x-show="areaOther" x-cloak>
+                            &asymp; <span x-text="areaOther"></span>
+                        </p>
+                    </div>
+                </div>
+
+                <button type="submit" class="ui-btn w-full" @click="buildingOpen = false">
+                    Rank for this building
+                </button>
+
+                {% comment %} The thresholds are read from the rule table, never
+                   typed here: a hand-written number is a claim about the code that
+                   nothing checks. `size_thresholds` returns a pair only while every
+                   loaded rule agrees, so a future edition that changed either limit
+                   silences the sentence instead of making it lie. {% endcomment %}
+                <p class="mt-3 border-t border-rule pt-3 font-serif text-sm text-ink-2" x-show="sizeMatters" x-cloak>
+                    {% if size_thresholds %}
+                    Part 9 governs a building of {{ size_thresholds.0 }} storeys or fewer with a
+                    building area of {{ size_thresholds.1 }}&nbsp;m&sup2; or less. Above either,
+                    Parts 3, 4, 5 and 6 govern it instead.
+                    {% else %}
+                    Whether Part 9 or Parts 3, 4, 5 and 6 govern the building depends on its
+                    height and its area, and the limits differ between the editions loaded.
+                    {% endif %}
+                    Leave a field blank and we will not guess it.
+                </p>
+                <p class="mt-2 font-serif text-sm text-ink-3">
+                    This influences which Parts get boosted or deranked for your results.
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     {% if meta_note %}
     <p class="mt-[10px] font-mono text-[11px] tracking-[0.04em] text-ink-3">{{ meta_note }}</p>
     {% endif %}

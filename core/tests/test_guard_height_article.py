@@ -29,6 +29,7 @@ real database — and that is the right home for a claim about the code, because
 it checks the corpus rather than the page.
 """
 
+import json
 import re
 from datetime import date
 
@@ -43,7 +44,7 @@ from core.models import (
     CodeEditionProvisionVersion,
     Regulation,
 )
-from core.views.guard_height import OPENING, TRANSITIONS
+from core.views.guard_height import MODIFIED, OPENING, PUBLISHED, TRANSITIONS
 
 #: The 1997 sentences the article's opening turns on.
 #:
@@ -482,3 +483,45 @@ class TestTheGate:
             start <= searched and (end is None or searched < end)
             for start, end in windows
         ), f"{searched} is not inside a free-tier edition: {windows}"
+
+
+@pytest.mark.django_db
+class TestStructuredData:
+    """The page tells a crawler it is *writing about* the law, not the law.
+
+    Typing it as ``Legislation`` — the type the provision pages carry — would
+    be the strongest available way to blur that line, on the one page where
+    the analysis and the quoted text sit together.
+    """
+
+    def _block(self, client, corpus) -> dict:
+        body = _page(client).content.decode()
+        match = re.search(
+            r'<script type="application/ld\+json">(.*?)</script>', body, re.S
+        )
+        assert match, "the page carries no JSON-LD"
+        return json.loads(match.group(1))
+
+    def test_it_is_typed_as_an_article(self, client, corpus) -> None:
+        assert self._block(client, corpus)["@type"] == "Article"
+
+    def test_it_names_the_page_it_is_about(self, client, corpus) -> None:
+        block = self._block(client, corpus)
+        assert block["url"].endswith(reverse("core:guard_height"))
+        assert block["mainEntityOfPage"]["@id"] == block["url"]
+
+    def test_it_declares_free_access(self, client, corpus) -> None:
+        """Not decoration: the Compendium licence permits reproduction for
+        non-commercial use and defines that as free access, so the claim the
+        page makes and the condition it relies on are one fact."""
+        assert self._block(client, corpus)["isAccessibleForFree"] is True
+
+    def test_the_dates_are_the_authors_and_not_the_corpus(
+        self, client, corpus
+    ) -> None:
+        """The historical texts render live, so a modified date taken from
+        the last data load would claim the writing had changed every time an
+        edition reloaded."""
+        block = self._block(client, corpus)
+        assert block["datePublished"] == PUBLISHED.isoformat()
+        assert block["dateModified"] == MODIFIED.isoformat()

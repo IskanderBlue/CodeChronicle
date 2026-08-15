@@ -441,6 +441,53 @@ def _serialize(block: dict[str, Any]) -> SafeString:
     return mark_safe(json.dumps(kept, ensure_ascii=False).translate(_SCRIPT_ESCAPES))
 
 
+def article_jsonld(
+    *,
+    headline: str,
+    description: str,
+    path: str,
+    origin: str,
+    published: date,
+    modified: date,
+) -> SafeString:
+    """An ``Article`` block for a hand-written page.
+
+    Separate from ``provision_jsonld``: that block says "this is a text of the
+    law", and this one says "this is somebody's writing about the law".  A
+    reader — and a crawler — must never confuse the two, and giving the prose
+    a ``Legislation`` type would be the strongest possible way to do so.
+
+    **The dates are declared by the author, not derived.**  The page renders
+    its historical texts live from the corpus, so a ``dateModified`` taken from
+    ``CorpusCurrency`` would move on every ``load_edition`` and claim the
+    writing had changed when only the machinery behind it had.  A wrong date
+    carries further than a missing one once it is machine-readable, which is
+    the rule this whole section is built on.
+
+    ``isAccessibleForFree`` is not decoration.  This article quotes OBC 2024
+    under a licence that permits reproduction for non-commercial use, which the
+    licence defines as free access — so the claim the page makes to a crawler
+    and the condition it relies on are the same fact, stated once.
+    """
+    url = f"{origin}{path}"
+    return _serialize({
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": headline,
+        "description": description,
+        "url": url,
+        # A crawler that finds this block on a syndicated copy still learns
+        # which page is the subject.
+        "mainEntityOfPage": {"@type": "WebPage", "@id": url},
+        "datePublished": published.isoformat(),
+        "dateModified": modified.isoformat(),
+        "author": {"@type": "Organization", "name": SITE_NAME, "url": origin},
+        "publisher": {"@type": "Organization", "name": SITE_NAME, "url": origin},
+        "isAccessibleForFree": True,
+        "inLanguage": "en-CA",
+    })
+
+
 def _citation(provision: CodeEditionProvision, base_reg: Regulation | None) -> str:
     """The provision as a person would cite it.
 

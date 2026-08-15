@@ -244,6 +244,10 @@
     this block: it submits the form with the same call the example chips use,
     so a test looking for the call alone cannot tell the two apart and would
     stay green with this block deleted. {% endcomment %}
+    {% comment %} The building needs no seeding script: the form renders
+    `initial_building` into its own fields, and the auto-run submits the form.
+    A shared link, a history click and a reload therefore reproduce the order
+    of the results as well as the words. {% endcomment %}
     {% if initial_query %}
     <script data-autorun-search>
         document.addEventListener('DOMContentLoaded', function () {
@@ -594,6 +598,78 @@
     // once, on release, from the range input's native change event. The
     // pointer handlers therefore have to dispatch that event themselves —
     // setting an input's value in script does not emit one.
+    /* The BUILDING control, beside ccDatum and built the same way: a named
+       factory here, a json_script blob for what it cannot see, and a bare
+       x-data="ccBuilding()" on the form. The alternative — the whole thing in
+       one HTML attribute — is unreviewable in a diff and cannot use an arrow
+       function without fighting the quoting.
+
+       It reads its OWN initial state off the form's inputs rather than being
+       handed a copy. The markup already carries those values (a followed link
+       must work before any script runs, and the auto-run submits on the same
+       event Alpine initialises on), so reading them back makes the markup the
+       single source instead of a second one to keep in step. */
+    window.ccBuilding = function () {
+        const raw = document.getElementById('cc-building-data');
+        const data = raw ? JSON.parse(raw.textContent) : {};
+        const windows = data.windows || [];
+        const labels = data.labels || {};
+        const sqftPerM2 = data.sqftPerM2;
+        const form = document.getElementById('search-form');
+        const field = function (name) {
+            const el = form ? form.querySelector('[name="' + name + '"]') : null;
+            return el ? el.value : '';
+        };
+
+        return {
+            buildingOpen: false,
+            occupancy: field('occupancy'),
+            storeys: field('storeys'),
+            area: field('area'),
+            areaUnit: field('area_unit') || 'm2',
+            asOf: field('date'),
+
+            /* The parser's reading of the query, announced by the search
+               response. It fills a blank and never overwrites a choice — the
+               server guards this too, and both guards are deliberate. */
+            adopt(occupancy) {
+                if (!this.occupancy) { this.occupancy = occupancy; }
+            },
+
+            get buildingLabel() {
+                if (!this.occupancy) return 'Any';
+                let text = labels[this.occupancy] || this.occupancy;
+                if (this.storeys) {
+                    text += ', ' + this.storeys + ' storey' + (this.storeys == 1 ? '' : 's');
+                }
+                return text;
+            },
+
+            /* A size is asked for only where a size decides, on the date being
+               searched: a retirement home is sized before 1 July 2017 and
+               unsized after it. A blank occupancy asks for nothing, because
+               the parser has not read the query yet. */
+            get sizeMatters() {
+                if (!this.occupancy) return false;
+                return windows.some((w) =>
+                    (!w.from || this.asOf >= w.from) &&
+                    (!w.until || this.asOf < w.until) &&
+                    w.sized.indexOf(this.occupancy) !== -1);
+            },
+
+            /* The figure in the other unit, so a reader who typed square feet
+               into a metric box can see it. Uses the server's own factor, or
+               the check would be done by different arithmetic than the ranking. */
+            get areaOther() {
+                const n = parseFloat(this.area);
+                if (!n || n <= 0 || !sqftPerM2) return '';
+                return this.areaUnit === 'sqft'
+                    ? Math.round(n / sqftPerM2).toLocaleString() + ' m2'
+                    : Math.round(n * sqftPerM2).toLocaleString() + ' sq ft';
+            },
+        };
+    };
+
     window.ccDatum = function (root) {
         const raw = document.getElementById('cc-datum-data');
         const data = raw ? JSON.parse(raw.textContent) : { buckets: [], width: 0.05 };

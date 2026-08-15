@@ -1,5 +1,6 @@
 """Search-related views."""
 
+import json
 from datetime import date
 from typing import Any
 from urllib.parse import urlencode
@@ -14,6 +15,18 @@ from django.views.decorators.http import require_POST
 from api.formatters import _code_order_key, highlight_terms
 from api.search.orchestration import identity_preview
 from config.code_metadata import edition_display_name, get_code_display_name
+from config.part_applicability import (
+    AREA_UNITS,
+    DEFAULT_AREA_UNIT,
+    MAX_STOREYS,
+    OCCUPANCIES,
+    OCCUPANCY_SHORT,
+    SQFT_PER_M2,
+    Building,
+    coerce_building,
+    size_relevance_intervals,
+    size_thresholds,
+)
 from config.search_limits import (
     CLOSE_MATCH_THRESHOLD,
     SCORE_BUCKET_WIDTH,
@@ -46,8 +59,124 @@ def _query_value(request: HttpRequest, key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
+#: What the building control posts, and what the address carries.  The
+#: reader's own number and unit, not the derived metric value: ``area_m2`` is
+#: computed from these two and would be a conversion of the reader's figure
+#: rather than the figure, which is not what an address a person reads should
+#: name.  Written once so the form, the address and the seed agree.
+BUILDING_FIELDS = ("occupancy", "storeys", "area", "area_unit")
+
+
+def _size_relevance() -> list[dict[str, Any]]:
+    """When a measurement can decide, shaped for the control's json_script.
+
+    The control watches the AS-OF picker and asks for a size only where a size
+    changes the answer on that day.  The edition windows come from the corpus
+    rather than from a constant, so an edition that is not loaded contributes
+    no interval and the control never offers a field about an edition the
+    reader cannot reach.
+    """
+    windows = {
+        edition_id: (start, end)
+        for edition_id, start, end in CodeEdition.objects.values_list(
+            "edition_id", "effective_date", "ineffective_date"
+        )
+    }
+    return [
+        {
+            "from": window.start.isoformat() if window.start else None,
+            "until": window.end.isoformat() if window.end else None,
+            "sized": sorted(window.sized),
+        }
+        for window in size_relevance_intervals(windows)
+    ]
+
+
+def _building_control_context() -> dict[str, Any]:
+    """Everything the BUILDING control needs, for the views that render it.
+
+    One builder rather than the dict written twice: the search page renders
+    the form, and anything else that grows a copy of it should get the same
+    keys without keeping them in step by hand.
+
+    Deliberately NOT part of the results-partial context.  The control lives
+    in the search form, which the htmx results swap never re-renders, so a
+    copy there would be four dead keys and a ``CodeEdition`` query on every
+    search.
+    """
+    return {
+        "occupancy_choices": OCCUPANCIES,
+        "area_units": AREA_UNITS,
+        "max_storeys": MAX_STOREYS,
+        "size_thresholds": size_thresholds(),
+        # Everything the Alpine component cannot read off the form itself.
+        # One blob, through json_script, the way the relevance control's
+        # ``cc-datum-data`` works — an attribute cannot carry JSON without
+        # closing on its own quotes, and a Python ``None`` inlined into
+        # JavaScript is a ReferenceError.
+        "building_data": {
+            "windows": _size_relevance(),
+            "labels": OCCUPANCY_SHORT,
+            "sqftPerM2": SQFT_PER_M2,
+        },
+    }
+
+
+def _building_from(source: Any) -> Building:
+    """The building the reader told us about, validated.
+
+    ``source`` is ``request.POST`` or ``request.GET`` — the control posts these
+    names, and a shared or bookmarked address carries the same ones.
+    """
+    return coerce_building(
+        source.get("occupancy"),
+        source.get("storeys"),
+        source.get("area"),
+        source.get("area_unit") or DEFAULT_AREA_UNIT,
+    )
+
+
+def _announce_parsed_occupancy(
+    response: HttpResponse, *, reader_chose: bool, building: Building
+) -> HttpResponse:
+    """Tell the form which occupancy the parser read out of the query.
+
+    The BUILDING modal asks for a size only once an occupancy is named, and a
+    reader who typed "house" has named one — in words the parser understood,
+    not in the dropdown.  Without this the size fields never appear for them,
+    so the boost only ever moves an assembly, care or high-hazard query, where
+    the occupancy alone decides.
+
+    **It fires only when the reader chose nothing.**  A stated occupancy is
+    the reader's own answer and is never overwritten; the whole contract of
+    the "Read it from my query" option runs reader-over-model, and this is the
+    model filling a blank, in the one direction it is allowed to.
+
+    ``reader_chose`` is the *coerced* answer, not the raw post, so
+    ``coerce_building`` stays the single authority on what counts as a stated
+    occupancy — a value it rejects must not silently suppress the reading.
+
+    Sent as ``HX-Trigger`` rather than rendered into the results partial,
+    because the field it updates lives in the search form — outside the
+    swapped fragment, and outside its Alpine scope.
+    """
+    if reader_chose:
+        return response
+    occupancy = building.get("occupancy")
+    if occupancy:
+        response["HX-Trigger"] = json.dumps(
+            {"cc-occupancy-read": {"occupancy": occupancy}}
+        )
+    return response
+
+
 def _push_search_url(
-    response: HttpResponse, query: str, day: str | None, *, replace: bool
+    response: HttpResponse,
+    query: str,
+    day: str | None,
+    *,
+    replace: bool,
+    building: Building | None = None,
 ) -> HttpResponse:
     """Put the search that just ran into the address bar.
 
@@ -63,19 +192,36 @@ def _push_search_url(
     script copying the form could name a date the search did not use.
 
     **A new search earns a history entry; re-measuring one does not.**  The
-    relevance-floor control re-posts through this same view without changing
-    the query or the date, so pushing there would stack entries with identical
-    addresses and Back would look broken to a reader who had only moved a
-    line.  ``replace`` tells the two apart, and the caller decides it from the
-    post itself rather than by comparing addresses, which the server cannot
-    see.
+    relevance-floor control re-posts through this same view by itself, without
+    the reader touching the form, so an entry per drag would make Back a list
+    of knob positions rather than a list of questions.  The building is the
+    other case: it lives in the search form, so changing it means pressing
+    Search, and the address that results differs from the one before it —
+    somewhere real for Back to return to.  ``replace`` tells the two apart,
+    and the caller decides it from the post itself rather than by comparing
+    addresses, which the server cannot see.
 
     ``day`` is omitted when empty.  A seeded page with no ``?d=`` searches at
     the corpus default, which is the date this search used.
+
+    ``building`` rides along for the same reason ``day`` does: it changes the
+    order of the answer, so an address without it reproduces the words and not
+    the page.  It carries the reader's own facts in the reader's own words and
+    the reader's own units — ``occupancy=residential&storeys=4&area=1500&
+    area_unit=sqft``.  Never the group letter ``C`` and never the converted
+    ``area_m2``: one is an internal token and the other is our arithmetic on
+    their figure, and neither is what they typed.
     """
     params = {"q": query}
     if day:
         params["d"] = day
+    # A plain dict for the loop: BUILDING_FIELDS reads keys by name, and a
+    # TypedDict cannot be subscripted by a variable.
+    stated: dict[str, object] = dict(building or {})
+    for field in BUILDING_FIELDS:
+        value = stated.get(field)
+        if value is not None:
+            params[field] = str(value)
     header = "HX-Replace-Url" if replace else "HX-Push-Url"
     response[header] = f"{reverse('core:search')}?{urlencode(params)}"
     return response
@@ -193,7 +339,16 @@ def search_page(request):
             ),
             "initial_query": initial_query,
             "initial_date": initial_date,
+            # Seeds the auto-run with the building the address names, so a
+            # history click, a bookmark and a forwarded link reproduce the
+            # *order* of the results and not only the words.  Validated by the
+            # same function the post uses, so a hand-edited address cannot
+            # seed a value the control could not draw.
+            "initial_building": _building_from(request.GET),
             "example_queries": EXAMPLE_QUERIES,
+            # The BUILDING control, which lives in the search form so a reader
+            # meets it before the first search rather than hunting for it.
+            **_building_control_context(),
         },
     )
 
@@ -625,11 +780,24 @@ def search_results(request):
     # the line re-runs the query rather than needing a second endpoint.
     match_threshold = resolve_match_threshold(request)
 
-    # Which of those two this is.  The threshold field lives in the results
-    # partial, not in the search form, so only the floor control sends it —
-    # and re-measuring a search the reader is already looking at must not add
-    # a history entry.  Read from the post rather than from the parsed value,
-    # which is filled in from the reader's stored preference either way.
+    # What the reader has told us about their building.  Ranking only: it
+    # prefers the part the code says governs such a building, and none of it
+    # reaches the scored keywords.
+    building = _building_from(request.POST)
+    # Whether the reader named an occupancy themselves.  Read here because
+    # ``building`` is reassigned below to the *effective* one, which carries
+    # the parser's reading too and so can never answer this question.
+    reader_chose_occupancy = bool(building.get("occupancy"))
+
+    # A new search, or a re-measure of the one already on screen.  Only the
+    # relevance-floor control can tell us: its field lives in the results
+    # partial, and it re-posts without the reader touching the form.  The
+    # building fields deliberately do NOT count — they sit in the search form
+    # now, so every search posts them and testing for their presence would
+    # make every search look like a re-measure and stop writing history
+    # entries altogether.  A reader who changes the building and presses
+    # Search has run a search, and the address they land on differs, so an
+    # entry there is a real place for Back to return to.
     refining = "match_threshold" in request.POST
 
     # Extract IP for anonymous tracking
@@ -642,6 +810,7 @@ def search_results(request):
         date_override=date_override or None,
         province_override=province_override or None,
         match_threshold=match_threshold,
+        building=building,
     )
 
     if not result["success"]:
@@ -657,6 +826,13 @@ def search_results(request):
             },
         )
 
+    # What the search actually ranked by — the reader's corrections *and* the
+    # parser's own reading of the query, which is what the address must name
+    # and what the control must draw.  Read back out of the parse rather than
+    # from the post, or a first search whose occupancy the model supplied
+    # would rank one way and hand out a link that ranks another.
+    building = _building_from(result.get("parsed_params") or {})
+
     # Band 2 of the anonymous allowance (core.middleware): the search ran, but
     # the text is withheld.  Returns before the full context is built — the
     # teaser needs six values, and threading a "hide everything" flag through
@@ -666,15 +842,14 @@ def search_results(request):
         # The address is pushed here too.  The search ran; only the text was
         # withheld.  A reader who signs in and reloads gets their own search
         # answered, rather than having to remember and retype it.
-        return _push_search_url(
-            render(
-                request,
-                "partials/search_results_partial.html",
-                _teaser_context(result),
-            ),
-            query,
-            date_override,
-            replace=refining,
+        teaser = render(
+            request, "partials/search_results_partial.html", _teaser_context(result)
+        )
+        _push_search_url(
+            teaser, query, date_override, replace=refining, building=building
+        )
+        return _announce_parsed_occupancy(
+            teaser, reader_chose=reader_chose_occupancy, building=building
         )
 
     # The search turned up results this user's tier can't open.  Recorded as an
@@ -722,7 +897,7 @@ def search_results(request):
             },
         )
 
-    return _push_search_url(render(
+    response = render(
         request,
         "partials/search_results_partial.html",
         {
@@ -745,6 +920,34 @@ def search_results(request):
             ],
             "query_date": result.get("parsed_params", {}).get("date"),
             "keywords": result.get("parsed_params", {}).get("keywords", []),
+            # What the search ranked by, as a reading.  The control itself
+            # is in the search form, which this swap does not re-render, so
+            # none of its inputs belong in this context.
+            "building": building,
+            "building_label": OCCUPANCY_SHORT.get(building.get("occupancy", "")),
+            # The reader's own figure in the reader's own unit, resolved here
+            # so the chip needs no unit map of its own.  Not ``area_m2``: that
+            # is our conversion of what they typed, and the control, the
+            # address and this reading should all show the same number.
+            "building_area": (
+                f"{building['area']:g} {AREA_UNITS[building['area_unit']]}"
+                if building.get("area") else ""
+            ),
+            # One sentence, written once, so the hover and the modal cannot
+            # drift apart — same rule as ``match_threshold_help`` above.
+            #
+            # It does NOT promise that the list is unchanged.  The boost is
+            # applied before the relevance floor, so a demoted result whose
+            # score falls under the reader's line does leave the page.  That
+            # ordering is deliberate — the floor and the ranking must be
+            # measured the same way — so the copy has to be honest about it
+            # rather than the pipeline being bent to fit a slogan.
+            "building_help": (
+                "The code applies different parts to different buildings. "
+                "This is the building we ranked for: the part that governs it "
+                "is scored higher, and the parts that do not are scored lower. "
+                "Change it in the search bar above."
+            ),
             # Threaded into the viewer's section-content request so a
             # provision drill-in attributes back to this search.
             "search_id": result.get("search_history_id"),
@@ -816,4 +1019,10 @@ def search_results(request):
                 "Click to move it."
             ),
         },
-    ), query, date_override, replace=refining)
+    )
+    _push_search_url(
+        response, query, date_override, replace=refining, building=building
+    )
+    return _announce_parsed_occupancy(
+        response, reader_chose=reader_chose_occupancy, building=building
+    )

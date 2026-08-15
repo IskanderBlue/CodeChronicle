@@ -10,6 +10,7 @@ import anthropic
 from django.conf import settings
 
 from config.keywords import VALID_KEYWORDS
+from config.part_applicability import OCCUPANCIES
 from config.query_keywords import KEYWORD_SET, plural_variants, typed_keywords
 
 SECTION_REF_RE = re.compile(
@@ -123,6 +124,20 @@ PARSE_QUERY_TOOL = {
                 ],
                 "description": "Canadian province (default: ON)",
             },
+            "occupancy": {
+                "type": "string",
+                "enum": list(OCCUPANCIES),
+                "description": (
+                    "The building code's major occupancy classification for the "
+                    "building the user is asking about, when the query names a "
+                    "kind of building (house -> residential, office -> business, "
+                    "shop -> mercantile, school or restaurant -> assembly, "
+                    "hospital or nursing home -> care-or-detention, warehouse -> "
+                    "low-hazard-industrial). Omit when the query names no "
+                    "building. This is NOT a keyword and never enters the "
+                    "keyword list."
+                ),
+            },
             "table_references": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -146,6 +161,19 @@ Extract from user query:
 4. Table references (only if the user explicitly names a code table, e.g.
    "Table A-1" or "Table 9.10.14.1"). Return each as "Table <id>". Omit when
    the user names no table.
+5. Occupancy (only if the query names a kind of building). This is the code's
+   own classification of the building, not a keyword — see below.
+
+OCCUPANCY: classify the building the user is asking about into one major
+occupancy. That is a language task, and it is the ONLY thing you may say about
+their building.
+
+- NEVER report a size. You cannot know how many storeys the building has or
+  how large it is, and a guess there is silently wrong: a four-storey
+  townhouse is a house and is not a Part 9 building.
+- Omit the field when the query names no building ("what is a mezzanine").
+- A building the user describes two ways gets the occupancy of the space they
+  are asking about.
 
 KEYWORDS: the query has already been read for you. The user message gives you
 "Words in the query" — the words the user wrote that the building code itself
