@@ -69,6 +69,12 @@ jobs:
           ALLOWED_HOSTS: app.codechronicle.ca,codechronicle.ca,localhost
           SECRET_KEY: ci-for-check-only-secret-key-0123456789abcdefghijklmnopqrstuvwxyz-ABCDEFG
           DEBUG: "False"
+          # A placeholder, like SECRET_KEY above. `core.E001` refuses an empty
+          # asset-signing key, and CI has no app_runtime_secrets bundle to
+          # resolve the real one from. Nothing here signs a URL that a
+          # Cloudflare Worker verifies, so the value only has to be non-empty.
+          # The deployed value lives in the bundle and must match the Worker's.
+          ASSET_SIGNING_KEY: ci-for-check-only-asset-signing-key
         run: |
           python manage.py check
           python manage.py check --deploy --fail-level WARNING
