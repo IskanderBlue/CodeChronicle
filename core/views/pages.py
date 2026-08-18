@@ -10,7 +10,7 @@ from django.db.models import Count, Q
 from django.shortcuts import render
 
 from core.models import CodeEdition
-from core.pricing import get_pro_price
+from core.pricing import checkout_is_configured, get_pro_price
 from core.seo import TITLE_SUFFIX
 
 from .billing import _sync_subscription_status
@@ -106,32 +106,43 @@ def _pricing_plans(user: Any) -> list[dict[str, Any]]:
     Name/price/CTA only — the feature comparison lives in
     ``PRICING_COMPARISON`` so each point lines up Free-vs-Pro in one row.
 
-    The Pro figure comes from Stripe (``core.pricing``), not from a literal
-    here: the literal and the Stripe price were two numbers for one fact, and
-    only one of them took money.  Free is genuinely zero and has no Stripe
-    price, so it carries the same currency and interval as Pro for the two
-    cards to read as a pair.
+    The Pro figure comes from Stripe (``core.pricing``), never a literal here.
+    Free is genuinely zero and has no Stripe price, so it carries the same
+    currency and interval as Pro for the two cards to read as a pair.
+
+    ``price`` is ``None`` when Stripe cannot be read, and there is no stand-in
+    figure.  ``can_buy`` answers a different question — whether a purchase is
+    possible at all.  A missing mirrored row still leaves checkout working;
+    only an unset price id does not.
     """
     is_pro = bool(getattr(user, "is_authenticated", False)) and bool(
         getattr(user, "has_active_subscription", False)
     )
     pro = get_pro_price()
+    can_buy = checkout_is_configured()
+    # Free borrows Pro's currency and interval so the pair reads as one
+    # statement; with no Stripe row there is nothing to borrow, and "$0"
+    # stands alone perfectly well.
+    currency = pro.currency if pro else ""
+    interval = pro.interval if pro else ""
     return [
         {
             "id": "free",
             "name": "Free",
             "price": "0",
-            "currency": pro.currency,
-            "interval": pro.interval,
+            "currency": currency,
+            "interval": interval,
             "is_current": not is_pro,
+            "can_buy": True,
         },
         {
             "id": "pro",
             "name": "Pro",
-            "price": pro.amount,
-            "currency": pro.currency,
-            "interval": pro.interval,
+            "price": pro.amount if pro else None,
+            "currency": currency,
+            "interval": interval,
             "is_current": is_pro,
+            "can_buy": can_buy,
         },
     ]
 

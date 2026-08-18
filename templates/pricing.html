@@ -33,14 +33,24 @@
             </div>
             {% comment %}
             Price, currency and interval all come from the Stripe row via
-            core.pricing — never a literal here. The currency is always shown:
+            core.pricing — never a literal here, and never a stand-in when the
+            row cannot be read. The currency is always shown beside a figure:
             "$29" is ambiguous to a Canadian buyer and wrong to an American
             one, and this product is priced in CAD.
+
+            plan.price is None only when Stripe cannot be read. Checkout still
+            takes money in that state, and states the real figure itself, so
+            the card points at it rather than quoting a number we no longer
+            know.
             {% endcomment %}
+            {% if plan.price %}
             <p class="mt-8">
                 <span class="font-serif text-4xl font-bold text-ink">${{ plan.price }}</span>
-                <span class="text-base font-medium text-ink-3">{{ plan.currency }}/{{ plan.interval }}</span>
+                {% if plan.currency %}<span class="text-base font-medium text-ink-3">{{ plan.currency }}/{{ plan.interval }}</span>{% endif %}
             </p>
+            {% elif plan.can_buy %}
+            <p class="mt-8 text-base font-medium text-ink-3">Price shown at checkout</p>
+            {% endif %}
 
             {% if plan.id == 'free' %}
             <a href="{% url 'account_signup' %}"
@@ -56,6 +66,12 @@
                         Manage Subscription
                     </button>
                 </form>
+                {% comment %} No purchase control when nothing can take the
+                   money: create_checkout_session answers an error with no
+                   price id configured, and a button that leads to an error is
+                   worse than no button. The view makes the same test, so the
+                   two cannot disagree. {% endcomment %}
+                {% elif not plan.can_buy %}
                 {% elif user.is_authenticated %}
                 <form action="{% url 'core:create_checkout_session' %}" method="POST">
                     {% csrf_token %}

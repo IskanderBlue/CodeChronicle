@@ -36,7 +36,18 @@ def create_checkout_session(request):
 
     price_id = settings.STRIPE_PRO_PRICE_ID
     if not price_id:
-        return render(request, "pricing.html", {"error": "STRIPE_PRO_PRICE_ID not configured"})
+        # Same answer as the failure branch below: say so through `messages`
+        # and send the reader back to the pricing page, which renders through
+        # `core.views.pages.pricing` with its full context.  Rendering the
+        # template from here gave it no plans and no comparison rows, and the
+        # template has never read an `error` key, so the reader met an empty
+        # grid that explained nothing.
+        #
+        # The reader is not told the setting name.  It means nothing to a
+        # buyer, and the operator gets it from the log.
+        logger.error("STRIPE_PRO_PRICE_ID is not configured; cannot start a checkout")
+        messages.error(request, "Pro is not available for purchase right now.")
+        return redirect(reverse("core:pricing"))
 
     try:
         customer_id = request.user.stripe_customer_id
