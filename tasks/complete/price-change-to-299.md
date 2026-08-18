@@ -102,11 +102,49 @@ policy is recorded because the second price change will have customers:
 Point 1 is not in the Terms. Putting it there is a public promise plus a
 `TERMS_VERSION` bump, and that is a business decision.
 
+## What was checked, and how
+
+The pricing page reads the **local dj-stripe mirror**; checkout calls the
+**Stripe API**. Anything true of one and false of the other does not show on
+the page. So these were checked directly rather than inferred from the screen:
+
+| Check | Result |
+|---|---|
+| The price is live-mode, not test | `livemode: true` — a test price mirrors and displays identically |
+| The price is active | `active: true`; `get_pro_price()` never reads this field |
+| The product is the same one, and active | `prod_TvAlO2j7Xs6RRy`, live and active |
+| The webhook will carry the purchase | `we_1ThP34…`, live, enabled, `enabled_events: ["*"]` |
+| No customer id from the other mode | One customer, `livemode: true` |
+| No stale promotion code | Zero valid coupons |
+| Nobody to grandfather | One subscription, **canceled**, on the old price |
+| The live secret key works | A `GET /v1/prices/…` with the bundle's key succeeded |
+| The `price.updated` webhook works | The tax edit below reached the mirror within seconds |
+
+### The tax behaviour did not match
+
+The new price was created with `tax_behavior: unspecified`; the old one is
+`exclusive`. Set to **`exclusive`** on 18 August 2026 with
+`POST /v1/prices/{id}`. **This is permanent** — Stripe allows the field to
+move off `unspecified` once, and never again.
+
+The effect today is nil. `create_checkout_session` passes neither
+`automatic_tax` nor `tax_rates`, so Stripe calculates no tax on either price,
+and the old `exclusive` price collected none either. It matters on the day
+Stripe Tax is turned on, because Stripe **refuses** a price whose
+`tax_behavior` is unset rather than guessing. Setting it now removes that trap
+at no cost.
+
+Whether this product should collect HST is a registration question, and is not
+this card's.
+
 ## What is not done
 
-- **Nobody has run a real checkout.** The page and the charge read the same
-  setting, so they cannot name different prices, but the end-to-end purchase
-  is unconfirmed.
+- **Nobody has run a real checkout against the new price, and that is a
+  decision rather than an omission.** The purchase flow itself is proven live:
+  `sub_1ThQCZ…` was created on 12 June 2026, charged, and mirrored correctly.
+  What is untested is only `Session.create` accepting *this* price id, and the
+  operator judged a live charge not worth it for that. If a first customer
+  ever meets an error at checkout, this is the first thing to suspect.
 - **The old price is not archived.** `price_1Th2woPX18JmcZjWnAlKPLbw`, $29 CAD
   monthly. Archive it in Stripe once a checkout is confirmed. An archived
   price cannot start a new subscription, which is why it is still active.
