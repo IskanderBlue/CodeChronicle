@@ -1,5 +1,39 @@
 # One definition of a question, for the allowance and the history page
 
+**Done on 16 August 2026.**
+
+## The result
+
+`core/models.py` states the key once, as `QUESTION_FIELDS` plus two functions
+beside `SearchHistory`:
+
+| Function | Caller | Form it returns |
+|---|---|---|
+| `question_keys(searches)` | `core.middleware` | Distinct `(words, date)` pairs |
+| `grouped_by_question(searches)` | `core.views.history` | One row per question, to aggregate |
+
+Both go through one private `_with_question_key`, so there is now one spelling
+of the key rather than two. The middleware used the `parsed_params__date`
+lookup and the history page used `KeyTextTransform`; both now use the
+expression, which the lookup cannot replace because only an expression can
+join a `GROUP BY`. On a stored string the two return the same value, and a
+missing key gives `None` either way, so no behaviour changes.
+
+The annotation keeps the name `query_date`, which the rest of the product
+already uses for this value — `core.views.search` reads `parsed_params["date"]`
+into a context key of that name. It appears as a `date` object in
+`core.verification` and as a string in the templates, but that is one value in
+two forms, and the type hint states the form. A name that repeats the type goes
+stale in silence.
+
+They are plain functions and not a queryset manager. `as_manager()` is the
+idiomatic form, but Pyright cannot see the methods through it, and this
+repository keeps Pyright and mypy at zero without an ignore comment.
+
+`TestOneDefinitionOfAQuestion` in `core/tests/test_history.py` is the guard the
+card was missing: it asserts the two functions report the same questions for
+one set of rows, and that the building does not enter the key.
+
 ## Goal
 
 State once what makes two searches the same question. Two modules answer that
@@ -65,13 +99,14 @@ Watch two details:
 
 ## Done when
 
-- One place states the fields, and both callers read it.
-- The comment beside it says why the address key is wider.
-- `core/tests/test_middleware.py` and `core/tests/test_history.py` both pass
-  unchanged. Neither behaviour changes; only the definition moves.
+- [x] One place states the fields, and both callers read it.
+- [x] The comment beside it says why the address key is wider. It is the
+  docstring of `question_keys`.
+- [x] `core/tests/test_middleware.py` and `core/tests/test_history.py` both
+  pass unchanged. Neither behaviour changes; only the definition moves.
 
 ## Related
 
 - `core/middleware.py`, `core/views/history.py`, `core/views/search.py`.
-- `tasks/b-boost-parts-by-building-type.md` — the work that widened the
+- `tasks/complete/boost-parts-by-building-type.md` — the work that widened the
   address and grouped the history page on `(query, date)`.

@@ -317,6 +317,38 @@ class TestPartOf:
         assert part_of("1.2.1.1.") == 1
 
 
+class TestPartOfReadsBothVocabularies:
+    """``core.views.regulation`` groups on this too, and passes other ids.
+
+    A provision's own id names its level (``Part 9``); a clause's
+    ``target_id`` does not, because ``target_level`` sits beside it.  One
+    parser has to read both, or the two disagree in a way nothing tests.
+    """
+
+    def test_an_undotted_subsection_target_keeps_its_part(self):
+        """``2(2)`` is a clause target: a subsection with a sentence, no dot."""
+        assert part_of("2(2)") == 2
+        assert part_of("3(20)") == 3
+
+    def test_a_regulation_citation_has_no_part(self):
+        """``target_level="regulation"`` carries ids like ``350/06``.
+
+        Reading the leading digits put those under a "Part 350" heading on the
+        regulation page — a Part that does not exist in any edition.
+        """
+        assert part_of("350/06") is None
+        assert part_of("332/12") is None
+
+    def test_a_slash_deeper_in_the_id_is_not_a_citation(self):
+        """``11.5.1.1.D/E.`` is a real Part 11 table.
+
+        The citation test is on the first segment alone.  Applied to the whole
+        id it took the part away from every row of that table.
+        """
+        assert part_of("11.5.1.1.D/E.") == 11
+        assert part_of("11.5.1.1.D/E.(Item 51)") == 11
+
+
 class TestWhenTheControlMayAskForASize:
     """The control asks for a measurement only where one can decide, on the
     date the reader is searching.

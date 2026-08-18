@@ -18,6 +18,7 @@ from api.formatters import (
     replacement_commencement,
     select_commencement_record,
 )
+from config.part_applicability import part_of
 from core.access import edition_allowed
 from core.citations import in_force_phrase
 from core.compare import (
@@ -759,18 +760,10 @@ def _commencement_schedule(
     return rows
 
 
-def _leading_part(provision_id: str) -> str:
-    """The Part number a provision belongs to — its first numeric segment
-    (``3.1.4.2.`` → ``3``, ``11.2.1.1.`` → ``11``).  Empty when the id
-    doesn't start with a number."""
-    match = re.match(r"\d+", provision_id)
-    return match.group(0) if match else ""
-
-
 # Appendix tables (``Table-A-<n>``) carry no Part in their id, but in the OBC
 # they're all Part 9 housing tables — so they're grouped under their
 # division's Part 9 alongside the Part 9 provisions.
-_APPENDIX_TABLE_PART = "9"
+_APPENDIX_TABLE_PART = 9
 
 
 def _group_provisions(
@@ -788,28 +781,28 @@ def _group_provisions(
     Part 9 bucket (see ``_APPENDIX_TABLE_PART``).  Within each block,
     provisions are natural-sorted and the tables follow.
     """
-    buckets: dict[tuple[str, str], dict[str, list[dict[str, Any]]]] = {}
+    buckets: dict[tuple[str, int | None], dict[str, list[dict[str, Any]]]] = {}
 
-    def _bucket(division: str, part: str) -> dict[str, list[dict[str, Any]]]:
+    def _bucket(division: str, part: int | None) -> dict[str, list[dict[str, Any]]]:
         return buckets.setdefault(
             (division, part), {"provisions": [], "tables": []}
         )
 
     for p in provisions:
-        _bucket(p["division"], _leading_part(p["provision_id"]))["provisions"].append(p)
+        _bucket(p["division"], part_of(p["provision_id"]))["provisions"].append(p)
     for t in tables or []:
         _bucket(t["division"], _APPENDIX_TABLE_PART)["tables"].append(t)
 
-    def _group_key(key: tuple[str, str]) -> tuple[str, int, str]:
+    def _group_key(key: tuple[str, int | None]) -> tuple[str, int]:
         division, part = key
-        # Numeric Parts in order; any non-numeric Part sorts last.
-        return (division, int(part) if part.isdigit() else 1_000_000, part)
+        # Parts in number order; an id with no Part sorts after all of them.
+        return (division, part if part is not None else 1_000_000)
 
     groups: list[dict[str, Any]] = []
     for division, part in sorted(buckets, key=_group_key):
-        if division and part:
+        if division and part is not None:
             group_label = f"Div {division} · Part {part}"
-        elif part:
+        elif part is not None:
             group_label = f"Part {part}"
         elif division:
             group_label = f"Div {division}"

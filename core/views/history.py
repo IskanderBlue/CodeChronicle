@@ -4,10 +4,9 @@ Search history views.
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Max
-from django.db.models.fields.json import KeyTextTransform
 from django.shortcuts import render
 
-from core.models import SearchHistory
+from core.models import SearchHistory, grouped_by_question
 
 
 @login_required
@@ -34,16 +33,11 @@ def history(request):
     # 200 distinct questions is reasonable for client-side filtering (Alpine.js)
     history_limit = 200
 
-    # Group by (query, date): the latest record ID and run count per question.
-    # The date is a key inside the parsed_params JSON, so it is pulled out as
-    # an annotation first — .values() is what sets the GROUP BY, and it can
-    # only group on names it can see.  A row whose parse read no date yields
-    # NULL here, and those group together, which is right: they are all "the
-    # same words at no stated date".
+    # The latest record ID and the run count for each question.  A row whose
+    # parse read no date groups with the others that read none, which is right:
+    # they are all "the same words at no stated date".
     query_stats = list(
-        SearchHistory.objects.filter(user=request.user)
-        .annotate(query_date=KeyTextTransform("date", "parsed_params"))
-        .values("query", "query_date")
+        grouped_by_question(SearchHistory.objects.filter(user=request.user))
         .annotate(search_count=Count("id"), latest_id=Max("id"))
         # Also clears Meta.ordering, which would otherwise join the GROUP BY
         # and split every question into one card per timestamp.

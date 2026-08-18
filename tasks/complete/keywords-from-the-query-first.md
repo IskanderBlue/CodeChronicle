@@ -70,7 +70,7 @@ matches one inferred word beats a document that matches two typed words.
 ### 1. Drop `building_type`
 
 Remove the field from the tool schema and from `SYSTEM_PROMPT`. Nothing reads
-it. See `tasks/b-boost-parts-by-building-type.md` for the capability that
+it. See `tasks/complete/boost-parts-by-building-type.md` for the capability that
 should replace it.
 
 ### 2. Extract the keywords locally, before the LLM runs
@@ -233,7 +233,7 @@ valid; they are keyed by the prompt hash.
 
 ## Related
 
-- `tasks/b-boost-parts-by-building-type.md` — what should replace
+- `tasks/complete/boost-parts-by-building-type.md` — what should replace
   `building_type`.
 - `tasks/complete/guard-height-article.md` — the article whose call to
   action produced this measurement.

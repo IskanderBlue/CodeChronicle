@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.db.models import Count, Max, Min
+from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 from djstripe.models import Customer, Subscription
 
@@ -252,6 +253,59 @@ class QueryCache(models.Model):
         db_table = "query_cache"
         verbose_name = "Query Cache"
         verbose_name_plural = "Query Caches"
+
+
+#: What makes two searches **the same question**: the words, and the date the
+#: search ran at.  The same words at two dates are two questions — asking what
+#: the code said in 2005 and again in 2015 is most of what this product is for.
+#:
+#: ``query_date`` is an annotation, not a column; see
+#: :func:`_with_question_key`.  It carries the same name the rest of the
+#: product uses for this value — ``core.views.search`` reads
+#: ``parsed_params["date"]`` into a context key of that name, and the
+#: templates render it — because it is the same value in a different form.
+QUESTION_FIELDS = ("query", "query_date")
+
+
+def _with_question_key(searches: "models.QuerySet[SearchHistory]") -> "models.QuerySet[SearchHistory]":
+    """Annotate the question's date so it can be selected and grouped on.
+
+    The date lives inside the ``parsed_params`` JSON.  ``KeyTextTransform`` is
+    used rather than the ``parsed_params__date`` lookup because only an
+    expression can join a ``GROUP BY``; on a stored string the two return the
+    same value, and a missing key gives ``None`` either way.
+    """
+    return searches.annotate(query_date=KeyTextTransform("date", "parsed_params"))
+
+
+def question_keys(searches: "models.QuerySet[SearchHistory]") -> "models.QuerySet":
+    """The distinct questions in ``searches``, as ``(words, date)`` pairs.
+
+    ``core.middleware`` charges an anonymous reader per question, and
+    ``core.views.history`` shows one card per question.  Both used to spell the
+    key by hand, and each said in a comment that it agreed with the other.  If
+    one key widens and the other does not, a reader is charged for a search
+    they cannot find in their own history.
+
+    **The address key is wider, and stays wider.**
+    ``core.views.search._push_search_url`` also writes ``occupancy``,
+    ``storeys``, ``area`` and ``area_unit``.  That is correct and must not be
+    folded in here: the address has to reproduce the *page*, and the building
+    changes the order of the results — but re-ranking one question is not
+    asking a second one.
+    """
+    return _with_question_key(searches).values_list(*QUESTION_FIELDS).distinct()
+
+
+def grouped_by_question(searches: "models.QuerySet[SearchHistory]") -> "models.QuerySet":
+    """One row per question, ready for aggregates such as ``Count`` or ``Max``.
+
+    The caller must finish with an explicit ``order_by``.  ``Meta.ordering`` is
+    ``-timestamp``, which would otherwise join the ``GROUP BY`` and split every
+    question into one row per run.  See :func:`question_keys` for what a
+    question is.
+    """
+    return _with_question_key(searches).values(*QUESTION_FIELDS)
 
 
 class SearchHistory(models.Model):

@@ -1,5 +1,22 @@
 # Boost the part the reader is actually in
 
+**Done on 16 August 2026, in `ba9d6dd`. Three items stay open; see "What is
+not done" at the end.**
+
+## The result
+
+`guard height for a stair in a house` at 1 June 2008, stating a two-storey
+house of 140 m². `9.8.8.3. Height of Guards` moves from rank 2 to **rank 1**,
+`3.4.6.5. Guards` (Part 3) moves from rank 1 to 6, and the Part 3 count in the
+top 20 falls from 7 to 1. The same words with four storeys reverse it, because
+`1.1.2.4.` excludes that building from Part 9. Nothing is filtered in either
+case. Full figures in "Measurement" below.
+
+The rule table is `config/part_applicability.py` — Django-free, keyed by
+`(edition, division, part)` and by date, one row for each applicability
+article version. The multiplier is `_apply_part_boost` in
+`api/search/orchestration.py`, after the scorer and before the tier split.
+
 ## Goal
 
 Use the kind of building in the query to rank one part of the code above

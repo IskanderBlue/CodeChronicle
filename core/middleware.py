@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from core.events import record_event
 from core.ip_utils import extract_client_ip
-from core.models import EngagementEvent, SearchHistory
+from core.models import EngagementEvent, SearchHistory, question_keys
 
 
 class RateLimitMiddleware:
@@ -137,10 +137,11 @@ class RateLimitMiddleware:
         (``core.views.search._push_search_url``), a repeat is one keystroke
         away.
 
-        **A question is the query text and the date it ran at.**  The same
-        words at two dates are two questions; asking what the code said in
-        2005 and again in 2015 is most of what this product is for, and it
-        must not be free.
+        **A question is the query text and the date it ran at** —
+        ``SearchHistory.objects.question_keys()``, the same definition
+        ``core.views.history`` groups its cards on.  The same words at two
+        dates are two questions; asking what the code said in 2005 and again
+        in 2015 is most of what this product is for, and it must not be free.
 
         **The question being asked now is left out**, not counted.  Counting
         it would make the count 1 before the first search had run, and the
@@ -152,11 +153,11 @@ class RateLimitMiddleware:
         address cannot accumulate more distinct questions than the ceiling.
         """
         asked = set(
-            SearchHistory.objects.filter(
-                ip_address=ip, user__isnull=True, timestamp__gte=today_start
+            question_keys(
+                SearchHistory.objects.filter(
+                    ip_address=ip, user__isnull=True, timestamp__gte=today_start
+                )
             )
-            .values_list("query", "parsed_params__date")
-            .distinct()
         )
 
         # Matched against what was sent, not against a tidied copy of it: the

@@ -51,4 +51,4 @@ Any one of these makes it worth doing:
 - `config/part_applicability.py` — `size_relevance_intervals`, which returns
   `SizeWindow` objects and does no serialisation.
 - `core/models.py` — `CorpusCurrency`, and the pattern to copy.
-- `tasks/b-boost-parts-by-building-type.md` — the feature this serves.
+- `tasks/complete/boost-parts-by-building-type.md` — the feature this serves.

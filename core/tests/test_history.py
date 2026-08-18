@@ -13,7 +13,7 @@ from datetime import date
 
 import pytest
 
-from core.models import SearchHistory, User
+from core.models import SearchHistory, User, grouped_by_question, question_keys
 
 
 @pytest.fixture
@@ -152,3 +152,47 @@ class TestHistoryLinks:
         assert followed.status_code == 200
         assert followed.context["initial_date"] == date(2010, 6, 1)
         assert followed.context["initial_query"] == "guards"
+
+
+class TestOneDefinitionOfAQuestion:
+    """The allowance and the history page must count the same thing.
+
+    ``core.middleware`` charges an anonymous reader per question; this page
+    shows one card per question.  Each used to spell the key by hand.  If one
+    widens and the other does not, a reader is charged for a search they
+    cannot find in their own history, and nothing on either side fails.
+    """
+
+    def test_both_readers_of_the_definition_see_the_same_questions(self, reader):
+        """Four rows, three questions: one repeat, and one date that differs."""
+        _entry(reader, "guards", {"date": "2010-06-01"})
+        _entry(reader, "guards", {"date": "2010-06-01"})  # the same question again
+        _entry(reader, "guards", {"date": "2015-06-01"})  # same words, another date
+        _entry(reader, "stairs", {"date": "2010-06-01"})  # other words, same date
+
+        searches = SearchHistory.objects.filter(user=reader)
+
+        assert set(question_keys(searches)) == {
+            ("guards", "2010-06-01"),
+            ("guards", "2015-06-01"),
+            ("stairs", "2010-06-01"),
+        }
+
+        grouped = {
+            (row["query"], row["query_date"])
+            for row in grouped_by_question(searches)
+        }
+        assert grouped == set(question_keys(searches))
+
+    def test_the_building_is_not_part_of_the_question(self, reader):
+        """Re-ranking one question is not asking a second one.
+
+        The address carries the building so that a reload reproduces the page.
+        The question key must not, or the relevance-floor and building controls
+        would each spend a search and each split a card.
+        """
+        _entry(reader, "guards", {"date": "2010-06-01", "occupancy": "residential"})
+        _entry(reader, "guards", {"date": "2010-06-01", "occupancy": "business"})
+
+        searches = SearchHistory.objects.filter(user=reader)
+        assert set(question_keys(searches)) == {("guards", "2010-06-01")}

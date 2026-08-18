@@ -30,6 +30,7 @@ No Django imports: this package is plain data, read by ``api.search`` and by
 the parser.
 """
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -388,19 +389,37 @@ def rule_for(edition_id: str, on_date: date | None) -> ApplicabilityRule | None:
 
 
 def part_of(provision_id: str) -> int | None:
-    """The part number a provision id sits in, or ``None``.
+    """The part number an id sits in, or ``None``.
 
-    The first dotted segment: ``9.8.8.3.`` is Part 9.  A part-level row's own
-    id is ``Part 9``, which this reads too, because a container page is a
-    result like any other.
+    The leading number of the first dotted segment: ``9.8.8.3.`` is Part 9 and
+    ``3(20)`` is Part 3.  The whole product reads a part number here — the
+    search boost, and ``core.views.regulation``, which groups a regulation's
+    amended provisions into Part blocks.
+
+    Those two callers pass ids from **two vocabularies**, and this reads both:
+
+    * ``CodeEditionProvision.provision_id``, where a part-level row's own id is
+      ``Part 9``.  A container page is a search result like any other.
+    * ``RegulationClause.target_id``, where a part-level target is the bare
+      number ``9``, because the level lives in ``target_level`` beside it.
+
+    A ``/`` **in the first segment** means the id is a regulation citation such
+    as ``350/06``, which the second vocabulary also carries
+    (``target_level="regulation"``).  It has no part, and reading its leading
+    digits as one produced a "Part 350" block on the regulation page.  The test
+    is on that segment alone, not the whole id: ``11.5.1.1.D/E.`` is a real
+    Part 11 table whose slash sits in a later segment.
     """
     text = provision_id.strip()
     if not text:
         return None
     head = text.split(".", 1)[0].strip()
+    if "/" in head:
+        return None
     if head.lower().startswith("part"):
         head = head[4:].strip()
-    return int(head) if head.isdigit() else None
+    match = re.match(r"\d+", head)
+    return int(match.group(0)) if match else None
 
 
 def _is_small(
