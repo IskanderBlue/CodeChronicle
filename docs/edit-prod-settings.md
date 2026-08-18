@@ -1,21 +1,55 @@
-Download bundle.
+# Editing the app_runtime_secrets bundle
 
-```
-gcloud secrets versions access latest --secret=app_runtime_secrets --project=codechronicle-487104 > bundle.json
+## Read this first: never use `>` to download the bundle
+
+On 18 August 2026 this took the site down for the length of a rollback.
+
+`>` in Windows PowerShell 5.1 writes **UTF-16LE with a BOM**. `production.py`
+does `payload.data.decode("UTF-8")`, so an uploaded UTF-16 bundle raises
+`UnicodeDecodeError`. `_get_secret` catches it and answers `""`, and
+`_get_bundled_secret` turns that into `{}`. **Every** setting in the bundle
+goes empty at once — `SECRET_KEY` and `DATABASE_URL` included — so the site
+answers 502. The symptom does not point at the setting you edited, and it does
+not point at encoding either.
+
+The corrupt version 9 was 2336 bytes against version 8's 1131. Roughly double
+is the signature: every character stored twice.
+
+The same assumption bites in the other direction. `gcloud secrets versions
+access` writing to a cp1252 console crashes with
+`UnicodeEncodeError: 'charmap' codec can't encode characters`.
+
+## Edit the bundle over the REST API
+
+No file, no console encoding, no editor. The payload moves as base64 the whole
+way.
+
+```powershell
+$P="codechronicle-487104"; $S="app_runtime_secrets"
+$H = @{ Authorization = "Bearer $(gcloud auth print-access-token)" }
+
+$r   = Invoke-RestMethod -Headers $H "https://secretmanager.googleapis.com/v1/projects/$P/secrets/$S/versions/latest:access"
+$d   = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($r.payload.data)) | ConvertFrom-Json
+$d.STRIPE_PRO_PRICE_ID = "price_..."     # <- the price_ ID, not prod_
+$out = $d | ConvertTo-Json -Depth 10
 ```
 
-Edit bundle.json — e.g. add:
+**Check the result before you upload it.** The absence of this step is what
+made the outage possible.
 
-```
-  "STRIPE_LIVE_SECRET_KEY": "sk_live_...",
-  "STRIPE_PRO_PRICE_ID": "price_..."     <- the price_ ID, not prod_
+```powershell
+$bytes = [Text.Encoding]::UTF8.GetBytes($out)
+"{0} keys, {1} bytes" -f ($d.PSObject.Properties.Name.Count), $bytes.Length
 ```
 
-Upload bundle, delete local copy:
+The key count must match what you read. A count that fell, or a byte count
+near double, means stop.
 
-```
-gcloud secrets versions add app_runtime_secrets --data-file=bundle.json --project=codechronicle-487104
-del bundle.json   # don't leave live keys sitting on disk
+```powershell
+$b64 = [Convert]::ToBase64String($bytes)
+Invoke-RestMethod -Method POST -Headers $H -ContentType "application/json" `
+  -Body (@{ payload = @{ data = $b64 } } | ConvertTo-Json) `
+  "https://secretmanager.googleapis.com/v1/projects/$P/secrets/$S`:addVersion"
 ```
 
 Restart:
@@ -24,8 +58,45 @@ Restart:
 gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 --tunnel-through-iap --command="sudo docker restart codechroniclenet-web"
 ```
 
-Secret Manager keeps the previous version. To roll back, add that version again,
-then restart.
+## Roll back
+
+🚨 **Never roll back by disabling.** `latest` resolves to the most recently
+**created** version, not the most recently enabled one. Disabling the bad
+version does not fall back to the one before it — it makes `latest`
+unreadable, and the app then behaves as though the bundle were empty. That is
+the same 502, with a log line that names the version and the word `DISABLED`:
+
+```
+Failed to fetch secret app_runtime_secrets: 400 Secret Version [.../versions/9] is in DISABLED state.
+```
+
+**Roll back by adding a new version** holding the old content. The new version
+becomes `latest` at once. Read the last good version, re-upload it with the
+procedure above, and restart.
+
+Disable or destroy the bad version afterwards, for tidiness. Do it after the
+replacement exists, never as the rollback itself.
+
+## Read a version's bytes without printing its values
+
+To tell a good bundle from a bad one, look at the encoding, not the content:
+
+```powershell
+$H = @{ Authorization = "Bearer $(gcloud auth print-access-token)" }
+$r = Invoke-RestMethod -Headers $H "https://secretmanager.googleapis.com/v1/projects/codechronicle-487104/secrets/app_runtime_secrets/versions/9:access"
+$b = [Convert]::FromBase64String($r.payload.data)
+"{0} bytes, first 4: {1}" -f $b.Length, (($b[0..3] | ForEach-Object { $_.ToString('x2') }) -join ' ')
+```
+
+`ff fe` is UTF-16LE. `ef bb bf` is a UTF-8 BOM. A healthy bundle starts `7b`,
+which is `{`.
+
+## Billing
+
+Secret Manager bills each **active** version. Six are free. The state it
+reports is **lowercase**, so a filter written as `state!=DESTROYED` matches
+every row and tells you that you are paying for versions you already removed.
+Read the column instead.
 
 # Migrations, after the app runs as `cc_app`
 

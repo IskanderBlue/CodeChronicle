@@ -183,10 +183,30 @@ PRICING_COMPARISON: list[dict[str, str | None]] = [
         "free": None,
         "pro": "Cross-edition lineage, transition compare & diffs",
     },
-    {
-        "free": None,
-        "pro": "Direct API access",
-    },
+]
+
+
+# What is coming, in the order it is coming (templates/pricing.html, the
+# "roadmap" anchor).  The template numbers these from their position, so a
+# reorder is an edit to this list alone.  The six items used to be six
+# hand-written blocks each carrying its own printed number, where a reorder
+# meant renumbering by hand and a promise could end up listed twice.
+#
+# Delivered work leaves the list.  A roadmap that still names what shipped is
+# not a roadmap, and "Ontario codes back to 1997" sat at the top of it for
+# months after OBC 1997 went live.
+PRICING_ROADMAP: list[str] = [
+    # This was a Pro comparison row, claiming a shipped feature.  The
+    # endpoints and the paid gate are real (api/views.py), but there is no API
+    # key and no token: a subscriber's only route is to replay a browser
+    # session cookie.  That is not something to sell, so the promise moved
+    # here, where it is a promise.
+    "Direct API access",
+    "Ontario codes back to 1975",
+    "Current Ontario code (OBC2024)",
+    "Supplementary standards for 2012, 2006",
+    "National codes",
+    "Other provincial codes",
 ]
 
 
@@ -214,6 +234,7 @@ def pricing(request):
             "free_current": plans[0]["is_current"],
             "pro_current": plans[1]["is_current"],
             "comparison": PRICING_COMPARISON,
+            "roadmap": PRICING_ROADMAP,
         },
     )
 
