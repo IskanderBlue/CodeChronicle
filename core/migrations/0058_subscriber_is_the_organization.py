@@ -58,6 +58,26 @@ def move_subscriber_to_organization(apps, schema_editor):
             # A database built after the setting changed already has it right.
             return
 
+        # Drop the old foreign key BEFORE any row changes, not after.
+        #
+        # Postgres queues a deferred trigger event for every row an UPDATE
+        # touches while a DEFERRABLE key is in place, and it refuses to ALTER a
+        # table that holds pending events:
+        #
+        #     cannot ALTER TABLE "djstripe_customer" because it has pending
+        #     trigger events
+        #
+        # SET CONSTRAINTS ALL IMMEDIATE is not the answer either: it would run
+        # the deferred checks against a column that already names an
+        # organization while the key still names a user, so it fails instead.
+        # The key cannot survive the rewrite in any order, so it goes first and
+        # the rows change with no key in place.
+        #
+        # An empty table hides this, which is why the suite never saw it: with
+        # no customer row there is no UPDATE and no pending event.
+        if constraint is not None:
+            cursor.execute(f'ALTER TABLE {CUSTOMER} DROP CONSTRAINT "{constraint[0]}"')
+
         # One organization for each person who has a Stripe customer, re-using
         # the one that is already there so a second run adds nothing.  A person
         # with a test-mode and a live-mode customer gets one organization, not
@@ -121,8 +141,6 @@ def move_subscriber_to_organization(apps, schema_editor):
             """
         )
 
-        if constraint is not None:
-            cursor.execute(f'ALTER TABLE {CUSTOMER} DROP CONSTRAINT "{constraint[0]}"')
         cursor.execute(
             f"""
             ALTER TABLE {CUSTOMER}
@@ -146,6 +164,11 @@ def restore_subscriber_to_user(apps, schema_editor):
         if constraint is not None and constraint[1] == USERS:
             return
 
+        # Before any row changes, for the reason given in the forward.  A
+        # rollback is the worst moment to meet the same fault twice.
+        if constraint is not None:
+            cursor.execute(f'ALTER TABLE {CUSTOMER} DROP CONSTRAINT "{constraint[0]}"')
+
         cursor.execute(
             f"""
             UPDATE {CUSTOMER} c
@@ -164,8 +187,6 @@ def restore_subscriber_to_user(apps, schema_editor):
               AND subscriber_id NOT IN (SELECT id FROM {USERS})
             """
         )
-        if constraint is not None:
-            cursor.execute(f'ALTER TABLE {CUSTOMER} DROP CONSTRAINT "{constraint[0]}"')
         cursor.execute(
             f"""
             ALTER TABLE {CUSTOMER}
