@@ -1,7 +1,7 @@
 {% comment %} The comparison's date axis: every version behind it, one row per side.
 
    Why it exists: the "Compare versions" control opens a comparison the reader
-   did not choose (core.compare.prepared_pair guesses). A guess the reader
+   did not choose (corpus.lineage.compare.prepared_pair guesses). A guess the reader
    cannot see is a guess they cannot correct. The axis draws every version that
    was available, marks the two on screen, and puts every other choice one
    click away — so a wrong default is visibly wrong instead of invisible.
@@ -46,7 +46,7 @@
    hrefs, so the middle-click, the copy-link and the no-JS reader all still
    work; the handler only changes how the entry is recorded.
 
-   Context: `timeline` (core.compare.VersionTimeline).
+   Context: `timeline` (corpus.lineage.compare.VersionTimeline).
 {% endcomment %}
 {% if timeline.is_useful %}
 <div class="mt-4 border border-rule bg-surface-2 px-4 pb-2.5 pt-2.5" x-data style="--backdrop: var(--surface-2)">

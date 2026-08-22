@@ -154,9 +154,9 @@
    every result (grouped child included) can open its full record.  Division-
    less editions reverse the no-division route ("" can't be a path segment). {% endcomment %}
 {% if result.division %}
-{% url 'core:provision_permalink' result.code_edition result.division result.id result.version.version as permalink_url %}
+{% url 'web:provision_permalink' result.code_edition result.division result.id result.version.version as permalink_url %}
 {% else %}
-{% url 'core:provision_permalink_no_division' result.code_edition result.id result.version.version as permalink_url %}
+{% url 'web:provision_permalink_no_division' result.code_edition result.id result.version.version as permalink_url %}
 {% endif %}
 <p class="mt-3">
     <a href="{{ permalink_url }}" @click.stop

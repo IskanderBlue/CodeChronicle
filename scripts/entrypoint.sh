@@ -8,7 +8,7 @@ python manage.py migrate --noinput
 # post-processing tries to resolve `@import "tailwindcss"` as `css/tailwindcss`,
 # fails with ValueError, and collectstatic exits non-zero (set -e kills boot).
 python manage.py collectstatic --noinput --ignore input.css
-# Bump the corpus stamp that core.http_cache serves as Last-Modified.  A
+# Bump the corpus stamp that web.http_cache serves as Last-Modified.  A
 # deploy can change how a provision renders without changing the data, and
 # without this the read surfaces would answer 304 and keep serving the
 # markup of the previous image.  The command is idempotent and safe on an

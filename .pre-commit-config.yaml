@@ -45,4 +45,8 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-        args: ["api", "core", "config", "code_chronicle"]
+        # The whole tree, not a list of packages: a named list goes stale the
+        # day a package is added or renamed, and mypy answers "Duplicate
+        # module" rather than "no such directory".  pyproject.toml excludes
+        # venv/ and migrations/.
+        args: ["."]

@@ -82,7 +82,10 @@ Homepage = "https://github.com/IskanderBlue/CodeChronicle"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["code_chronicle*", "api*", "core*", "config*", "services*"]
+include = [
+    "code_chronicle*", "shared*", "data*", "core*", "accounts*",
+    "telemetry*", "corpus*", "search*", "web*",
+]
 
 [tool.ruff]
 line-length = 100
@@ -98,8 +101,8 @@ plugins = ["mypy_django_plugin.main"]
 # Retrofit onto an existing codebase: start pragmatic, tighten over time.
 check_untyped_defs = true
 warn_unused_ignores = true
-# Resolve files relative to the project root so e.g. config/code_metadata.py
-# is only ever "config.code_metadata", never also top-level "code_metadata".
+# Resolve files relative to the project root so e.g. data/code_metadata.py
+# is only ever "data.code_metadata", never also top-level "code_metadata".
 explicit_package_bases = true
 mypy_path = "."
 # Migrations are generated; type-checking them is noise.
@@ -125,6 +128,8 @@ django_settings_module = "code_chronicle.settings.development"
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "code_chronicle.settings.development"
+# The suite lives outside every package, so no import manifest governs it.
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
 markers = [

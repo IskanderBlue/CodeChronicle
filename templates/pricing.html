@@ -32,7 +32,7 @@
     {% comment %} The column count is a style, not a utility class: Tailwind
        compiles the class strings it can see in the source, so a name built
        from a variable would never exist in the stylesheet.  The count moves
-       when TEAMS_ENABLED is off (core.teams.teams_enabled), which drops the
+       when TEAMS_ENABLED is off (accounts.teams.teams_enabled), which drops the
        Team column. {% endcomment %}
     <div class="grid grid-rows-[auto_auto_auto_auto_1fr] gap-x-3 sm:gap-x-6 gap-y-6 min-w-[46rem]"
         style="grid-template-columns: repeat({{ plans|length }}, minmax(0, 1fr));">
@@ -57,7 +57,7 @@
 
             {% comment %} Band 2: the price.
 
-            Every figure comes from the Stripe row via core.pricing — never a
+            Every figure comes from the Stripe row via accounts.pricing — never a
             literal here, and never a stand-in when the row cannot be read.
             The currency is always shown beside a figure: "$29" is ambiguous
             to a Canadian buyer and wrong to an American one.
@@ -119,7 +119,7 @@
 
                 {% elif plan.id == 'team' %}
                     {% if plan.is_current %}
-                    <form action="{% url 'core:stripe_portal' %}" method="POST">
+                    <form action="{% url 'web:stripe_portal' %}" method="POST">
                         {% csrf_token %}
                         <button type="submit"
                             class="block w-full border border-ink-2 py-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 text-center hover:bg-surface">
@@ -131,7 +131,7 @@
                     {% comment %} Two fields, because Stripe Checkout collects
                        neither: how many seats, and what to call the firm on
                        the invoice and in the team panel. {% endcomment %}
-                    <form action="{% url 'core:create_checkout_session' %}" method="POST">
+                    <form action="{% url 'web:create_checkout_session' %}" method="POST">
                         {% csrf_token %}
                         <button type="submit"
                             class="block w-full bg-secondary border border-transparent py-2 text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast text-center hover:bg-secondary-2">
@@ -161,7 +161,7 @@
 
                 {% else %}
                     {% if plan.is_current %}
-                    <form action="{% url 'core:stripe_portal' %}" method="POST">
+                    <form action="{% url 'web:stripe_portal' %}" method="POST">
                         {% csrf_token %}
                         <button type="submit"
                             class="block w-full border border-ink-2 py-2 text-sm font-semibold uppercase tracking-[0.06em] text-ink-2 text-center hover:bg-surface">
@@ -175,7 +175,7 @@
                        so the two cannot disagree. {% endcomment %}
                     {% elif not plan.can_buy %}
                     {% elif user.is_authenticated %}
-                    <form action="{% url 'core:create_checkout_session' %}" method="POST">
+                    <form action="{% url 'web:create_checkout_session' %}" method="POST">
                         {% csrf_token %}
                         <button type="submit"
                             class="block w-full bg-secondary border border-transparent py-2 text-sm font-semibold uppercase tracking-[0.06em] text-secondary-contrast text-center hover:bg-secondary-2">
@@ -293,7 +293,7 @@
 
         <div class="max-w-md mx-auto">
             {% comment %} Numbered from position, never from a written-in
-               digit: the order lives in PRICING_ROADMAP (core/views/pages.py)
+               digit: the order lives in PRICING_ROADMAP (web/views/pages.py)
                and nothing here can disagree with it. {% endcomment %}
             <ol class="space-y-3">
                 {% for item in roadmap %}

@@ -52,7 +52,7 @@
             <p class="text-sm text-ink-2 mb-4">
                 You are on the <span class="font-semibold text-insert">Pro</span> plan.
             </p>
-            <form method="POST" action="{% url 'core:stripe_portal' %}">
+            <form method="POST" action="{% url 'web:stripe_portal' %}">
                 {% csrf_token %}
                 <button type="submit"
                     class="ui-btn min-w-40 py-2 px-4 text-sm uppercase tracking-[0.06em]">
@@ -63,7 +63,7 @@
             <p class="text-sm text-ink-2 mb-4">
                 You are on the <span class="font-semibold text-ink">Free</span> plan.
             </p>
-            <a href="{% url 'core:pricing' %}"
+            <a href="{% url 'web:pricing' %}"
                 class="ui-btn min-w-40 py-2 px-4 text-sm uppercase tracking-[0.06em]">
                 Upgrade to Pro
             </a>

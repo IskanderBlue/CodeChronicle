@@ -7,7 +7,7 @@
     {% if problem %}
     <h1 class="font-serif text-2xl font-bold text-ink mb-3">This invitation cannot be used</h1>
     <p class="text-sm text-ink-2 mb-6">{{ problem }}</p>
-    <a href="{% url 'core:search' %}" class="ui-btn py-2 px-4 text-sm uppercase tracking-[0.06em]">
+    <a href="{% url 'web:search' %}" class="ui-btn py-2 px-4 text-sm uppercase tracking-[0.06em]">
         Go to CodeChronicle
     </a>
     {% else %}

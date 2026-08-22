@@ -1,6 +1,6 @@
 # List-insertion punctuation — details-page copy
 
-Copy for the **details page** at `/list-punctuation/` (`core:list_punctuation`,
+Copy for the **details page** at `/list-punctuation/` (`web:list_punctuation`,
 `templates/list_punctuation.html`) explaining an editorial decision in the
 building-code mapping: how the mapping punctuates a phrase that an amendment
 inserts into an existing list. Two granularities — a one-line summary and a

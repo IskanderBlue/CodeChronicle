@@ -7,7 +7,7 @@ Staff traction dashboard.
 Reading order is the funnel, top to bottom: totals, then the two conversion
 rates, then one chart card per metric, then the raw query text.
 
-Charts are inline SVG with geometry precomputed in core.insights — no chart
+Charts are inline SVG with geometry precomputed in telemetry.insights — no chart
 library, and no arithmetic in the template. Each series is drawn in the single
 accent role token; identity comes from the card, not from a hue, so there is no
 categorical palette to keep colourblind-safe. One toggle at the top switches
@@ -65,7 +65,7 @@ move" is asked of all of them at once.
     {% endfor %}
   </div>
 
-  {# ── The two ratios. Reported all-time; see core.insights.conversion_rates. ── #}
+  {# ── The two ratios. Reported all-time; see telemetry.insights.conversion_rates. ── #}
   <div class="mt-6 grid gap-px border border-rule bg-rule sm:grid-cols-2">
     {% for rate in rates %}
     <div class="bg-surface-2 p-4">

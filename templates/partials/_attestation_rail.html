@@ -1,6 +1,6 @@
 {% comment %} Attestation rail — per-(provision, query-date) verification status.
    Replaces the old "e-Laws consolidation · as it read …" line at the bottom of
-   the provenance band. Every % is precomputed in core.verification.rail_geometry
+   the provenance band. Every % is precomputed in corpus.verification.verification.rail_geometry
    (result.rail); this template only places elements at those positions — no
    geometry logic here. Suppressed upstream (rail is None) for never-in-force
    versions / when there's no query date. Lives inside the band's @container and
@@ -57,7 +57,7 @@
             <button type="button" class="ui-disclosure" @click.stop="cmOpenUntil = true" :aria-expanded="cmOpenUntil" title="How the end date was set — the next version's commencement">End <span class="ui-caret"></span></button>
             {% endif %}
             {% if not in_legend %}
-            <a href="{% url 'core:verification_guide' %}" target="_blank" rel="noopener" class="ui-disclosure" title="How to read this verification rail (opens in a new tab)">How to read this <span aria-hidden="true">&nearr;</span></a>
+            <a href="{% url 'web:verification_guide' %}" target="_blank" rel="noopener" class="ui-disclosure" title="How to read this verification rail (opens in a new tab)">How to read this <span aria-hidden="true">&nearr;</span></a>
             {% comment %} "Cite" replaces the band's one-click copy icon. It sits
                here, after the explanation and before the dispute: read how the
                claim is made, take the text into your own work, and say so if you

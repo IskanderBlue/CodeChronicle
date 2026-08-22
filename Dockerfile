@@ -20,10 +20,16 @@ RUN apt-get update \
 COPY pyproject.toml README.md /app/
 COPY manage.py /app/
 COPY code_chronicle /app/code_chronicle
-COPY api /app/api
+# The eight packages, in dependency order.  A package missing here is one the
+# image does not carry, and the failure is an ImportError at container boot.
+COPY shared /app/shared
+COPY data /app/data
 COPY core /app/core
-COPY config /app/config
-COPY services /app/services
+COPY accounts /app/accounts
+COPY telemetry /app/telemetry
+COPY corpus /app/corpus
+COPY search /app/search
+COPY web /app/web
 COPY templates /app/templates
 COPY static /app/static
 COPY scripts/entrypoint.sh /app/scripts/entrypoint.sh

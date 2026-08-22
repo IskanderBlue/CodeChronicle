@@ -95,9 +95,9 @@ def create_checkout_session(request):
         line_items=[{"price": price_id, "quantity": 1}],
         mode="subscription",
         allow_promotion_codes=True,
-        success_url=request.build_absolute_uri(reverse("core:stripe_success"))
+        success_url=request.build_absolute_uri(reverse("web:stripe_success"))
             + "?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url=request.build_absolute_uri(reverse("core:stripe_cancel")),
+        cancel_url=request.build_absolute_uri(reverse("web:stripe_cancel")),
     )
     return redirect(checkout_session.url, code=303)
 ```
@@ -198,11 +198,11 @@ def create_customer_portal_session(request):
 
     customer_id = request.user.stripe_customer_id
     if not customer_id:
-        return redirect(reverse("core:pricing"))
+        return redirect(reverse("web:pricing"))
 
     portal_session = stripe.billing_portal.Session.create(
         customer=customer_id,
-        return_url=request.build_absolute_uri(reverse("core:user_settings") + "#account"),
+        return_url=request.build_absolute_uri(reverse("web:user_settings") + "#account"),
     )
     return redirect(portal_session.url, code=303)
 ```
@@ -217,7 +217,7 @@ path("stripe/portal/", views.create_customer_portal_session, name="stripe_portal
 **File:** `templates/settings.html` (Account tab, above Sign Out)
 
 Add a "Subscription" card:
-- If `request.user.has_active_subscription`: show "Pro (Active)" + "Manage billing" button (POST form to `core:stripe_portal`)
+- If `request.user.has_active_subscription`: show "Pro (Active)" + "Manage billing" button (POST form to `web:stripe_portal`)
 - Else: show "Free" + link to `/pricing/`
 
 ---

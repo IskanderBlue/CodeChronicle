@@ -31,13 +31,13 @@
         {% if terms_stale %}
         <li class="flex flex-wrap items-center justify-between gap-3 py-3">
             <span class="text-sm text-ink">Terms of Service</span>
-            <a href="{% url 'core:terms_of_service' %}" target="_blank" rel="noopener" class="ui-link font-mono text-xs uppercase tracking-[0.06em]">Read &mdash; version {{ terms_version }}</a>
+            <a href="{% url 'web:terms_of_service' %}" target="_blank" rel="noopener" class="ui-link font-mono text-xs uppercase tracking-[0.06em]">Read &mdash; version {{ terms_version }}</a>
         </li>
         {% endif %}
         {% if privacy_stale %}
         <li class="flex flex-wrap items-center justify-between gap-3 py-3">
             <span class="text-sm text-ink">Privacy Policy</span>
-            <a href="{% url 'core:privacy_policy' %}" target="_blank" rel="noopener" class="ui-link font-mono text-xs uppercase tracking-[0.06em]">Read &mdash; version {{ privacy_version }}</a>
+            <a href="{% url 'web:privacy_policy' %}" target="_blank" rel="noopener" class="ui-link font-mono text-xs uppercase tracking-[0.06em]">Read &mdash; version {{ privacy_version }}</a>
         </li>
         {% endif %}
     </ul>
@@ -55,7 +55,7 @@
             <input type="checkbox" name="accepted" value="1" class="mt-1" />
             <span>
                 I accept the
-                {% if terms_stale %}<a href="{% url 'core:terms_of_service' %}" target="_blank" rel="noopener" class="ui-link">Terms of Service</a>{% endif %}{% if terms_stale and privacy_stale %} and the {% endif %}{% if privacy_stale %}<a href="{% url 'core:privacy_policy' %}" target="_blank" rel="noopener" class="ui-link">Privacy Policy</a>{% endif %}.
+                {% if terms_stale %}<a href="{% url 'web:terms_of_service' %}" target="_blank" rel="noopener" class="ui-link">Terms of Service</a>{% endif %}{% if terms_stale and privacy_stale %} and the {% endif %}{% if privacy_stale %}<a href="{% url 'web:privacy_policy' %}" target="_blank" rel="noopener" class="ui-link">Privacy Policy</a>{% endif %}.
             </span>
         </label>
         <div class="mt-6 flex flex-wrap items-center gap-4">

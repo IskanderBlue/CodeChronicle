@@ -22,9 +22,9 @@ The search page moved. `/` is now the landing page.
 
 | URL | View | Behaviour |
 |---|---|---|
-| `/` | `core.views.landing` (`core:landing`) | The front page. A signed-in reader gets a redirect to `/search/`. |
-| `/about/` | the same view (`core:about`) | The same page. No redirect, so the page stays reachable for a signed-in reader. The footer links here. |
-| `/search/` | `core.views.search_page` (`core:search`) | The search page. The old name was `core:home`. |
+| `/` | `core.views.landing` (`web:landing`) | The front page. A signed-in reader gets a redirect to `/search/`. |
+| `/about/` | the same view (`web:about`) | The same page. No redirect, so the page stays reachable for a signed-in reader. The footer links here. |
+| `/search/` | `core.views.search_page` (`web:search`) | The search page. The old name was `core:home`. |
 
 The redirect comes from a URLconf extra kwarg (`redirect_signed_in`), not from
 the route name, so you can see the behaviour where the routes are declared.

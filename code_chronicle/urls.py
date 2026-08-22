@@ -10,9 +10,9 @@ from django.urls import URLPattern, URLResolver, include, path
 from django.views.generic.base import RedirectView, TemplateView
 from django.views.static import serve
 
-from api.views import api
-from config.assets import MIRRORED_PREFIXES
-from core.sitemaps import SITEMAPS
+from corpus.sitemaps import SITEMAPS
+from data.assets import MIRRORED_PREFIXES
+from web.api.views import api
 
 
 class RobotsView(TemplateView):
@@ -80,7 +80,7 @@ urlpatterns: list[URLResolver | URLPattern] = [
         {'sitemaps': SITEMAPS},
         name='django.contrib.sitemaps.views.sitemap',
     ),
-    path('', include('core.urls')),
+    path('', include('web.urls')),
 ]
 
 # Development-only asset serving.  CCM-mirrored trees (documents/,
@@ -92,7 +92,7 @@ urlpatterns: list[URLResolver | URLPattern] = [
 # In production a Cloudflare Worker answers these same paths from R2 at the
 # edge, so neither nginx nor Django is in the path and the URLs need no
 # rewrite.  The prefix list below must therefore stay in step with
-# MIRRORED_PREFIXES in core/management/commands/sync_images.py and with
+# MIRRORED_PREFIXES in corpus/management/commands/sync_images.py and with
 # asset_path_prefixes in the Terraform Cloudflare module.  A prefix that is
 # missing from the Terraform list works in dev and 404s in production.
 if settings.DEBUG:

@@ -32,7 +32,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sites",
     # `sitemaps` ships the templates the /sitemap.xml views render; the URL
-    # scope itself comes from core.sitemaps.
+    # scope itself comes from corpus.sitemaps.
     "django.contrib.sitemaps",
     "django.contrib.postgres",
     # `intcomma`, for the corpus figures on the landing page — a five-digit
@@ -43,16 +43,22 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "djstripe",
-    # Local apps
+    # Local apps, in dependency order.  Every package that holds a model, a
+    # management command or a template tag library must be listed, because
+    # Django finds all three only inside an INSTALLED_APPS entry.  "shared",
+    # "data" and "search" hold none of the three, so they are plain packages.
     "core",
-    "api",
+    "accounts",
+    "telemetry",
+    "corpus",
+    "web",
 ]
 
 MIDDLEWARE = [
     # First on purpose, so its process_response runs last: it removes the
     # ``Vary: Cookie`` that SessionMiddleware adds below, and only from the
-    # responses core.http_cache marked public.  See core.http_cache.
-    "core.http_cache.PublicCacheVary",
+    # responses web.http_cache marked public.  See web.http_cache.
+    "web.http_cache.PublicCacheVary",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -61,12 +67,12 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
-    "core.middleware.RateLimitMiddleware",
+    "web.middleware.RateLimitMiddleware",
     # Last, so it runs after authentication has resolved request.user and
     # after the session is available.  It answers from the session on all but
     # the first request of a session, so the DB cost is per sign-in, not per
     # page.
-    "core.middleware.TermsReacceptanceMiddleware",
+    "web.middleware.TermsReacceptanceMiddleware",
 ]
 
 ROOT_URLCONF = "code_chronicle.urls"
@@ -82,8 +88,8 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "core.context_processors.masthead_currency",
-                "core.context_processors.page_metadata",
+                "web.context_processors.masthead_currency",
+                "web.context_processors.page_metadata",
             ],
         },
     },
@@ -121,10 +127,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # (``elaws/...``), composited amended-table images (``amended/...``), and
 # e-Laws inline asset bytes (``laws/images/...``) live under this root with
 # paths verbatim matching the URL paths in the CCM output JSON.  The list of
-# prefixes itself lives in ``config/assets.py``.  Inline ``<img src="/laws/images/...">`` references
+# prefixes itself lives in ``data/assets.py``.  Inline ``<img src="/laws/images/...">`` references
 # in version HTML resolve here without rewriting.
 #
-# Development: served by Django via ``core.urls`` under ``/`` (see url conf).
+# Development: served by Django via ``web.urls`` under ``/`` (see url conf).
 # Production: served from Cloudflare R2 at the edge by a Worker bound to the
 # ``codechronicle-assets-prod`` bucket (see the CodeChronicleTerraform
 # ``modules/cloudflare`` asset proxy) — the origin/app is not in the path.
@@ -136,7 +142,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # directly during local dev — the layout is identical, so no sync is needed.
 ASSET_ROOT = Path(os.environ.get("ASSET_ROOT", BASE_DIR / "assets"))
 
-# Shared secret behind the asset tokens (see ``core.asset_signing``).  The edge
+# Shared secret behind the asset tokens (see ``corpus.asset_signing``).  The edge
 # Worker holds the same string as its ASSET_SIGNING_KEY secret; the two must
 # match or every gated scan 403s.  Empty falls back to SECRET_KEY, which is what
 # a developer checkout wants — dev serves the assets from Django, so nothing
@@ -148,7 +154,7 @@ ASSET_SIGNING_KEY = os.environ.get("ASSET_SIGNING_KEY", "")
 # Cloudflare R2 — asset object storage (upload/sync side only)
 # ===================
 # Used by ``manage.py sync_images --backend r2`` to publish the mirrored
-# asset trees (see ``config/assets.py``) to R2.  Serving is handled at
+# asset trees (see ``data/assets.py``) to R2.  Serving is handled at
 # the Cloudflare edge by a Worker with an R2 binding (see the Terraform
 # ``modules/cloudflare`` asset-proxy), so the running app needs NO R2
 # credentials — only whoever runs the sync does.  S3-compatible: keys are
@@ -200,7 +206,7 @@ ACCOUNT_EMAIL_VERIFICATION = "optional"
 ACCOUNT_USER_MODEL_EMAIL_FIELD = "email"
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
-ACCOUNT_ADAPTER = "core.adapters.AccountAdapter"
+ACCOUNT_ADAPTER = "accounts.adapters.AccountAdapter"
 # Mix a required Terms of Service / Privacy Policy acceptance checkbox into the
 # signup form (clickwrap) and stamp the accepted versions onto the user.
 #
@@ -214,13 +220,13 @@ ACCOUNT_ADAPTER = "core.adapters.AccountAdapter"
 # Each value matches its own document's "Last updated" line.  Bump the one
 # that changed, and only when the change is substantive — a typo fix is not a
 # new agreement.
-ACCOUNT_SIGNUP_FORM_CLASS = "core.forms.CustomSignupForm"
+ACCOUNT_SIGNUP_FORM_CLASS = "accounts.forms.CustomSignupForm"
 TERMS_VERSION = "2026-08-21"
 PRIVACY_VERSION = "2026-08-19"
 
 # The earliest version that still counts as accepted.  A reader whose latest
 # TermsAcceptance is older than one of these meets the re-acceptance wall; see
-# core.reacceptance.
+# accounts.reacceptance.
 #
 # These move only for a MATERIAL change, which is the distinction the Terms
 # themselves draw.  Moving them for a typo trains readers to click past the
@@ -260,12 +266,12 @@ DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"
 DJSTRIPE_USE_NATIVE_JSONFIELD = True
 STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID", "")
 #: The per-seat price for a firm.  A second price id, read exactly as the Pro
-#: one is (``core.pricing``).  Empty means a firm cannot buy seats, and the
+#: one is (``accounts.pricing``).  Empty means a firm cannot buy seats, and the
 #: control is hidden rather than offered and refused.
 STRIPE_TEAM_PRICE_ID = os.environ.get("STRIPE_TEAM_PRICE_ID", "")
 
 #: Whether a signed-in reader's team memberships are honoured on screen.  A
-#: development switch, read through ``core.teams.team_memberships_enabled``.
+#: development switch, read through ``accounts.teams.team_memberships_enabled``.
 #: Off makes the product behave as though this reader belonged to no firm, so
 #: both the "buy seats" and the "manage seats" states are reachable without
 #: making and destroying an organization.  It never hides the Team column and
@@ -334,7 +340,7 @@ RATE_LIMIT_ANONYMOUS_TEASER = 10
 
 
 # ===================
-# Free-tier content gating (core.access)
+# Free-tier content gating (accounts.access)
 # ===================
 # Content-scoped tier split (unconditional since 2026-07: the old
 # FREE_TIER_GATING_ENABLED switch soaked on in prod and was removed):
@@ -343,7 +349,7 @@ RATE_LIMIT_ANONYMOUS_TEASER = 10
 # Canonical edition names (CodeEdition.code_name, e.g. "OBC_2006") in the
 # free scope.  Env-backed so the free window can widen without a deploy.
 # ===================
-# Signup notice (core.signup_notice)
+# Signup notice (accounts.signals.signup_notice)
 # ===================
 # Where to write when somebody creates an account.  Empty switches it off,
 # which is what a test or a local run wants; every environment that should
@@ -358,7 +364,7 @@ SIGNUP_NOTICE_EMAILS = [
 ]
 
 # Who hears that an account has run past its daily API allowance
-# (`core.throttle_notice`).  Nothing refuses that account any more, so a person
+# (`telemetry.throttle_notice`).  Nothing refuses that account any more, so a person
 # reading this message is the control.  Empty switches the notice off, which is
 # what a local run wants.
 API_THROTTLE_NOTICE_EMAILS = [

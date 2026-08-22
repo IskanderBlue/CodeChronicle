@@ -31,11 +31,11 @@ sites render it:
 
 `mode` forks behaviour, not markup:
 
-- `live` — htmx `hx-post` to `core:search_results`. Keeps `id="search-form"`
+- `live` — htmx `hx-post` to `web:search_results`. Keeps `id="search-form"`
   (the relevance-floor control re-runs the query with `hx-include`) and the bare
   `id="query"` (the search page's script focuses it). Posts `query`, `date`,
   `province`.
-- `handoff` — a plain GET to `core:search`, which reads `?q=` and `?d=`. That
+- `handoff` — a plain GET to `web:search`, which reads `?q=` and `?d=`. That
   pair is the public link contract the "try this" links share.
 
 `id_prefix` namespaces the ids, because two of these forms appear on one page.

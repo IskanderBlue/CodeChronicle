@@ -28,7 +28,7 @@
            holds the date the search actually ran at, already in the ISO form
            ?d= parses. Province needs no parameter; it is always ON.
            {% endcomment %}
-        <a href="{% url 'core:search' %}?q={{ item.query|urlencode }}{% if item.parsed_params.date %}&amp;d={{ item.parsed_params.date|urlencode }}{% endif %}"
+        <a href="{% url 'web:search' %}?q={{ item.query|urlencode }}{% if item.parsed_params.date %}&amp;d={{ item.parsed_params.date|urlencode }}{% endif %}"
             class="block bg-surface-2 border border-rule p-6 hover:border-secondary transition-colors cursor-pointer no-underline"
             x-show="!query || '{{ item.query|escapejs }}'.toLowerCase().includes(query.toLowerCase())" x-transition>
             <div class="flex justify-between items-start">

@@ -123,7 +123,7 @@
                             from {{ coverage_start|date:'F Y' }} to {{ coverage_end|date:'F Y' }}{% endif %}.
                             Set the <span class="font-mono text-[12px] text-ink">AS-OF</span> date to the
                             construction or renovation date you care about.
-                            See <a href="{% url 'core:data_sources' %}" class="ui-link">where the data comes from</a>.
+                            See <a href="{% url 'web:data_sources' %}" class="ui-link">where the data comes from</a>.
                         </p>
                     </div>
                     <div>
@@ -312,7 +312,7 @@
                 query_date: this.queryDate,
                 query_code: this.queryCode,
             });
-            return '{% url "core:viewer_edition_nav" %}?' + p.toString();
+            return '{% url "web:viewer_edition_nav" %}?' + p.toString();
         },
         editionDatesUrl() {
             if (!this.viewerResult) return null;
@@ -320,7 +320,7 @@
                 code: this.viewerResult.code || '',
                 query_date: this.queryDate,
             });
-            return '{% url "core:viewer_edition_dates" %}?' + p.toString();
+            return '{% url "web:viewer_edition_dates" %}?' + p.toString();
         },
         loadEditionDates() {
             const target = this.$refs.editionDates;
@@ -349,7 +349,7 @@
                 // attributes back to this search (click-through tracking).
                 search_id: (document.getElementById('cc-search-id')?.dataset.searchId) || '',
             });
-            return '{% url "core:viewer_section_content" %}?' + p.toString();
+            return '{% url "web:viewer_section_content" %}?' + p.toString();
         },
         loadSectionContent() {
             if (this.viewerResult && this.viewerResult.pdf_filename) return;

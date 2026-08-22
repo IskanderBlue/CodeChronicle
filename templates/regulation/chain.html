@@ -41,7 +41,7 @@
             <div class="border border-rule bg-panel p-4">
                 <div class="flex items-baseline justify-between gap-3">
                     <div class="flex items-baseline gap-[10px] flex-wrap">
-                        <a href="{% url 'core:regulation_detail' reg.pk %}"
+                        <a href="{% url 'web:regulation_detail' reg.pk %}"
                             class="font-mono text-base font-semibold text-secondary border-b border-secondary hover:text-secondary-2">O. Reg. {{ reg.reg_id }}</a>
                         <span class="font-mono text-[9.5px] font-semibold uppercase tracking-[0.08em] border px-1.5 py-px
                             {% if reg.role == 'base' %}text-secondary border-secondary{% else %}text-ink-3 border-rule{% endif %}">{% if reg.role == 'base' %}Base{% else %}Amendment{% endif %}</span>

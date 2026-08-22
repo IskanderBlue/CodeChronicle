@@ -50,7 +50,7 @@
     {% comment %} The verdict, stated before the panes. A redline marks what
        changed, so a pair with nothing marked looks exactly like a read the
        reader has not finished. Nobody should have to scan both columns twice
-       to be sure. See api.formatters.diff_is_empty — it compares the words the
+       to be sure. See search.formatters.formatters.diff_is_empty — it compares the words the
        redline compares, so tags and whitespace do not count as a change.
     {% endcomment %}
     {% if text_unchanged %}

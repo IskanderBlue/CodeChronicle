@@ -1,4 +1,4 @@
-{% comment %} The citation menu's contents, fetched by core.views.exports.citation_panel.
+{% comment %} The citation menu's contents, fetched by web.views.exports.citation_panel.
 
    Three strings for one provision version, because a factum, the body of a
    consultant's report and a set of working notes are different documents and
@@ -6,7 +6,7 @@
    a reader decides which one is theirs by reading it, not by trusting a
    label.
 
-   All three come from core.citations now, including Reference — it used to be
+   All three come from corpus.citations now, including Reference — it used to be
    rendered separately here from the search band's builder, which is how it
    came to name an Article "S 1.1.2.4." and to carry no retrieval line.  A
    preformatted citation draws in a pre, because its line breaks are its
@@ -30,7 +30,7 @@
     </div>
 
     {% for c in citations %}
-    <form hx-post="{% url 'core:record_export' %}" hx-swap="none">
+    <form hx-post="{% url 'web:record_export' %}" hx-swap="none">
         {% csrf_token %}
         <input type="hidden" name="kind" value="citation">
         <input type="hidden" name="format" value="{{ c.kind }}">

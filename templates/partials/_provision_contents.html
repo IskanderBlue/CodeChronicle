@@ -2,14 +2,14 @@
 {% comment %}
 What a provision contains, when the provision is too big to show as text.
 
-`contents`: rows from core.views.regulation._contents_rows — a
+`contents`: rows from web.views.regulation._contents_rows — a
 _permalink_nav_item item ({provision_id, title, versions:[…]}) plus
 `child_count` and `child_noun`.
 
 Shared by the reading page, the exhibit and the search overlay.  An exhibit
 must not show something the page does not, and a reader who meets the contents
 of Part 9 in the overlay and again on its own page must meet one list.  All
-three mount this file over core.subtrees.contents_view; none builds its own.
+three mount this file over corpus.subtrees.contents_view; none builds its own.
 
 So the copy names no surface — "on one page" was wrong in a panel beside the
 search results, which is not a page.

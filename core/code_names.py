@@ -1,14 +1,14 @@
 """Reader-facing names for a code system and for an edition.
 
-The names themselves stay in :data:`config.code_metadata.DISPLAY_NAMES`.
+The names themselves stay in :data:`data.code_metadata.DISPLAY_NAMES`.
 These two helpers prefer the ``Code`` row, so they live here instead: nothing
 in ``config`` imports Django, ``core`` or ``api``, and a lookup that reads a
 model cannot keep that promise.  The function-body import that used to hide
-the breach is what ``core/tests/test_module_conventions.py`` now refuses.
+the breach is what ``tests/test_module_conventions.py`` now refuses.
 """
 
-from config.code_metadata import DISPLAY_NAMES
 from core.models import Code
+from data.code_metadata import DISPLAY_NAMES
 
 
 def get_code_display_name(system_code: str) -> str:

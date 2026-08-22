@@ -29,7 +29,7 @@ wrapper), so this one file renders all three states — ask, thanks, error.
   {% if error %}
   <p class="mt-2 font-mono text-[11px] tracking-[0.04em] text-secondary">{{ error }}</p>
   {% endif %}
-  <form hx-post="{% url 'core:edition_request' %}"
+  <form hx-post="{% url 'web:edition_request' %}"
         hx-target="#edition-request"
         hx-swap="outerHTML"
         class="mt-4 flex flex-wrap items-end gap-3">

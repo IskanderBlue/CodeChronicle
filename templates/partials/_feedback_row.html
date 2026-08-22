@@ -40,7 +40,7 @@ inside that same ancestor.
     <div class="flex flex-wrap justify-end gap-1">
       {% for value, label in statuses %}
       <button type="button"
-              hx-post="{% url 'core:feedback_status' row.id %}"
+              hx-post="{% url 'web:feedback_status' row.id %}"
               hx-vals='{"status": "{{ value }}"}'
               hx-target="closest tr"
               hx-swap="outerHTML"

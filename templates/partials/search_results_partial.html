@@ -81,7 +81,7 @@ context processor (real dates).
             <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{{ not_covered_province }} isn&rsquo;t covered yet</h3>
             <p class="mt-2 text-sm text-ink-2">
                 We cover Ontario for now &mdash; other jurisdictions are on the
-                <a href="{% url 'core:pricing' %}#roadmap" class="ui-link font-semibold">roadmap</a>.
+                <a href="{% url 'web:pricing' %}#roadmap" class="ui-link font-semibold">roadmap</a>.
                 {% if not date_out_of_range %}Showing Ontario results below.{% endif %}
             </p>
         </div>
@@ -174,7 +174,7 @@ Edition names are display prose resolved in the view — the raw code_name
        no export. Signed-in readers only: a citation carries our URL into
        somebody else's document, a result set is work product. {% endcomment %}
     {% if results and user.is_authenticated %}
-    <form method="post" action="{% url 'core:results_csv' %}" class="ml-auto">
+    <form method="post" action="{% url 'web:results_csv' %}" class="ml-auto">
         {% csrf_token %}
         <input type="hidden" name="query" value="{{ export_query }}">
         <input type="hidden" name="date" value="{{ export_date }}">
@@ -240,7 +240,7 @@ it's gone", with no close-on-success wiring to keep in sync.
             <label class="sr-only" for="cc-datum-range">Where close matches start</label>
             <input type="range" id="cc-datum-range" name="match_threshold" class="w-full accent-secondary"
                 min="0" :max="maxScore" step="0.01" x-model.number="threshold"
-                hx-post="{% url 'core:search_results' %}" hx-target="#results-area"
+                hx-post="{% url 'web:search_results' %}" hx-target="#results-area"
                 hx-include="#search-form" hx-trigger="change"
                 hx-on::before-request="document.getElementById('results-area').innerHTML=document.getElementById('loading-tpl').innerHTML">
             <p class="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
@@ -383,7 +383,7 @@ lineage rows and edition-nav teasers already show, no body text.
     </summary>
     <p class="mt-3 text-sm text-ink-2">
         Matched in {% for entry in locked_edition_counts %}{{ entry.name }} ({{ entry.count }}){% if not forloop.last %}, {% endif %}{% endfor %} &mdash; outside the free plan&rsquo;s coverage.
-        <a href="{% url 'core:pricing' %}" class="ui-link font-semibold">See plans</a> to unlock every edition.
+        <a href="{% url 'web:pricing' %}" class="ui-link font-semibold">See plans</a> to unlock every edition.
     </p>
     <ul class="mt-3 divide-y divide-rule border-t border-rule">
         {% for row in locked_preview %}

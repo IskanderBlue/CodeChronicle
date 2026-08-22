@@ -30,7 +30,7 @@
                         &middot; joined {{ member.created_at|date:"j M Y" }}
                     </p>
                 </div>
-                <form method="POST" action="{% url 'core:remove_member' member.pk %}">
+                <form method="POST" action="{% url 'web:remove_member' member.pk %}">
                     {% csrf_token %}
                     <button type="submit"
                         class="ui-action shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]">
@@ -56,7 +56,7 @@
                         &middot; expires {{ invite.expires_at|date:"j M Y" }}
                     </p>
                 </div>
-                <form method="POST" action="{% url 'core:revoke_invite' invite.pk %}">
+                <form method="POST" action="{% url 'web:revoke_invite' invite.pk %}">
                     {% csrf_token %}
                     <button type="submit"
                         class="ui-action shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]">
@@ -68,7 +68,7 @@
         {% endif %}
         {% endfor %}
 
-        <form method="POST" action="{% url 'core:invite_to_team' team.pk %}"
+        <form method="POST" action="{% url 'web:invite_to_team' team.pk %}"
             class="flex flex-wrap items-end gap-3 border-t border-rule pt-4">
             {% csrf_token %}
             <div class="min-w-0 grow">

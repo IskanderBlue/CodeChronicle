@@ -2,7 +2,7 @@
    The hero/brand element. Extracted from _provenance_banner.html so it can sit
    wide in a middle column (master-detail) while the base/amended/chain metadata
    lives in the right rail (_provenance_rail.html). The band body is the
-   attestation rail (result.rail, from core.verification.rail_geometry), which
+   attestation rail (result.rail, from corpus.verification.verification.rail_geometry), which
    carries From / Until / query-date / coverage + the verification status — it
    superseded the old From·rail·Until·Dur cells and the "✓ Covers" cell. When
    there's no rail (never-in-force, or no query date), a compact From/Until shows
@@ -139,9 +139,9 @@
        (next_version is None) passes no URL and the modal renders plain text. {% endcomment %}
     {% if result.next_version %}
         {% if result.division %}
-        {% url 'core:provision_permalink' result.code_edition result.division result.id result.next_version.version as next_version_url %}
+        {% url 'web:provision_permalink' result.code_edition result.division result.id result.next_version.version as next_version_url %}
         {% else %}
-        {% url 'core:provision_permalink_no_division' result.code_edition result.id result.next_version.version as next_version_url %}
+        {% url 'web:provision_permalink_no_division' result.code_edition result.id result.next_version.version as next_version_url %}
         {% endif %}
     {% endif %}
     {% include "partials/_commencement_modal.html" with commencement=result.until_commencement effective_date=result.until_commencement_date state="cmOpenUntil" relation="end" next_version_url=next_version_url %}

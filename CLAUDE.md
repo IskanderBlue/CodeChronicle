@@ -21,10 +21,10 @@ python manage.py runserver
 pytest
 
 # Run a single test file
-pytest api/tests/test_search.py
+pytest tests/test_search.py
 
 # Run a single test
-pytest api/tests/test_search.py::TestClassName::test_method_name
+pytest tests/test_search.py::TestClassName::test_method_name
 
 # Lint
 ruff check .
@@ -100,17 +100,79 @@ Hand-written, non-utility CSS (component classes, `x-cloak`, htmx/diff helpers) 
 
 ## Architecture
 
-### Django Apps
+### The packages
 
-- **core/** - Custom User model (email-only, no username via `AUTH_USER_MODEL = 'core.User'`), SearchHistory, QueryCache/QueryPrompt models, RateLimitMiddleware, and frontend views (HTMX-based)
-- **api/** - Django Ninja REST API. Key endpoints: `/api/search` (POST), `/api/history` (GET), `/api/codes` (GET), `/api/health` (GET). The first three need an API key — see "The direct API" below.
-- **config/** - Configuration helpers: `code_metadata.py` (`get_code_display_name()`), `keywords.py` has the valid keyword list.
+Eight Python packages, in dependency order. A package imports downward only.
+`shared` and `data` sit at the bottom and import nothing local; `web` sits at
+the top and nothing imports it.
+
+| Package | Holds |
+|---|---|
+| `shared/` | Helpers with no knowledge of this product: `ip.py`, `email.py`, `html.py` |
+| `data/` | Fixed reference data: `keywords.py`, `synonyms.py`, `search_limits.py`, `code_metadata.py`, `part_applicability.py`, `assets.py`, `exports.py`, `guard_height_article.py` |
+| `core/` | The models, the migrations and the admin. Nothing else. |
+| `accounts/` | Who the reader is and what they may open: `access.py`, `teams.py`, `pricing.py`, `reacceptance.py`, `forms.py`, `adapters.py`, `signals/` |
+| `telemetry/` | What the product records about its own use: `events.py`, `insights.py`, `reading_ledger.py`, `attribution.py`, `throttle_notice.py` |
+| `corpus/` | The code text: `permalinks.py`, `seo.py`, `subtrees.py`, `citations.py`, `sitemaps.py`, `asset_signing.py`, plus `lineage/`, `verification/`, `printing/` |
+| `search/` | The search pipeline: `service.py`, `prefs.py`, `engine/`, `llm/`, `formatters/` |
+| `web/` | Delivery: `urls.py`, `middleware.py`, `http_cache.py`, `views/`, `api/`, `templatetags/` |
+
+`core/` keeps its name because `AUTH_USER_MODEL`, `DJSTRIPE_SUBSCRIBER_MODEL`,
+every `ForeignKey("core.X")` string and 56 migrations name it.
+
+`web/urls.py` sets `app_name = "web"`, so every route is addressed as
+`web:<route>` — `{% url 'web:search' %}`, `reverse("web:pricing")`. The
+namespace and the package agree on purpose: it is a separate name and could
+have stayed `core`, but then a reader meeting `web:pricing` would look in the
+wrong directory for it.
+
+`web/api/` is the Django Ninja REST API: `/api/search` (POST), `/api/history`
+(GET), `/api/codes` (GET), `/api/health` (GET). The first three need an API key
+— see "The direct API" below.
+
+The tests live in `tests/`, one directory per package, outside every package.
+
+### The import manifests
+
+Each package's `__init__.py` declares the packages it may import:
+
+```python
+# corpus/__init__.py
+ALLOWED_IMPORTS = ("shared", "data", "core", "accounts")
+```
+
+`tests/structure/test_import_manifests.py` reads every module with `ast` and
+checks four things: every package carries a manifest, every cross-package
+import is declared, **every declaration is used**, and the declared graph has
+no cycle.
+
+- **A list of neighbours, not a rank number.** `accounts` and `telemetry` are
+  independent: neither imports the other, and neither is above the other. A
+  rank number would have to give them an order that does not exist. The shape
+  of the whole tree is then derived — no cycle — rather than maintained.
+- **A stale entry fails.** A manifest that only checks the upper bound decays
+  into a wish list, because removing the last import of a neighbour leaves no
+  signal.
+- **The suite is outside every package**, so a test that reaches across
+  packages breaks no manifest. That is why `tests/` sits at the root.
+- **Two edges point at `accounts` from below the delivery layer**, and both
+  are deliberate: `corpus/sitemaps.py` (the sitemap is free-tier scoped) and
+  `search` (the tier split runs before the display limit). Everything else in
+  `corpus` takes the gate as a `Callable[[str], bool]` and never learns what a
+  tier is.
+
+`tests/core/test_module_conventions.py` states five rules about a *module*
+(no function-body import, no relative import, no private name read across a
+boundary, no duplicate top-level name, no constant duplicated by value). It
+carries **no allowlist**: both exemptions are derived from shape — an
+`apps.py` may import inside `ready()`, and a package `__init__.py` may bind
+`ALLOWED_IMPORTS`.
 
 ### Request Flow
 
 ```
 User query → RateLimitMiddleware → llm_parser.parse_user_query() (Claude API with tool_use)
-→ QueryCache check/store → api/search.execute_search()
+→ QueryCache check/store → search/engine.execute_search()
    → in-force version query (per-version window, all editions of the province's code)
    → engine.score_versions() (scores every match, no truncation)
    → _split_by_access() → relevance floor → _group_transitions()
@@ -124,7 +186,7 @@ from whatever survived an ungated top-N; and because scoring truncates nothing,
 the free-tier teaser quotes exact per-edition match totals instead of the
 candidate-pool size.
 
-Two knobs shape the tail of that pipeline, both in `config/search_limits.py`:
+Two knobs shape the tail of that pipeline, both in `data/search_limits.py`:
 
 - **`SEARCH_RESULT_CAP`** (100) — a constant, deliberately *not* a preference.
   A page-size control and a relevance floor both answer "how much do I see",
@@ -134,7 +196,7 @@ Two knobs shape the tail of that pipeline, both in `config/search_limits.py`:
   since grouping shortens the list for unrelated reasons and the header would
   claim results were withheld that weren't).
 - **`match_threshold`** — the reader's stored floor (`User.match_threshold`,
-  session for anonymous, via `core/search_prefs.py`). The relevance floor a
+  session for anonymous, via `search/prefs.py`). The relevance floor a
   result must clear to count as
   a *close match*, default 0.8. **Continuous, not named tiers**: measured
   against the real corpus a fixed 0.8 keeps 20 matches on one query, 90 on
@@ -163,7 +225,7 @@ matches" where that's true — not at Everything, and not under the
 `weak_matches_only` fallback (`shown_noun` / `locked_noun`, resolved in the
 view).
 
-**Scoring is BM25F over two fields, title and body** (`api/search/engine.py`).
+**Scoring is BM25F over two fields, title and body** (`search/engine/engine.py`).
 CCM ships `keyword_counts` (the title + body + table-text union) alongside
 `title_keyword_counts` (the title alone, same tokenizer); the body's counts are
 the difference, floored at zero. Two rules the maths depends on:
@@ -193,14 +255,14 @@ in-force filter runs at the **version** level (`effective_date <= d <
 ineffective_date`) across every edition of the province's code, which is what
 lets two editions' versions co-exist during a transition. The old
 `building-code-mcp` dependency is gone; its `SYNONYMS` table — the last thing
-CodeChronicle used from it — is vendored at `config/synonyms.py`.
+CodeChronicle used from it — is vendored at `data/synonyms.py`.
 
 ### Frontend
 
 Django templates + HTMX + Alpine.js + Tailwind CSS (CDN). Templates live in `templates/` with HTMX partials in `templates/partials/`. The search page uses `hx-post` for partial page updates without full reloads.
 
 **The address bar holds the search that ran.** `hx-post` does not change the
-address, so a reload used to throw the search away. `core.views.search._push_search_url`
+address, so a reload used to throw the search away. `web.views.search._push_search_url`
 answers with `HX-Replace-Url` and rewrites it to `/search/?q=…&d=…`, which
 `search_page` already reads and auto-runs (the `data-autorun-search` block in
 `templates/search.html`). So a reload, a bookmark and a link a reader sends
@@ -241,7 +303,7 @@ Split settings in `code_chronicle/settings/`: `base.py`, `development.py`, `prod
 ### Rate Limiting & Subscriptions
 
 The anonymous allowance runs in **three bands**, decided by
-`core.middleware.RateLimitMiddleware`:
+`web.middleware.RateLimitMiddleware`:
 
 | Searches today | Band | Behaviour |
 |---|---|---|
@@ -250,9 +312,9 @@ The anonymous allowance runs in **three bands**, decided by
 | above that | hard | 429, and the search does not run |
 
 The middleware never runs a search itself. In the teaser band it sets
-`request.search_teaser_only` and returns `None`; `core.views.search` then calls
+`request.search_teaser_only` and returns `None`; `web.views.search` then calls
 `_teaser_context()`, which returns provision ids, titles, editions and counts —
-identity only, via the same `api.search.orchestration.identity_preview()` the
+identity only, via the same `search.engine.orchestration.identity_preview()` the
 free-tier locked list uses, so the two teasers cannot drift apart on screen.
 
 Both the teaser band and the hard band record an
@@ -262,12 +324,12 @@ not which wall the intent met. The hard band exists because the teaser costs
 an LLM parse per request; without a ceiling it is an open tap.
 
 Authenticated users (free and Pro): unlimited searches. Content gating lives in
-`core/access.py` (unconditional): anonymous and non-Pro users are scoped to the
+`accounts/access.py` (unconditional): anonymous and non-Pro users are scoped to the
 editions in `FREE_TIER_CODE_NAMES` (OBC 2006); Pro (Stripe/dj-stripe or
 `pro_courtesy` flag) is unrestricted. History:
 `tasks/complete/free-tier-obc2006-scope.md`.
 
-The Pro **price** is never a literal: `core/pricing.py` reads the mirrored
+The Pro **price** is never a literal: `accounts/pricing.py` reads the mirrored
 dj-stripe `Price` row keyed by the same `STRIPE_PRO_PRICE_ID` that checkout
 uses, so the page and the charge cannot disagree, and a change in the Stripe
 dashboard needs no deploy. There is **no fallback figure**: when the row does
@@ -278,10 +340,10 @@ any way to pay — and the page hides the purchase control when there is not.
 
 ### The direct API
 
-`api/views.py` holds the endpoints. `/api/search`, `/api/codes` and
+`web/api/views.py` holds the endpoints. `/api/search`, `/api/codes` and
 `/api/history` need an **API key**; `/api/health` and `/api/event` are open.
-`api/auth.py` reads the key from an `Authorization: Bearer` header, and
-`core/views/api_keys.py` is where a subscriber makes and revokes one.
+`web/api/auth.py` reads the key from an `Authorization: Bearer` header, and
+`web/views/api_keys.py` is where a subscriber makes and revokes one.
 
 - **A key is the only credential.** A browser session does not open these
   three endpoints. Django Ninja exempts the API from the CSRF check, so an
@@ -297,7 +359,7 @@ any way to pay — and the page hides the purchase control when there is not.
   row in one indexed query, and they let the holder tell two keys apart. The
   column is indexed but not unique, because a create that fails on a collision
   is worse than a second hash comparison.
-- **The subscription rule has one home.** `core.access.api_access_allowed`
+- **The subscription rule has one home.** `accounts.access.api_access_allowed`
   decides, and every other Pro surface uses `user_is_unrestricted` below it.
   The API adds one test the website does not need: a deactivated account keeps
   no API access, because a key is a standing credential and a page gate never
@@ -347,13 +409,13 @@ One provision to a request makes the text countable.
 
 #### What the API answers with
 
-`api/schemas.py` owns the response shape. `/api/search` declared its results
+`web/api/schemas.py` owns the response shape. `/api/search` declared its results
 as `list[dict]` before, which failed twice: `/api/docs` told a caller nothing,
 and the dicts it meant to send are the **template** cards from
-`api.formatters`, which hold live Django model instances. The JSON encoder
+`search.formatters.formatters`, which hold live Django model instances. The JSON encoder
 raises `TypeError` on the first one, so the endpoint could not answer a search
 that matched anything. Every test mocked the formatter to `[]`, so nothing
-caught it. `api/tests/test_search_response.py` runs the real pipeline.
+caught it. `tests/test_search_response.py` runs the real pipeline.
 
 - **The schema is a projection, not a dump.** A field reaches a caller because
   somebody named it in `ResultOut`. `/api/docs` then states the result without
@@ -379,7 +441,7 @@ and no threshold separates them. The website is cheaper still — one permalink
 renders a whole subtree, so a Part arrives in one request.
 
 So the control is **detection, not prevention**, and it is built on novelty
-rather than volume (`core.insights.api_coverage`, shown on `/insights/`):
+rather than volume (`telemetry.insights.api_coverage`, shown on `/insights/`):
 
 - Somebody recording almost never fetches the same provision twice, so their
   **new share sits near 100%** and their share of the corpus climbs in a
@@ -410,7 +472,7 @@ The rest of what answers copying:
 extraction path. A signed-in reader fetching 400 permalinks an hour is
 currently invisible.
 
-`API_SEARCHES_BEFORE_THROTTLE` (200, `api/auth.py`) is a **cost** control:
+`API_SEARCHES_BEFORE_THROTTLE` (200, `web/api/auth.py`) is a **cost** control:
 each search costs an LLM parse, and without an allowance a key is an open tap
 on that bill. It counts the **account**, not the key, so a second key buys no
 second allowance; and it counts `SearchHistory.source == "api"` only, because
@@ -430,18 +492,18 @@ the corpus is small. `apply_search_throttle` makes each further search wait
 - **The wait grows with the overage.** A flat penalty is one a script plans
   around. The rate falls away the further somebody goes.
 - **A person is the control, so the notice is load-bearing.**
-  `core/throttle_notice.py` writes to `settings.API_THROTTLE_NOTICE_EMAILS`
+  `telemetry/throttle_notice.py` writes to `settings.API_THROTTLE_NOTICE_EMAILS`
   (`rob@codechronicle.ca` by default) the first time an account crosses the
   line each day, and records an `EngagementEvent.EventType.API_THROTTLE` row.
   The row is what makes it once a day rather than once a search, and it
   outlives a restart. A notice never breaks a search: every failure is
-  swallowed, as in `core.signup_notice`. The message points at `/insights/`,
+  swallowed, as in `accounts.signals.signup_notice`. The message points at `/insights/`,
   because the count cannot tell a heavy day from a copy and the new-vs-repeat
   share can.
 
 ### The new-account notice
 
-`core/signup_notice.py` writes to `settings.SIGNUP_NOTICE_EMAILS`
+`accounts/signals/signup_notice.py` writes to `settings.SIGNUP_NOTICE_EMAILS`
 (`rob@codechronicle.ca` by default, env-backed, comma-separated) when somebody
 creates an account. Three rules:
 
@@ -450,7 +512,7 @@ creates an account. Three rules:
   neither is somebody arriving at the product.
 - **It never breaks a signup.** The account already exists when the receiver
   runs, so an unguarded failure would lose the notice *and* show a 500 to a
-  reader whose signup actually worked. Same reasoning as `core.auth_audit`.
+  reader whose signup actually worked. Same reasoning as `accounts.signals.auth_audit`.
 - **An empty list switches it off**, which is what a local run wants.
 
 ### Clickwrap versions
@@ -463,25 +525,25 @@ document that changed. Full reasoning:
 
 ## Marketing & discovery surfaces
 
-- `core/sitemaps.py` — `/sitemap.xml` (index) plus `pages` and `provisions`
+- `corpus/sitemaps.py` — `/sitemap.xml` (index) plus `pages` and `provisions`
   sections. Free-tier scope only, and **one URL per provision** at its highest
   version, not one per version.
-- `core/seo.py` — per-page title, meta description and canonical URL. It owns
-  the **canonical-version rule** (highest version wins); `core/sitemaps.py`
+- `corpus/seo.py` — per-page title, meta description and canonical URL. It owns
+  the **canonical-version rule** (highest version wins); `corpus/sitemaps.py`
   implements the same rule set-based. Change one and you must change the other.
 - `templates/robots.txt` — served by `RobotsView`, with a request-derived
   absolute sitemap link.
-- `/insights/` (`core/insights.py`, staff only) — traction totals, per-day and
+- `/insights/` (`telemetry/insights.py`, staff only) — traction totals, per-day and
   cumulative charts, most-repeated queries, the edition-request queue, and the
   reader-report triage queue.
-- `EditionRequest` (`core/views/demand.py`) — "which edition do you need?"
+- `EditionRequest` (`web/views/demand.py`) — "which edition do you need?"
   demand capture. The need is required; the email is optional. The band
   promises we will write when the edition lands, and
   `notify_edition_requests` keeps that promise. `notified_about` is a **list**
   of edition labels, not one stamp: a row may name two editions, and one
   timestamp would spend it on the first. That list is also what makes a
   re-run safe after a part-way failure.
-- `ProvisionFeedback` (`core/views/feedback.py`) — the "This looks wrong"
+- `ProvisionFeedback` (`web/views/feedback.py`) — the "This looks wrong"
   reader report, free for everybody including anonymous readers. The trigger
   lives in the attestation rail's trailing affordances, beside "How to read
   this", and is opt-in per surface (`allow_report`) so the landing page's
@@ -497,20 +559,20 @@ document that changed. Full reasoning:
 Four ways to take something out of the product, all shipped at once and all
 instrumented, because we could not guess which one a code consultant reaches
 for. Each records an `EngagementEvent.EventType.EXPORT` with `context.kind`;
-`/insights/` shows the counts (`core.insights.export_counts`), and
+`/insights/` shows the counts (`telemetry.insights.export_counts`), and
 `tasks/b-exports-60-day-review.md` is the promise to read them on 3 October
 2026 and remove what nobody used.
 
 | Kind | Where |
 |---|---|
-| `citation` | The "Cite" menu in the attestation rail (`core/citations.py`) |
+| `citation` | The "Cite" menu in the attestation rail (`corpus/citations.py`) |
 | `provision_pdf` | `/provision/…/print/` — the `for_print` branch of `provision_permalink` |
-| `results_csv` | `core.views.exports.results_csv` |
+| `results_csv` | `web.views.exports.results_csv` |
 | `comparison_pdf` | `/compare/print/` — the `for_print` branch of `compare_versions` |
 
 Rules that hold across all four:
 
-- **The gate is the gate** (`core/access.py`), on the read path and the write
+- **The gate is the gate** (`accounts/access.py`), on the read path and the write
   path both. A refusal must never also be counted as value delivered.
 - **The citation is open to everybody**; the other three need a free account.
   A citation carries our URL into somebody else's document, which is the point
@@ -518,11 +580,11 @@ Rules that hold across all four:
 - **Every export states its retrieval date.**
 - **The window is stated in days actually governed.** The stored window is
   half-open, so a citation that says "to" names the day *before* the end date.
-  `core.seo.last_governed_day` owns that conversion for the whole product —
+  `corpus.seo.last_governed_day` owns that conversion for the whole product —
   the page title, the JSON-LD interval, the nav tooltips, the cross-reference
   chips and the citations all call it, because three private copies gave three
-  answers. `core.citations.in_force_phrase` puts it in prose, and
-  `core.seo.effective_window` supplies the window. That window is **the
+  answers. `corpus.citations.in_force_phrase` puts it in prose, and
+  `corpus.seo.effective_window` supplies the window. That window is **the
   version's own**: CCM computes these dates and lets a window run past its
   edition on purpose, because a transition overlap is two editions' versions
   in force at once. The edition's end is a fallback for a **null** end only,
@@ -548,7 +610,7 @@ product does not — and a second layout engine would break exactly that. The
 two print pages share `templates/partials/_print_shell.html` and
 `_print_script.html`.
 
-**Scans are cropped to the provision** (`core/page_crops.py`). A page image is
+**Scans are cropped to the provision** (`corpus/printing/page_crops.py`). A page image is
 a whole scanned page and the bboxes mark the provision on it; on paper the rest
 of the page is somebody else's text. Two rules: a crop is its own bbox plus a
 small margin, **never** the union of a page's bboxes (these pages are set in
@@ -561,7 +623,7 @@ dimensions, so the print script reads each image's own proportions once it
 loads.
 
 **A scan already shows its tables**, so the printable surfaces do not repeat
-them as separate figures (`core/print_options.py`). CCM ships a table twice for
+them as separate figures (`corpus/printing/print_options.py`). CCM ships a table twice for
 a scanned edition — inside the page image, and again as a
 `ProvisionVersionTable` row — and on the reading page the second copy sits
 behind a disclosure, so nobody meets both. On paper both print, and an exhibit
@@ -586,7 +648,7 @@ crawl cost 545 MB of reads while the whole database is 142 MB, and it is the
 first thing to weigh before adding a query to that view.
 
 **Over `CONTENTS_THRESHOLD` (40) the page shows what is inside instead**
-(`core/subtrees.py`, `templates/partials/_provision_contents.html`). Not
+(`corpus/subtrees.py`, `templates/partials/_provision_contents.html`). Not
 pagination: page 3 of Part 9 is not a thing a code consultant can ask for, and
 `?page=` would multiply the URL count when the point is to cut the work.
 Measured over the free-tier corpus, this takes provision renders from
@@ -634,7 +696,7 @@ does it show the contents block. `subtree_root` must move with the walk, or the
 section list descends from a provision no longer in the set and the panel
 renders empty.
 
-**All three surfaces show one contents block**, from `core.subtrees.contents_view`
+**All three surfaces show one contents block**, from `corpus.subtrees.contents_view`
 through `templates/partials/_provision_contents.html` — the reading page, the
 exhibit and the overlay. `contents_view` answers the three context keys
 together because the total is not a by-product of the walk (the walk stops
@@ -642,14 +704,14 @@ early on purpose), so a caller that builds the rows and then asks for the count
 separately can get the two out of step. The block's copy therefore names no
 surface: "too many to show at once", never "on one page".
 
-`core/subtrees.py` holds all of it — `CONTENTS_THRESHOLD`, `walk_subtree`,
+`corpus/subtrees.py` holds all of it — `CONTENTS_THRESHOLD`, `walk_subtree`,
 `descendant_count`, `related_links`, `plural`, `contents_view`. It sits below
-the view layer because it must: `core/tests/test_module_conventions.py` rule 3
+the view layer because it must: `tests/test_module_conventions.py` rule 3
 refuses a private name read across a module boundary and rule 5 refuses a
 duplicated constant, and `regulation` already imports `in_force_versions` from
 `search`, so a sideways import would be circular.
 
-**The read surfaces answer 304.** `core/http_cache.py` gives
+**The read surfaces answer 304.** `web/http_cache.py` gives
 `provision_permalink`, `regulation_detail`, `compare_versions`,
 `edition_contents` and `edition_chain` a `Last-Modified` taken from
 `CorpusCurrency.refreshed_at`. Four rules:
@@ -679,7 +741,7 @@ the validator is withheld rather than invented.
 
 **The edge stores the anonymous copy.** A 304 still costs a render; an edge
 hit costs nothing at Django. `modules/cloudflare/main.tf` marks the five read
-surfaces cacheable, and `core/http_cache.py` decides for how long
+surfaces cacheable, and `web/http_cache.py` decides for how long
 (`EDGE_MAX_AGE`, one hour). Four rules:
 
 - **The app owns the TTL**, not the rule. The rule says `respect_origin`,
@@ -692,12 +754,12 @@ surfaces cacheable, and `core/http_cache.py` decides for how long
 - **`Vary: Cookie` is gone.** Cloudflare honours `Vary` only on
   `Accept-Encoding`, so any other value made the page uncacheable — the whole
   cost problem. `SessionMiddleware` adds the header after the view runs, so
-  `core.http_cache.PublicCacheVary` removes it from the outside and must stay
+  `web.http_cache.PublicCacheVary` removes it from the outside and must stay
   **first** in `MIDDLEWARE`.
 - **No form renders on a read page.** A response carrying `Set-Cookie` is one
   no shared cache stores, and one `{% csrf_token %}` in a hidden dialog is
   enough to attach one. Both dialogs fetch their panel instead
-  (`core:citation_panel`, `core:report_form`); `test_no_cookie_is_set_on_a_read_page`
+  (`web:citation_panel`, `web:report_form`); `test_no_cookie_is_set_on_a_read_page`
   fails if a form comes back.
 
 Nothing purges the edge on deploy, so a template change can stay invisible for
@@ -721,8 +783,8 @@ version. A comparison renders two versions, not a subtree: **~16 kB** against a
 permalink's 26 kB average and a root permalink's 1.9 MB. It is also the only
 page that answers what changed between two versions, which is the product.
 
-**The scans are gated at the edge** (`core/asset_signing.py`,
-`config/assets.py` `SIGNED_PREFIXES`). In production a Cloudflare Worker
+**The scans are gated at the edge** (`corpus/asset_signing.py`,
+`data/assets.py` `SIGNED_PREFIXES`). In production a Cloudflare Worker
 answers the mirrored asset trees from R2, so Django is not in the path and
 `edition_allowed` never runs on an image. `documents/` holds the whole-page
 scans — the primary evidence, for an edition we gate — and its keys are
@@ -730,7 +792,7 @@ sequential, so the edition could be walked page by page without ever loading a
 gated page. Django now signs those URLs and the Worker refuses an unsigned one.
 
 - **The asset gate is the page gate.** A token is only minted while rendering
-  a page `core.access` already allowed, so the two cannot drift.
+  a page `accounts.access` already allowed, so the two cannot drift.
 - **The token does not expire.** An expiring token cannot survive the 304s
   above, or a printed exhibit outliving its footnotes. What it defeats is
   enumeration, not somebody re-posting a URL they were given.

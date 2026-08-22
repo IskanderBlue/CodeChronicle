@@ -2,10 +2,10 @@
 {% load humanize %}
 
 {% comment %} No title block: this page IS the site, so it carries the site
-   default from core.seo. Restating the same sentence here is how the page
+   default from corpus.seo. Restating the same sentence here is how the page
    and its social card drift apart. {% endcomment %}
 
-{% comment %} Public front page (core.views.landing), served at `/` for a visitor
+{% comment %} Public front page (web.views.landing), served at `/` for a visitor
    and at `/about/` for everybody.
 
    Styling splits on one line: stock layout is a Tailwind utility on the
@@ -578,7 +578,7 @@
             <p class="lp-examples lp-rise" style="--d:260ms">
                 <span>Try</span>
                 {% for ex in try_examples %}
-                <a href="{% url 'core:search' %}?q={{ ex.query|urlencode }}&amp;d={{ ex.date }}">{{ ex.query }}</a>
+                <a href="{% url 'web:search' %}?q={{ ex.query|urlencode }}&amp;d={{ ex.date }}">{{ ex.query }}</a>
                 {% endfor %}
             </p>
             {% endif %}
@@ -592,11 +592,11 @@
                earns it no standing and lets no reader find it. {% endcomment %}
             <p class="lp-examples lp-rise" style="--d:290ms">
                 <span>Or read</span>
-                <a href="{% url 'core:guard_height' %}">one question answered across every edition: the minimum guard height for a stair inside a house</a>
+                <a href="{% url 'web:guard_height' %}">one question answered across every edition: the minimum guard height for a stair inside a house</a>
             </p>
 
             {% comment %} The colophon. Every figure is counted by the view from the
-               live tables — see core.views.landing. {% endcomment %}
+               live tables — see web.views.landing. {% endcomment %}
             <div class="lp-figures lp-rise" style="--d:320ms">
                 <div class="lp-fig">
                     <div class="n">{{ edition_count }}</div>
@@ -661,7 +661,7 @@
                 {% endif %}
                 Ontario only, for now. An edition is listed here only once every regulation that
                 amended it has been parsed and applied &mdash; the same gate the
-                <a href="{% url 'core:data_sources' %}" class="ui-link">Sources</a> page reports.
+                <a href="{% url 'web:data_sources' %}" class="ui-link">Sources</a> page reports.
             </p>
         </div>
     </section>
@@ -748,7 +748,7 @@
                 belong to the years that survive only as scanned paper:
             </p>
             {% comment %} Each class links to a provision the parity report actually
-               closed on it (core.views.landing.DIFFERENCE_CLASSES). Exemplars are
+               closed on it (web.views.landing.DIFFERENCE_CLASSES). Exemplars are
                OBC 2006 wherever possible, because that edition opens for everyone —
                but OBC 2006 only ever raised THREE of the eleven, so the other eight
                have to come from 1997 or 2012 and land on the locked-edition teaser.
@@ -774,7 +774,7 @@
                 An edition is published only after that review closes. Where the record itself is
                 genuinely silent &mdash; most often the punctuation joining a phrase an amendment
                 inserts into a list &mdash; we say so on the provision and state the convention we
-                used: <a href="{% url 'core:list_punctuation' %}" class="ui-link">how inserted
+                used: <a href="{% url 'web:list_punctuation' %}" class="ui-link">how inserted
                 phrases are punctuated</a>.
             </p>
         </div>
@@ -831,7 +831,7 @@
                         </p>
                         {% comment %} The REAL rail, not a drawing of one: the same
                            partial a search result and the permalink page render, fed by
-                           the same builder (core.views.regulation._provenance_result)
+                           the same builder (web.views.regulation._provenance_result)
                            against Article 1.1.2.4. of Division A in OBC 2006. So this
                            shows the actual lineage rows, the actual clause citations
                            and the actual outward `ext` links, and it cannot promise a
@@ -920,7 +920,7 @@
                             you get each version it could mean, rather than a silent guess.
                         </p>
                         {% comment %} Real text, real links: the same provision as row 02,
-                           run through core.cross_refs.annotate_versions with fan_out on —
+                           run through corpus.cross_refs.annotate_versions with fan_out on —
                            which is the code path the provision page itself uses. The `v2`
                            chip after 1.3.1.2. is not drawn; that citation genuinely
                            resolves to two candidate versions on this date. The e-Laws
@@ -1009,7 +1009,7 @@
                 {{ provision_count|intcomma }} provisions &middot;
                 {{ version_count|intcomma }} versions &middot;
                 {{ amending_regs|intcomma }} amending regulations &middot;
-                <a href="{% url 'core:data_sources' %}" class="ui-link">where the data comes from</a>
+                <a href="{% url 'web:data_sources' %}" class="ui-link">where the data comes from</a>
             </p>
         </div>
     </section>
@@ -1035,14 +1035,14 @@
                 One free search without an account. Unlimited with one.
             </p>
             <div class="lp-cta lp-rise mt-8 flex flex-wrap justify-center gap-3.5" style="--d:130ms">
-                <a class="go" href="{% url 'core:search' %}">Search the Code <span aria-hidden="true">&rarr;</span></a>
-                <a class="alt" href="{% url 'core:pricing' %}">See pricing</a>
+                <a class="go" href="{% url 'web:search' %}">Search the Code <span aria-hidden="true">&rarr;</span></a>
+                <a class="alt" href="{% url 'web:pricing' %}">See pricing</a>
             </div>
             <p class="lp-disclaim lp-rise" style="--d:190ms">
                 Not legal advice. Legislative text &copy; King&rsquo;s Printer for Ontario,
                 reproduced from the published record. CodeChronicle is not affiliated with or
                 endorsed by the Province of Ontario &mdash;
-                <a href="{% url 'core:terms_of_service' %}" class="ui-link">terms</a>.
+                <a href="{% url 'web:terms_of_service' %}" class="ui-link">terms</a>.
             </p>
         </div>
     </section>

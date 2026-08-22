@@ -59,7 +59,7 @@
                 <li>We use it to see which parts of the corpus are used, and to decide what to
                     verify and expand next</li>
                 <li>We use it to check compliance with the Acceptable Use rules in our
-                    <a href="{% url 'core:terms_of_service' %}" class="ui-link">Terms of Service</a>
+                    <a href="{% url 'web:terms_of_service' %}" class="ui-link">Terms of Service</a>
                     &mdash; those rules forbid systematic or bulk retrieval, and this record is how
                     we can tell</li>
                 <li>We do not use it to advertise to you, and we do not sell or share it</li>
@@ -72,7 +72,7 @@
             </p>
 
             {% comment %}
-            Added 2026-08-01 with the edition-request band (core/views/demand.py).
+            Added 2026-08-01 with the edition-request band (web/views/demand.py).
             It is the first thing on the site that takes an email address from
             somebody who has no account, so it needed its own heading rather
             than a line under Account Information.

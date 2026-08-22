@@ -52,14 +52,14 @@ cookie off the page response, which is what lets the edge cache the page.
                 cookie to the page — which stops any shared cache storing the
                 page at all.  One hidden form on a dialog nobody opened is
                 enough to make every provision page uncacheable at the edge.
-                See core.views.feedback.report_form.
+                See web.views.feedback.report_form.
 
                 Same shape as the Cite menu (partials/_export_citation.html):
                 the node is teleported to body by Alpine, so htmx has not seen
                 it and openReport() calls htmx.process on the first open.
                 {% endcomment %}
                 <div x-ref="reportPanel"
-                     hx-get="{% url 'core:report_form' %}?code_edition={{ code_edition|urlencode }}&amp;division={{ division|urlencode }}&amp;provision_id={{ provision_id|urlencode }}&amp;version={{ version|urlencode }}&amp;reg_id={{ reg_id|urlencode }}&amp;surface={{ report_surface|urlencode }}"
+                     hx-get="{% url 'web:report_form' %}?code_edition={{ code_edition|urlencode }}&amp;division={{ division|urlencode }}&amp;provision_id={{ provision_id|urlencode }}&amp;version={{ version|urlencode }}&amp;reg_id={{ reg_id|urlencode }}&amp;surface={{ report_surface|urlencode }}"
                      hx-trigger="intersect once" hx-target="this" hx-swap="innerHTML">
                     <p class="text-[12px] italic text-ink-3">Opening the form&hellip;</p>
                 </div>

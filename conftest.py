@@ -1,6 +1,6 @@
 """Shared pytest fixtures.
 
-Content gating (core.access) is unconditional, so any anonymous request to a
+Content gating (accounts.access) is unconditional, so any anonymous request to a
 gated surface is scoped to ``settings.FREE_TIER_CODE_NAMES``. Most tests
 exercise those surfaces with fixture editions and are not about gating —
 widen the free scope to the editions test fixtures create so they keep

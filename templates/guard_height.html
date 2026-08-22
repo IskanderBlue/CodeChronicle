@@ -18,7 +18,7 @@
    holds the edition.
 
    No form on this page. One csrf_token attaches a Set-Cookie header and no shared cache
-   stores the response (core.http_cache). The page is decorated corpus_conditional.
+   stores the response (web.http_cache). The page is decorated corpus_conditional.
 
    Every container that paints a background re-declares --backdrop, because the
    attestation rail knocks its ring out against whatever is behind it. {% endcomment %}
@@ -230,8 +230,8 @@
         <p class="text-ink-2">
             Every comparison above names both versions, both in-force windows and the regulation behind each
             one, and opens on our comparison page.
-            <a class="ui-link" href="{% url 'core:verification_guide' %}">How to read the band</a> explains
-            each mark. <a class="ui-link" href="{% url 'core:data_sources' %}">Our sources</a> lists what we
+            <a class="ui-link" href="{% url 'web:verification_guide' %}">How to read the band</a> explains
+            each mark. <a class="ui-link" href="{% url 'web:data_sources' %}">Our sources</a> lists what we
             hold and where each edition was obtained.
         </p>
         <p class="mt-3 text-ink-2">
@@ -255,7 +255,7 @@
            FREE_TIER_CODE_NAMES. A 1999 date read OBC 1997 and sent a first-time reader straight to the
            locked-edition page from the article's one call to action. If the free tier ever moves, move
            this date with it. {% endcomment %}
-        <p class="mt-4"><a class="ui-btn" href="{% url 'core:search' %}?q=guard+height+for+a+stair+in+a+house&amp;d=2008-06-01">Try it at 1 June 2008</a></p>
+        <p class="mt-4"><a class="ui-btn" href="{% url 'web:search' %}?q=guard+height+for+a+stair+in+a+house&amp;d=2008-06-01">Try it at 1 June 2008</a></p>
     </section>
 
 </article>

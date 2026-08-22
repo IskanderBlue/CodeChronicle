@@ -15,8 +15,8 @@ from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 from djstripe.models import Customer, Subscription
 
-from config.search_limits import CLOSE_MATCH_THRESHOLD
 from core.provision_notes import GroupedNotes, group_notes
+from data.search_limits import CLOSE_MATCH_THRESHOLD
 
 
 def natural_provision_key(provision_id: str) -> tuple[tuple[int, int, str], ...]:
@@ -188,7 +188,7 @@ class TermsAcceptance(models.Model):
     when, and from where) is preserved as evidence rather than overwritten. The
     account-audit counterpart to ``AuthEvent``: ``user`` is ``SET_NULL`` so the
     record outlives the account, with ``email`` mirrored so a row stands on its
-    own. Written in the signup flow; see ``core.forms.CustomSignupForm``.
+    own. Written in the signup flow; see ``accounts.forms.CustomSignupForm``.
     """
 
     # Auto pk, plugin-only — declared for Pyright.
@@ -268,7 +268,7 @@ class QueryCache(models.Model):
     # True when ``parsed_params["date"]`` was the LLM's "no date mentioned ->
     # use today" default (i.e. equalled today at parse time).  Such a parse is
     # only valid for that day, so the parser treats the row as stale once the
-    # date rolls (see ``api.llm_parser.parse_user_query``).  An explicit /
+    # date rolls (see ``search.llm.llm_parser.parse_user_query``).  An explicit /
     # historical date is stable and stays cached indefinitely.
     date_is_relative = models.BooleanField(default=False)
 
@@ -284,7 +284,7 @@ class QueryCache(models.Model):
 #:
 #: ``query_date`` is an annotation, not a column; see
 #: :func:`_with_question_key`.  It carries the same name the rest of the
-#: product uses for this value — ``core.views.search`` reads
+#: product uses for this value — ``web.views.search`` reads
 #: ``parsed_params["date"]`` into a context key of that name, and the
 #: templates render it — because it is the same value in a different form.
 QUESTION_FIELDS = ("query", "query_date")
@@ -304,14 +304,14 @@ def _with_question_key(searches: "models.QuerySet[SearchHistory]") -> "models.Qu
 def question_keys(searches: "models.QuerySet[SearchHistory]") -> "models.QuerySet":
     """The distinct questions in ``searches``, as ``(words, date)`` pairs.
 
-    ``core.middleware`` charges an anonymous reader per question, and
-    ``core.views.history`` shows one card per question.  Both used to spell the
+    ``web.middleware`` charges an anonymous reader per question, and
+    ``web.views.history`` shows one card per question.  Both used to spell the
     key by hand, and each said in a comment that it agreed with the other.  If
     one key widens and the other does not, a reader is charged for a search
     they cannot find in their own history.
 
     **The address key is wider, and stays wider.**
-    ``core.views.search._push_search_url`` also writes ``occupancy``,
+    ``web.views.search._push_search_url`` also writes ``occupancy``,
     ``storeys``, ``area`` and ``area_unit``.  That is correct and must not be
     folded in here: the address has to reproduce the *page*, and the building
     changes the order of the results — but re-ranking one question is not
@@ -391,7 +391,7 @@ class EngagementEvent(models.Model):
     search viewer, landing on a regulation or provision permalink, or
     following a result link out (external source, PDF download).  Writes are
     best-effort and must never break the page or the search — see
-    ``core.events.record_event``.
+    ``telemetry.events.record_event``.
 
     ``object_id`` is intentionally a loose integer, **not** a ``ForeignKey``:
     events outlive the rows they point at (``load_edition`` replaces
@@ -442,7 +442,7 @@ class EngagementEvent(models.Model):
         EXPORT = "export", "Export"
         # An API account ran past its daily search allowance and was made
         # to wait.  Nothing was refused — the allowance is a throttle, not
-        # a wall (api.auth) — so this is not a gate event and must not
+        # a wall (web.api.auth) — so this is not a gate event and must not
         # join RATE_LIMIT_BLOCK's conversion denominator, which counts
         # value withheld.  It records that the line was crossed, and it is
         # what makes the operator notice fire once a day rather than once
@@ -594,7 +594,7 @@ class ProvisionFeedback(models.Model):
     dispute.  A provision report names the provision and its version.  A
     regulation report names ``reg_id`` instead, since a regulation page shows
     a whole instrument and no single provision.  Exactly one shape is filled;
-    ``core.views.feedback`` refuses a submission with neither.
+    ``web.views.feedback`` refuses a submission with neither.
     """
 
     # Auto pk + FK id-shadow, plugin-only — declared for Pyright.
@@ -689,7 +689,7 @@ class AuthEvent(models.Model):
     that bypasses Django — see ``docs/security/breach-response-plan.md``.
 
     Writes are best-effort and must never block authentication — see
-    ``core.auth_audit``.  ``user`` is ``SET_NULL`` so the trail outlives the
+    ``accounts.signals.auth_audit``.  ``user`` is ``SET_NULL`` so the trail outlives the
     account, and a failed attempt has no user at all, so the attempted
     identifier is kept separately in ``email``.
     """
@@ -1579,16 +1579,16 @@ class CodeEditionProvisionVersion(models.Model):
     cross_references: "models.Manager[ProvisionCrossReference]"
     # Render-time annotations, not DB fields: the body with within-edition
     # citations linked, and the list form of the same records
-    # (``core.cross_refs.annotate_versions``).
+    # (``corpus.cross_refs.annotate_versions``).
     linked_html: str
     cross_ref_cites: list[dict[str, Any]]
     # The page images cropped to this provision, for the printable surfaces
-    # only (``core.page_crops.build_crops``).  Not on the reading page: there
+    # only (``corpus.printing.page_crops.build_crops``).  Not on the reading page: there
     # a scan is shown whole with the region highlighted, because the reader
     # wants to see the provision in its setting.
     crops: list[dict[str, Any]]
     # Whether the printable surfaces repeat this version's tables as their own
-    # figures (``core.print_options``).  False for an image-rendered version,
+    # figures (``corpus.printing.print_options``).  False for an image-rendered version,
     # whose scan already shows them.
     show_tables: bool
     codeeditionprovisionversionclause_set: (
@@ -1626,7 +1626,7 @@ class CodeEditionProvisionVersion(models.Model):
     # Counts over the title *alone*, tokenized by CCM with the same function
     # that produced ``keyword_counts`` (which is the title + body + table-text
     # union).  The scorer scores title and body as separate BM25F fields and
-    # recovers the body counts by subtracting these — see ``api.search.engine``.
+    # recovers the body counts by subtracting these — see ``search.engine.engine``.
     # NULL for editions loaded before CCM began emitting the field; the scorer
     # then contributes nothing from the title, which is exactly single-field
     # BM25 — so an un-reloaded edition ranks as it did before, rather than
@@ -1684,7 +1684,7 @@ class CodeEditionProvisionVersion(models.Model):
         appears alongside its later siblings.
 
         Used by the permalink hierarchy nav (``views.regulation._related_links``)
-        and the cross-reference "cited by" panel (``core.cross_refs``) — both
+        and the cross-reference "cited by" panel (``corpus.cross_refs``) — both
         answer "could a reader of this version have been looking at that one".
         """
         self_point = (
@@ -1744,7 +1744,7 @@ class CodeEditionProvisionVersion(models.Model):
         Every surface asks this property rather than comparing the dates
         itself.  Two private copies of the half-open rule would eventually
         disagree, and the disagreement would be a false statement about what
-        the law is — the same reason ``core.seo.last_governed_day`` exists.
+        the law is — the same reason ``corpus.seo.last_governed_day`` exists.
 
         Note that today no loaded version is ``"current"``: the corpus ends on
         31 March 2025, because the code in force now is Licensed Material this
@@ -1779,7 +1779,7 @@ class CodeEditionProvisionVersion(models.Model):
         prefetched cache and fires a fresh ``ORDER BY apply_order DESC LIMIT 1``
         per call — an N+1 across the amendment chain (``_provenance_rail.html``
         renders one row per version).  The search path prefetches this reverse
-        set with ``clause__regulation`` (see ``api.search.orchestration``), so
+        set with ``clause__regulation`` (see ``search.engine.orchestration``), so
         the list access below hits the cache and the ``.clause`` joins are warm.
         """
         rows = list(self.codeeditionprovisionversionclause_set.all())
@@ -1872,7 +1872,7 @@ class ProvisionVersionTable(models.Model):
     """Table content associated with a provision version."""
 
     # Render-time annotations, not DB fields: the same strings with
-    # within-edition citations linked (``core.cross_refs.annotate_tables``).
+    # within-edition citations linked (``corpus.cross_refs.annotate_tables``).
     linked_html: str
     linked_notes: str
     # This table's images, cropped, on the printable surfaces only.
@@ -1986,7 +1986,7 @@ class ProvisionCrossReference(models.Model):
 
     ``occurrence`` is the pre-span fallback: for a payload built before CCM
     shipped spans, the load derives which literal occurrence of
-    ``surface_text`` this record anchors to (:func:`core.cross_refs.assign_occurrences`).
+    ``surface_text`` this record anchors to (:func:`corpus.cross_refs.assign_occurrences`).
     ``None`` there means the text could not be located — the citation still
     counts for the "cites"/"cited by" lists but is not linked inline.  Records
     carrying ``start``/``end`` never consult it.
@@ -2158,7 +2158,7 @@ class ProvisionDisposition(models.Model):
     Ingested by ``load_edition`` from the payload's
     ``provision_discontinuations`` key and from ``provision_mappings``
     rows carrying the ``"not_processed"`` sentinel.  The lineage resolver
-    (``core.provision_lineage``) uses these to refine the covered-no-row
+    (``corpus.lineage.provision_lineage``) uses these to refine the covered-no-row
     marker; a ``not_processed`` record coexisting with mapping rows is a
     multi-leg verdict (e.g. a split with one leg outside the corpus), not
     a contradiction — the resolver surfaces it as an extra leg row.
@@ -2211,7 +2211,7 @@ class EditionTransition(models.Model):
     the absence of a row, tombstone, and sentinel positively asserts "no
     successor".  But only if we know the transition was mapped at all;
     this row is that knowledge: it lets the lineage resolver
-    (``core.provision_lineage``) distinguish **discontinued** (covered, no
+    (``corpus.lineage.provision_lineage``) distinguish **discontinued** (covered, no
     row) from **no data yet** (transition never mapped).
 
     Coverage is declared explicitly rather than inferred from mapping-row

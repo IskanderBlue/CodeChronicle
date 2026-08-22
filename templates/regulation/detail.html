@@ -35,7 +35,7 @@
             {% endif %}
             <span>{{ clauses|length }} CLAUSE{{ clauses|length|pluralize|upper }}</span>
             <span class="text-rule">&middot;</span>
-            <a href="{% url 'core:edition_chain' regulation.edition.pk %}"
+            <a href="{% url 'web:edition_chain' regulation.edition.pk %}"
                class="text-secondary border-b border-secondary hover:text-secondary-2">VIEW AMENDMENT CHAIN →</a>
             {% comment %} The dispute affordance. This page has no attestation rail
                to hang it on, so it joins the metadata row, which is the same mono

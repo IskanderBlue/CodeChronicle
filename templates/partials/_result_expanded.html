@@ -100,7 +100,7 @@
 {% comment %} A verdict, stated before the panes. The redline marks what
    changed, so "nothing is marked" and "I have not found the mark yet" look
    alike until the reader has read both panes to the end. Saying it once, at
-   the top, is the whole point — see api.formatters.diff_is_empty. {% endcomment %}
+   the top, is the whole point — see search.formatters.formatters.diff_is_empty. {% endcomment %}
 {% if result.text_unchanged %}
 <p class="mt-4 border border-rule bg-surface-2 px-4 py-2 font-mono text-[11px] text-ink-2">
     The text is unchanged between these two versions.
@@ -108,7 +108,7 @@
 {% endif %}
 
 {% comment %} Each version is a complete formatted result carrying its own
-   in-force band + provenance (api.formatters._format_single_result). Layout
+   in-force band + provenance (search.formatters.formatters._format_single_result). Layout
    forks by surface: the desktop master-detail (metadata_in_rail) enters a
    side-by-side focus-compare — expanding "previous" collapses the results list
    (root `comparePrevious`) so the two panes share the list+center width, primary

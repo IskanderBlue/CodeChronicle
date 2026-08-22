@@ -41,7 +41,7 @@
                         &middot; {% if key.last_used_at %}last used {{ key.last_used_at|date:"j M Y" }}{% else %}never used{% endif %}
                     </p>
                 </div>
-                <form method="POST" action="{% url 'core:revoke_api_key' key.pk %}">
+                <form method="POST" action="{% url 'web:revoke_api_key' key.pk %}">
                     {% csrf_token %}
                     <button type="submit" class="border border-ink-2 px-3 py-1.5 font-mono text-xs uppercase tracking-[0.06em] text-ink-2 hover:bg-surface">
                         Revoke
@@ -58,7 +58,7 @@
            binds — the view makes the same test, so a reader who posts anyway
            meets the same answer. {% endcomment %}
         {% if api_keys|length < api_key_limit %}
-        <form method="POST" action="{% url 'core:create_api_key' %}" class="flex flex-wrap items-end gap-3">
+        <form method="POST" action="{% url 'web:create_api_key' %}" class="flex flex-wrap items-end gap-3">
             {% csrf_token %}
             <div class="grow">
                 <label for="api-key-name" class="block font-mono text-xs uppercase tracking-[0.06em] text-ink-3 mb-1">What is it for?</label>

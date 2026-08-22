@@ -2,7 +2,7 @@
 
    Not a mode. One click goes straight to a comparison of two named versions;
    there is no armed state to leave. Which two comes from
-   ``core.compare.prepared_pair``, stamped onto the result as ``compare_pair``
+   ``corpus.lineage.compare.prepared_pair``, stamped onto the result as ``compare_pair``
    by the search formatter and by the permalink view, so every entry point
    opens the same pair.
 
@@ -20,11 +20,11 @@
    colour and border, by contrast, come from an UNLAYERED block in base.html
    and beat any Tailwind utility: vary the label, never the paint.
 
-   Context: `compare_pair` (core.compare.PreparedPair or None).
+   Context: `compare_pair` (corpus.lineage.compare.PreparedPair or None).
 {% endcomment %}
 {% if compare_pair %}
 {% if compare_pair.locked %}
-<a href="{% url 'core:pricing' %}" @click.stop
+<a href="{% url 'web:pricing' %}" @click.stop
    class="ui-btn-ghost mt-2 w-full font-mono text-[11px] font-semibold uppercase tracking-[0.08em]"
    title="Comparing across editions is part of Pro">Compare versions &mdash; Pro</a>
 {% else %}

@@ -57,7 +57,7 @@
    carries one live form. The landing page's two copies are both handoff, which
    has no modal to feed. {% endcomment %}
 {% if mode == 'live' %}{{ building_data|json_script:"cc-building-data" }}{% endif %}
-<form {% if mode == 'live' %}id="search-form" hx-post="{% url 'core:search_results' %}" hx-target="#results-area" hx-on::before-request="document.getElementById('results-area').innerHTML=document.getElementById('loading-tpl').innerHTML" @cc-occupancy-read.window="adopt($event.detail.occupancy)" x-data="ccBuilding()"{% else %}method="get" action="{% url 'core:search' %}"{% endif %}>
+<form {% if mode == 'live' %}id="search-form" hx-post="{% url 'web:search_results' %}" hx-target="#results-area" hx-on::before-request="document.getElementById('results-area').innerHTML=document.getElementById('loading-tpl').innerHTML" @cc-occupancy-read.window="adopt($event.detail.occupancy)" x-data="ccBuilding()"{% else %}method="get" action="{% url 'web:search' %}"{% endif %}>
     {% if mode == 'live' %}{% csrf_token %}{% endif %}
     {% comment %} Cellular field: QUERY label · serif query input · Jurisdiction
        and AS-OF cells, divided by 1px rules. AS-OF uses the `highlight` role

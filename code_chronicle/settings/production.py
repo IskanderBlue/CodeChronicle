@@ -201,7 +201,7 @@ R2_BACKUP_BUCKET = _resolve_runtime_setting("R2_BACKUP_BUCKET")
 BACKUP_AGE_RECIPIENT = _resolve_runtime_setting("BACKUP_AGE_RECIPIENT")
 BACKUP_HEALTHCHECK_URL = _resolve_runtime_setting("BACKUP_HEALTHCHECK_URL")
 
-# The asset-token secret (core.asset_signing).  Re-resolved here for the same
+# The asset-token secret (corpus.asset_signing).  Re-resolved here for the same
 # reason as the block above: base.py reads os.environ, and the container has no
 # such variable, so the value would be "" and every scan would be signed with
 # SECRET_KEY instead of the string the edge Worker holds.  The Worker would

@@ -4,7 +4,7 @@ import os
 
 from coloured_logger import Logger
 
-from config.synonyms import SYNONYMS
+from data.synonyms import SYNONYMS
 
 logger = Logger(__name__)
 
@@ -62,7 +62,7 @@ def extract_keywords():
 
     filtered_keywords = sorted(kw for kw in keywords if is_searchable_keyword(kw))
 
-    # Write to config/keywords.py
+    # Write to data/keywords.py
     output_path = os.path.join("config", "keywords.py")
     os.makedirs("config", exist_ok=True)
 

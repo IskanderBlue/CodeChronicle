@@ -14,13 +14,13 @@
         {% comment %} `compare_enabled` turns on the per-row compare links.
            The search-results rail never passes it, so they stay out of a list
            the reader is still scanning. Each link's URL is stamped in Python
-           (core.compare.annotate_chain_comparisons); the rail no longer builds
+           (corpus.lineage.compare.annotate_chain_comparisons); the rail no longer builds
            a self-URL for them to hang a query param off. {% endcomment %}
         {% comment %} Lineage: predecessor rows — where this provision came
            from in the previous edition (or an intra-edition renumber). Sits
            above the Base row, separated by a rule, because it precedes this
            edition's timeline. Links/verbs/locks are prebuilt in Python
-           (core.provision_lineage); a locked link upsells to pricing
+           (corpus.lineage.provision_lineage); a locked link upsells to pricing
            instead of 403ing after click-through. {% endcomment %}
         {% if result.lineage_predecessors %}
         {% with lineage=result.lineage_predecessors %}
@@ -47,12 +47,12 @@
            reader happens to be on this version. {% endcomment %}
         {% if result.base_regulation %}
         <div class="prov-row {% if result.version.pk == result.amendment_chain.0.pk %}prov-row-current bg-secondary-soft font-semibold text-ink ring-1 ring-secondary/40{% endif %}">
-            <div class="prov-cite"><p><span class="text-ink-3">Base &middot;</span> {% if result.base_regulation.pk %}<a href="{% url 'core:regulation_detail' result.base_regulation.pk %}" @click.stop class="ui-cite" title="O. Reg. {{ result.base_regulation.reg_id }}">O. Reg. {{ result.base_regulation.reg_id }}</a>{% else %}<span title="O. Reg. {{ result.base_regulation.reg_id }}">O. Reg. {{ result.base_regulation.reg_id }}</span>{% endif %}</p></div>
+            <div class="prov-cite"><p><span class="text-ink-3">Base &middot;</span> {% if result.base_regulation.pk %}<a href="{% url 'web:regulation_detail' result.base_regulation.pk %}" @click.stop class="ui-cite" title="O. Reg. {{ result.base_regulation.reg_id }}">O. Reg. {{ result.base_regulation.reg_id }}</a>{% else %}<span title="O. Reg. {{ result.base_regulation.reg_id }}">O. Reg. {{ result.base_regulation.reg_id }}</span>{% endif %}</p></div>
             {% if result.base_regulation.source_url %}<span class="prov-ext"><a href="{{ result.base_regulation.source_url }}" target="_blank" rel="noopener" @click.stop class="ui-cite text-[10px]" title="{{ result.base_regulation.source_link_label }}">ext</a></span>{% endif %}
             {% if result.version.pk == result.amendment_chain.0.pk %}
             <span class="prov-actions"><span class="font-mono text-[9px] uppercase tracking-[0.08em] text-secondary">&larr; current</span></span>
             {% elif result.amendment_chain.0 %}
-            <span class="prov-actions"><a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.amendment_chain.0.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.amendment_chain.0.version %}{% endif %}" @click.stop class="font-mono text-[10px] ui-cite" title="{{ result.amendment_chain.0.title|default:result.id }}">v{{ result.amendment_chain.0.version }} &rarr;</a>{% if compare_enabled %}{% include "partials/_compare_link.html" with target=result.amendment_chain.0 %}{% endif %}</span>
+            <span class="prov-actions"><a href="{% if result.division %}{% url 'web:provision_permalink' result.code_edition result.division result.id result.amendment_chain.0.version %}{% else %}{% url 'web:provision_permalink_no_division' result.code_edition result.id result.amendment_chain.0.version %}{% endif %}" @click.stop class="font-mono text-[10px] ui-cite" title="{{ result.amendment_chain.0.title|default:result.id }}">v{{ result.amendment_chain.0.version }} &rarr;</a>{% if compare_enabled %}{% include "partials/_compare_link.html" with target=result.amendment_chain.0 %}{% endif %}</span>
             {% endif %}
         </div>
         {% endif %}
@@ -92,7 +92,7 @@
                 {% if entry.pk == result.version.pk %}
                 <div class="prov-row prov-row-current bg-secondary-soft text-[11px] font-semibold text-ink ring-1 ring-secondary/40">
                     <div class="prov-cite">
-                        <p>{% if entry_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="ui-cite" title="O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}<span title="O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</span>{% endif %}</p>
+                        <p>{% if entry_clause.regulation.pk %}<a href="{% url 'web:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="ui-cite" title="O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}<span title="O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</span>{% endif %}</p>
                         <p class="font-normal text-[10px] text-ink-3">{% if entry.never_in_force %}Never in force{% else %}In force {{ entry.effective_date|date:"Y-m-d" }}{% endif %}</p>
                     </div>
                     {% if entry_clause.regulation.source_url %}<span class="prov-ext"><a href="{{ entry_clause.regulation.source_url }}" target="_blank" rel="noopener" @click.stop class="ui-cite text-[10px] font-normal" title="{{ entry_clause.regulation.source_link_label }}">ext</a></span>{% endif %}
@@ -101,11 +101,11 @@
                 {% else %}
                 <div class="prov-row text-[11px] text-ink-3">
                     <div class="prov-cite">
-                        <p>{% if entry_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="ui-cite" title="O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}<span title="O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</span>{% endif %}</p>
+                        <p>{% if entry_clause.regulation.pk %}<a href="{% url 'web:regulation_detail' entry_clause.regulation.pk %}#clause-{{ entry_clause.pk }}" @click.stop class="ui-cite" title="O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</a>{% else %}<span title="O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}">O. Reg. {{ entry_clause.regulation.reg_id }}, cl. {{ entry_clause.clause_id }}</span>{% endif %}</p>
                         <p class="text-[10px]">{% if entry.never_in_force %}Never in force{% else %}In force {{ entry.effective_date|date:"Y-m-d" }}{% endif %}</p>
                     </div>
                     {% if entry_clause.regulation.source_url %}<span class="prov-ext"><a href="{{ entry_clause.regulation.source_url }}" target="_blank" rel="noopener" @click.stop class="ui-cite text-[10px]" title="{{ entry_clause.regulation.source_link_label }}">ext</a></span>{% endif %}
-                    <span class="prov-actions"><a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id entry.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id entry.version %}{% endif %}" @click.stop class="font-mono text-[10px] ui-cite" title="{{ entry.title|default:result.id }}">v{{ entry.version }} &rarr;</a>{% if compare_enabled %}{% include "partials/_compare_link.html" with target=entry %}{% endif %}</span>
+                    <span class="prov-actions"><a href="{% if result.division %}{% url 'web:provision_permalink' result.code_edition result.division result.id entry.version %}{% else %}{% url 'web:provision_permalink_no_division' result.code_edition result.id entry.version %}{% endif %}" @click.stop class="font-mono text-[10px] ui-cite" title="{{ entry.title|default:result.id }}">v{{ entry.version }} &rarr;</a>{% if compare_enabled %}{% include "partials/_compare_link.html" with target=entry %}{% endif %}</span>
                 </div>
                 {% endif %}
                 {% endif %}
@@ -125,11 +125,11 @@
         {% with next_clause=result.next_version.last_contributing_clause %}
         <div class="prov-row italic text-ink-3">
             <div class="prov-cite">
-                <p>Next: {% if next_clause %}{% if next_clause.regulation.pk %}<a href="{% url 'core:regulation_detail' next_clause.regulation.pk %}#clause-{{ next_clause.pk }}" @click.stop class="not-italic ui-cite" title="O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</a>{% else %}<span class="not-italic" title="O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</span>{% endif %}{% endif %}</p>
+                <p>Next: {% if next_clause %}{% if next_clause.regulation.pk %}<a href="{% url 'web:regulation_detail' next_clause.regulation.pk %}#clause-{{ next_clause.pk }}" @click.stop class="not-italic ui-cite" title="O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</a>{% else %}<span class="not-italic" title="O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}">O. Reg. {{ next_clause.regulation.reg_id }}, cl. {{ next_clause.clause_id }}</span>{% endif %}{% endif %}</p>
                 <p class="text-[10px]">{% if result.next_version.never_in_force %}Never in force{% else %}Not in force until {{ result.next_version.effective_date|date:"Y-m-d" }}{% endif %}</p>
             </div>
             {% if next_clause.regulation.source_url %}<span class="prov-ext"><a href="{{ next_clause.regulation.source_url }}" target="_blank" rel="noopener" @click.stop class="not-italic ui-cite text-[10px]" title="{{ next_clause.regulation.source_link_label }}">ext</a></span>{% endif %}
-            <span class="prov-actions not-italic"><a href="{% if result.division %}{% url 'core:provision_permalink' result.code_edition result.division result.id result.next_version.version %}{% else %}{% url 'core:provision_permalink_no_division' result.code_edition result.id result.next_version.version %}{% endif %}" @click.stop class="font-mono text-[10px] ui-cite" title="{{ result.next_version.title|default:result.id }}">v{{ result.next_version.version }} &rarr;</a>{% if compare_enabled %}{% include "partials/_compare_link.html" with target=result.next_version %}{% endif %}</span>
+            <span class="prov-actions not-italic"><a href="{% if result.division %}{% url 'web:provision_permalink' result.code_edition result.division result.id result.next_version.version %}{% else %}{% url 'web:provision_permalink_no_division' result.code_edition result.id result.next_version.version %}{% endif %}" @click.stop class="font-mono text-[10px] ui-cite" title="{{ result.next_version.title|default:result.id }}">v{{ result.next_version.version }} &rarr;</a>{% if compare_enabled %}{% include "partials/_compare_link.html" with target=result.next_version %}{% endif %}</span>
         </div>
         {% endwith %}
         {% endif %}
