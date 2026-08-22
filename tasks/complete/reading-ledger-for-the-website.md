@@ -1,53 +1,9 @@
 # Know what an account has taken, on the website too
 
-**Prefix:** `b-` moderate priority. Code, and actionable now.
-
-The API side shipped on 18 August 2026. The website ledger and its watch,
-the per-provision text fetch and the arrival record all shipped on 21 August
-2026. **Nothing is committed.** Item 6 is dropped, with the reasoning kept;
-item 7 is ops in the Terraform repository and is ready to apply.
-
-### Where this stands, 21 August 2026
-
-Every item except 7 is **built and green**: 1,435 tests, ruff clean, mypy
-clean (the hook's own `scripts/run_mypy.py api core config code_chronicle`,
-170 files), `makemigrations --check` reports no changes.
-
-**It is not committed, and it cannot be committed alone.** Two workstreams
-share this working tree, and the second one is not beside these files — it is
-inside them:
-
-- `core/views/regulation.py` holds 37 hunks mixing this card's work
-  (`record_versions`, `provision_text`, `core.subtrees`, `arrival_context`,
-  `delivered`/`recorded`) with a package-layering refactor (`edition_gate`,
-  `core.attribution`, `core.code_names`).
-- `core/access.py` is the same: `api_access_allowed` is this card's,
-  `edition_gate` is the refactor's.
-- `core/models.py` carries `ApiKey` and `ProvisionFetch` (migrations
-  0054–0056) beside `Organization`, `Membership` and `Invite` (0057–0058).
-- **The dependency runs the wrong way for a partial commit.**
-  `core/views/regulation.py` calls `edition_gate`, which exists only in the
-  refactor's uncommitted `core/access.py`. This card's files committed alone
-  give a `main` that raises `ImportError` on start-up.
-
-A hunk-level split also cannot pass the hooks. pre-commit reverts unstaged
-changes to *tracked* files but leaves *untracked* files on disk, and the mypy
-hook runs whole-tree (`pass_filenames: false`). So a partial `core/models.py`
-meets an untracked `core/teams.py` that imports `Organization`, and fails —
-against a tree state that is not what would be committed.
-
-**So the layering refactor lands first, and this card goes on top of it**, or
-everything goes in one snapshot that names both workstreams. A commit message
-for this card's share is at `.tmp/grand-commit.txt` (gitignored).
-
-⚠️ **The index already holds a partial snapshot, and it is stale.** Another
-session staged eight files, `core/views/regulation.py` among them, before this
-card's last edits to that file. `git status` shows it as `MM` — staged content
-plus newer unstaged content. A `git commit` without a fresh `git add` would
-commit the older half of that file and leave the rest behind, which is a
-broken tree that no test run would have seen. Stage explicitly before
-committing; do not reset the index, because the staged rows are another
-session's work in progress.
+**Complete.** The API side shipped on 18 August 2026. The website ledger and
+its watch, the per-provision text fetch and the arrival record shipped on
+21 August 2026. The retention purge went live on 22 August 2026. Item 6 is
+dropped, and the reasoning is kept.
 
 ## The problem
 
@@ -63,10 +19,7 @@ So the control is detection, not prevention. The threat is not a subscriber who
 reads offline. The threat is somebody who republishes the corpus as a rival
 citable source, and the ledger's job is to supply evidence in that one case.
 
-## What is built
-
-In the working tree. Passes **1429 tests**, ruff and mypy (177 files).
-**Not committed.**
+## What shipped
 
 | Piece | Where |
 |---|---|
@@ -85,33 +38,32 @@ In the working tree. Passes **1429 tests**, ruff and mypy (177 files).
 | The shared section builder both paths render through | `core.views.regulation._section_row` |
 | Arrival | `core.events.arrival_context` |
 | The cold-arrival column on the coverage table | `core.insights._cold_arrivals_in_window` |
-| Tests for all of it | `test_reading_ledger.py` (25), `test_deferred_provision_text.py` (17), `test_reading_shape.py` (9), `test_provision_contents.py` (27) |
+| Tests for all of it | `test_reading_ledger.py`, `test_deferred_provision_text.py`, `test_reading_shape.py`, `test_provision_contents.py` |
 
 Migrations `0054_apikey`, `0055_searchhistory_source_and_more`,
 `0056_provisionfetch`. All additive.
-(`0057` and `0058` are another branch's team work, not this card's.)
 
-**`0056` is hand-edited and must not be edited again.** `ProvisionFetch.source`,
-its index and its check constraint were folded into it rather than added by a
-`0057`, because `source` carries no model default and a follow-up migration
-would have needed a one-off fill value for rows that exist nowhere. That was
-safe only while `0056` was unreleased.
+**`0056` is hand-edited, and is now released, so it must not be edited again.**
+`ProvisionFetch.source`, its index and its check constraint were folded into it
+rather than added by a follow-up, because `source` carries no model default and
+a follow-up would have needed a fill value for rows that existed nowhere.
+Folding is only ever available before the migration ships.
 
-## What to build
+## The items
 
-### 1. Strengthen the Terms — DONE, 21 August 2026
+### 1. Strengthen the Terms
 
-The rewritten Terms are in force in the working tree. `terms_of_service.html`
+The rewritten Terms are in force. `terms_of_service.html`
 carries the audit right (*Records and Review*), the termination right, and the
 compilation claim named in *Ownership and Your Licence* as the amendment
 reconstruction rather than the provision text. `TERMS_VERSION` and
-`TERMS_REACCEPT_FROM` are both `2026-08-21`, so the first deploy after this
-walls every existing account with the re-acceptance prompt.
+`TERMS_REACCEPT_FROM` are both `2026-08-21`, so every account that existed
+before then met the re-acceptance prompt on the next deploy.
 
 **No lawyer has read it, and that is a decision, not an oversight**: the review
 waits on revenue. The header comment in the template records this.
 
-### 2. Record what the page rendered — DONE, 21 August 2026
+### 2. Record what the page rendered
 
 `core/reading_ledger.py` holds the website's write path. `record_versions`
 takes the versions a page rendered; `record_reads` takes ledger keys. Five
@@ -187,7 +139,7 @@ and records 3, because that day has writes. So each bulk surface stamps
   because a jsonb comparison orders 9 after 10 and this is a "fewer than"
   question.
 
-### 3. Lazy-load the descendants for signed-in readers — DONE, 21 August 2026
+### 3. Lazy-load the descendants for signed-in readers
 
 **The ledger records what an account was given, so delivery has to be granular
 or the record is coarse however carefully item 2 is written.** One request to a
@@ -298,7 +250,7 @@ on the one surface that had no cap.
 **How far it was reachable in practice is not measured.** The overlay is
 bounded now whether or not a container has ever been returned by a real search.
 
-### 4. Tell a run apart from a year — DONE, 21 August 2026, differently
+### 4. Tell a run apart from a year — built differently
 
 The card asked for a session key stamped on every row. **Do not build that.**
 A session key is the session cookie's value, and these rows are kept for two
@@ -318,7 +270,7 @@ did this account acquire text" and re-reading acquires nothing.
 interpretation.** `first_fetched_at` is an observation. "That was one sitting"
 is an interpretation, and interpretations get revised.
 
-### 5. Record how a reader arrived — DONE, 21 August 2026
+### 5. Record how a reader arrived
 
 Arrival measures **shape** rather than quantity, which has no ceiling problem:
 no amount of ordinary reading produces 3,000 cold arrivals in id order.
@@ -346,7 +298,7 @@ number cannot separate a walk from a practice, and a concept that earns
 nothing costs everybody who reads the code afterwards. `cold` carries the
 arrival signal on its own.
 
-### 6. Mint the scan token per account — DROPPED, 21 August 2026
+### 6. Mint the scan token per account — DROPPED
 
 Not deferred. Dropped, and the reasoning kept so nobody re-argues it.
 
@@ -390,55 +342,60 @@ only after confirming there is a log to read.
 ### 7. Schedule the retention purge on the backup timer
 
 The Privacy Policy says a reading record is kept for up to two years and then
-deleted. `core/management/commands/purge_reading_records.py` does the deleting.
-Nothing calls it, so today the sentence is a promise with no machinery.
+deleted. `purge_reading_records` does the deleting, and before this nothing
+called it, so the sentence was a promise with no machinery.
 
-**Reuse `cc-backup`, and add no new unit.** The scheduling style already in use
-is a systemd timer in `CodeChronicleTerraform/modules/compute/startup.sh`, with
-a healthchecks.io dead-man's switch watching it. `cc-backup.service` already
-runs a command inside `codechroniclenet-web` daily at 07:00 UTC, so the purge
-is one more line in that script.
+**It reuses `cc-backup` and adds no unit.** The production VM is
+Container-Optimized OS and has no cron, so anything periodic is a systemd timer
+in `CodeChronicleTerraform/modules/compute/startup.sh`. `cc-backup.service`
+already ran a command inside `codechroniclenet-web` daily at 07:00 UTC, so the
+purge is one more `ExecStart=` line in that unit, after the backup, with
+`--apply` and the command's own 730-day default.
 
-- **Run it after the backup**, and keep its exit code out of the backup's
-  healthchecks ping. A backup alarm must mean the backup failed. A purge
-  failure that reddens the backup check teaches the operator to distrust the
-  alarm, and an alarm nobody trusts is worse than none.
-- **Give it its own check** if it needs watching. The free tier allows 20.
-  Period 1 day, grace 6 hours.
+- **The order carries two guarantees.** systemd stops a `Type=oneshot` unit at
+  the first `ExecStart` that fails, so a backup that did not work is never
+  followed by a delete. And `backup_userdata` pings `BACKUP_HEALTHCHECK_URL`
+  from inside itself, so the dead-man's switch is already sent before the purge
+  starts and a purge failure can never redden it. A backup alarm must mean the
+  backup failed; an alarm nobody trusts is worse than none.
+- **A purge failure still shows**, as a failed unit in `systemctl status
+  cc-backup`. If that needs watching off-host, give it its own healthchecks.io
+  check rather than folding it into the backup's.
 - **Daily is more often than the promise needs**, and that is the point: the
   cheapest schedule is the one that already runs.
-- **Pass `--apply`.** Without it the command only reports, which is correct for
-  a person and useless for a timer.
 
-**Confirmed ready on 21 August 2026.** `purge_reading_records` takes `--apply`
-and `--days` (default 730, matching the Privacy Policy), and
-`cc-backup.service` already runs `docker exec codechroniclenet-web python
-manage.py backup_userdata` at 07:00 UTC. The change is one `ExecStart=` line
-beside it in `CodeChronicleTerraform/modules/compute/startup.sh`. Not applied:
-`startup.sh` rebuilds the VM's configuration, and a Terraform apply that
-touches it is the operator's call, not a side effect of a code task.
+**Applying it takes two steps, not one.** `startup-script` is instance
+metadata, and the guest reads it at **boot**. `terraform apply` updates the
+metadata in place with no downtime, but the running VM keeps the unit file it
+wrote at its last boot. So an apply on its own leaves the promise unbacked
+until something reboots the machine, and `terraform plan` reports no changes
+the whole time. Apply, then reboot or rewrite the unit by hand.
 
-## When this lands
+**Verified on production, 22 August 2026**, after the apply and the reboot:
 
-- ~~Rename the `/insights/` section~~ — **done**. It reads "Provision text
-  delivered", with `web_held`, `api_held` and `sittings` reported apart.
-- ~~Three docstrings say "through the API"~~ — **done**. `ProvisionFetch`, the
-  `User.provision_fetches` comment and the readout all say both surfaces now.
-  `api_coverage` was renamed `reading_coverage` for the same reason. Each of
-  those sentences read as a scope limit to whoever met it next — the same
-  failure as the e-Laws scoping in `core/attribution.py`, where a true statement
-  about the source stood in for the rule.
-- ~~Read **coverage**, not new share, for website traffic~~ — **done**, and
-  said on the page itself. A part page delivered texts the reader did not ask
-  for one at a time, so novelty read false there. Item 3 has since made a
-  signed-in reader's fetches one text at a time, so the two sides are
-  converging; the page says that, and says that older rows still are not.
-- **The purge un-ages novelty.** `purge_reading_records` deletes on
-  `last_fetched_at`, so a consultant returning to a provision after two years
-  is recorded as meeting it for the first time, and the coverage curve bends
-  upward for the most ordinary reader there is. The Privacy Policy wins — but
-  consider keeping a per-account aggregate that outlives the row, or the one
-  curve this ledger exists to draw is wrong at exactly the two-year mark.
+```
+systemctl cat cc-backup.service   → both ExecStart lines present
+systemctl is-enabled cc-backup.timer → enabled
+sudo systemctl start cc-backup.service
+  10:04:24  healthcheck ping ok → HTTP 200
+  10:04:31  Retention: 730 days. Cutoff: 2024-08-22. Rows last fetched before then: 0.
+  10:04:31  Deactivated successfully           Result=success ExecMainStatus=0
+```
+
+The journal is the evidence for the ordering claim above: the ping leaves at
+:24 and the purge starts at :31.
+
+**It deletes nothing until August 2028.** `provision_fetches` held 0 rows when
+this went live, so the retention machinery will sit idle and correct for two
+years. That is the right shape for a promise to a regulator, and it is also why
+turning it on carried no risk worth weighing.
+
+**Two things the build corrected.** The reboot re-runs the whole startup
+script, which deploys `ghcr.io/…:latest` rather than the SHA tag CI last
+pushed. The two matched here, because the same CI run pushes both — but that
+is luck, and a reboot is a deploy. And SSH to this VM is not open: it is
+gated to one admin IP plus the IAP range, so administration goes through
+`gcloud compute ssh --tunnel-through-iap`.
 
 ## The limit
 
@@ -450,29 +407,26 @@ protection are the same set.
 
 Every read of paid content already reaches Django: `corpus_last_modified`
 returns `None` for a signed-in reader and `corpus_conditional` sends `private,
-no-store`. The plumbing is complete. Only the record is thin.
+no-store`. So the ledger sees every read it needs to see.
 
-## Also open
+## What this leaves open
 
-- **The re-acceptance wall is armed.** `TERMS_REACCEPT_FROM` is `2026-08-21`
-  and `PRIVACY_REACCEPT_FROM` is `2026-08-19`, so the first deploy after this
-  prompts every existing account. Intended, and worth shipping deliberately
-  rather than as a side effect of an unrelated release.
-- **Nothing is committed**, and this card cannot go in on its own — see
-  "Where this stands" at the top for the entanglement and the order that
-  resolves it. Three migrations, the API modules and endpoint, the new models,
-  `core/reading_ledger.py`, `core/subtrees.py`, the insights work, the Terms
-  and the Privacy Policy. The suite is green at 1,435 tests.
-- ~~A partial ledger failure is invisible~~ — **done**, 21 August 2026. Each
-  bulk surface stamps `delivered` and `recorded` on its view event, and
-  `/insights/` counts the requests where the second is lower. What it still
-  cannot see is a `record_reads` that fails *and* reports the wrong number,
-  which is a much narrower bug than the one it closes.
-- **`new_share` still reads false for older web rows.** Item 3 made a
-  signed-in reader's fetches one text at a time, so web novelty is becoming
-  a real measurement — but rows written before 21 August 2026 counted a whole
-  page render as one decision, and the two are mixed in one column. Read
-  `coverage` for the web side until that window has passed.
+- **The purge un-ages novelty**, and this is the one open question the card
+  leaves behind. `purge_reading_records` deletes on `last_fetched_at`, so an
+  account returning to a provision after two years is recorded as meeting it
+  for the first time, and the coverage curve bends upward for the most ordinary
+  reader there is. The Privacy Policy wins. Consider a per-account aggregate
+  that outlives the row, or the one curve this ledger exists to draw is wrong
+  at exactly the two-year mark. Nothing is urgent: the first deletion is due in
+  August 2028.
+- **The watch has one blind spot left.** It catches a `record_reads` that
+  writes less than the page delivered. It cannot catch one that fails *and*
+  reports the wrong number — a much narrower bug than the one item 2 closes.
+- **`new_share` reads false for web rows written before 21 August 2026.** Those
+  counted a whole page render as one decision. Item 3 made a signed-in reader's
+  fetches one text at a time, so the two sides are converging, but both live in
+  one column. Read `coverage` for the web side until that window has passed.
+  `/insights/` says so on the page.
 - **The search overlay still delivers in bulk**, deliberately: it highlights
   the query's terms in each body and a fragment URL carries no query. Item 2
   records it in full, so the ledger is right; only the granularity is coarse.
@@ -618,6 +572,18 @@ Rejected for four reasons:
   expensive. It was not: `related_links`, `plural` and the row builder moved
   with it, `regulation.py` came out two lines shorter, and the shared partial
   needed one word changed.
+- **Three docstrings scoped the ledger "through the API."** Every one was
+  true when written and read as a limit to whoever met it next — the same
+  failure as the e-Laws scoping in `core.attribution`, where a true statement
+  about the source stood in for the rule. `api_coverage` became
+  `reading_coverage` for the same reason. A sentence describing today's only
+  caller will be read as the rule tomorrow.
+- **"A Terraform apply puts the purge on the machine."** Half true, and the
+  half that is false is silent. `startup-script` is metadata read at boot, so
+  the apply updated the metadata while the running VM kept the unit it wrote
+  at its last boot — and `terraform plan` reported no changes throughout. An
+  infrastructure change that the plan calls applied is not the same as a
+  change the machine has made. Verify on the host, not in the state file.
 - **"A per-account scan token is a small change."** Small in code, not in
   consequence: it fragments the edge cache per account, puts an account
   identifier into URLs that reach printed exhibits, and only pays off if

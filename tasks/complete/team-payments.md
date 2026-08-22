@@ -40,7 +40,7 @@ code behind it to be worth having.
 
 There is a measurement reason too, and it is the stronger one. A shared account
 makes six readers look like one very busy reader — which is the shape a bulk
-copy makes (`b-reading-ledger-for-the-website.md`). Seats separate those two
+copy makes (`tasks/complete/reading-ledger-for-the-website.md`). Seats separate those two
 signals. Enforcement does not.
 
 ## The decisions
