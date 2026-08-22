@@ -79,7 +79,7 @@ def _stripe_customer_for(organization: Organization, buyer) -> str:
 
     ``metadata`` carries both ids on purpose.  It is what lets the dj-stripe
     mirror be rebuilt from Stripe alone, which is the whole reason a dropped
-    table is a delay rather than a loss (see tasks/b-team-payments.md).
+    table is a delay rather than a loss (see tasks/complete/team-payments.md).
     """
     existing = organization.djstripe_customers.first()
     if existing is not None:

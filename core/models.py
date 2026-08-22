@@ -91,9 +91,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     date_joined = models.DateTimeField(default=timezone.now)
 
-    # Stripe customer ID (managed by dj-stripe, but useful for quick lookup)
-    stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
-
     # Relevance floor for a "close match". Everything a search reports —
     # results, counts, the Pro teaser — is measured above this line.
     # Continuous, not a set of named tiers: a fixed cutoff is not a fixed idea

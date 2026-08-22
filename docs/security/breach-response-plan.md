@@ -37,7 +37,11 @@ breach, but log it anyway (§6) — patterns matter.
 |---|---|---|
 | Email addresses | `users.email` (Postgres) | Identifier — moderate |
 | Password **hashes** | `users.password` (Postgres) | Low — Django PBKDF2-SHA256, salted + iterated; not plaintext |
-| Stripe customer ID + mirrored billing | `users.stripe_customer_id`, dj-stripe `Customer`/`Subscription` (Postgres) | Links to billing; **no card numbers here** (Stripe holds those) |
+| Stripe customer ID + mirrored billing | dj-stripe `Customer`/`Subscription` (Postgres) | Links to billing; **no card numbers here** (Stripe holds those) |
+| Organization name, billing email | `organizations` (Postgres) | An organization of one is named after the person, so the name is often an email |
+| Invited email addresses | `organization_invites.email` (Postgres) | An address for somebody who holds no account yet, so they cannot ask us about it themselves |
+| API key hashes | `api_keys` (Postgres) | SHA-256 of the token plus an 11-character clear prefix; the token itself is not stored |
+| What each account read | `provision_fetches` (Postgres) | Which provisions an account was given, and when — behavioural, tied to a paying account |
 | IP addresses | `search_history.ip_address`, `engagement_events.ip_address`, `auth_events.ip_address` (Postgres) | Personal info under PIPEDA — low/moderate |
 | Search queries (free text) | `search_history.query`, `query_cache.raw_query` (Postgres) | Usually benign, but a user *could* type personal detail into a query |
 | Engagement events | `engagement_events` (Postgres) | Behavioural — low |

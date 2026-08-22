@@ -1,39 +1,23 @@
 # Sell a subscription to a firm, not only to a person
 
-**Prefix:** `b-` moderate priority. **Built 21 August 2026**, except the
-purchase-order path. Not yet deployed.
+**Done. Built 21 August 2026, deployed 22 August 2026.** A firm buys seats on
+one invoice, an administrator manages them, and each seat is a separate login.
 
-A code consultant works in a firm. The product could only sell to one person at
-a time, so a firm of six had no supported way to buy six.
-
-The design decisions are made and nothing is open. "The decisions" is the
-record of why the code is shaped as it is; "The migration order" is what a
-deploy has to do, and it is two deploys, not one.
-
+The purchase-order path is deliberately not built; see "The invoiced sale".
 The last two sections, "Domain capture" and "SSO", are **not in scope**. They
-are written down so the answer is ready if a firm asks for either. Do not build
-them, and do not build a part of them.
+are written down so the answer is ready if a firm asks. Do not build them, and
+do not build a part of them.
 
-## The problem
+## The problem it solved
 
-Nothing stops six people buying six subscriptions on one card. Stripe does not
-care, and neither does the code. What stops them is administration.
+A code consultant works in a firm. The product could sell to one person at a
+time, so a firm of six had no supported way to buy six.
 
-- **Every checkout starts from a signed-in session.**
-  `core.views.billing.create_checkout_session` is `@login_required` and reads
-  `request.user.stripe_customer_id`. So the buyer sits at each of the six
-  logins, or hands the card to six people.
-- **Six Stripe customers, six subscriptions, six invoices, six renewal dates.**
-  A firm expenses one invoice.
-- **No administrator.** `stripe_customer_id` lives on the `User`, and the
-  billing portal is per user. The office manager cannot see the six, cannot end
-  the seat of somebody who leaves, and cannot move a seat to a new hire. Only
-  that person's own login reaches it.
-- **`quantity` is hard-coded to 1** (`core/views/billing.py:67`), so there is
-  no such thing as buying two of anything.
-
-So the subscription attaches to the **person**, and a firm needs it to attach
-to the **firm**, with people hanging off it.
+Nothing stopped six people buying six subscriptions on one card. What stopped
+them was administration: six checkouts from six logins, six invoices, six
+renewal dates, no administrator who could see them, and `quantity` hard-coded
+to 1. The subscription attached to the **person**. A firm needs it to attach to
+the **firm**, with people hanging off it.
 
 ## Why this and not seat enforcement
 
@@ -64,12 +48,12 @@ signals. Enforcement does not.
 1. **A firm gets one invoice and separate logins.** That is the product. A
    firm that wants one login for six people wants a cheaper price, and the
    answer to that is no.
-2. **The `Organization` is the dj-stripe subscriber model.** Set
-   `DJSTRIPE_SUBSCRIBER_MODEL = "core.Organization"`. Every subscription hangs
-   on an organization, and an individual buyer gets an organization of one.
-   This is chosen over keeping `core.User` as the subscriber, because one
-   billing path is cheaper to hold than two, and because there are no paying
-   customers today. The same change costs real money in a year.
+2. **The `Organization` is the dj-stripe subscriber model.** Every
+   subscription hangs on an organization, and an individual buyer gets an
+   organization of one. This was chosen over keeping `core.User` as the
+   subscriber, because one billing path is cheaper to hold than two, and
+   because there were no paying customers. The same change costs real money in
+   a year.
 3. **An organization is created at checkout, not at signup.** A free reader
    has no organization row, so free accounts need no backfill.
 4. **An individual never reads the word "organization".** The organization of
@@ -103,17 +87,18 @@ signals. Enforcement does not.
    and do not build a reduced version to be ready.
 10. **The access gate keeps one home.** `core.access.user_is_unrestricted` is
     the only thing that answers "may this account read everything".
-    **`core/access.py` does not change in this work.** The change happens one
+    **`core/access.py` did not change in this work.** The change happened one
     level below it, in `User.has_active_subscription`.
-11. **The search allowance stays per account.** `API_SEARCHES_BEFORE_THROTTLE` (200,
-    `api/auth.py`) counts the account, not the organization. Six seats are six
-    accounts, and each one is a person who searches. A shared allowance makes
-    the service useless to a large firm, which is the opposite of the point.
-12. **The price comes from Stripe, and the figure is set later.**
+11. **The search allowance stays per account.** `API_SEARCHES_BEFORE_THROTTLE`
+    (200, `api/auth.py`) counts the account, not the organization. Six seats
+    are six accounts, and each one is a person who searches. A shared
+    allowance makes the service useless to a large firm, which is the opposite
+    of the point.
+12. **The price comes from Stripe, and no figure lives in the repo.**
     `core/pricing.py` reads one mirrored `Price` row. A per-seat price is a
     second price id, read the same way. The rule that there is **no fallback
     figure** survives without change: when a row does not read, the page
-    states no price. Set the figure in the Stripe dashboard, not in the repo.
+    states no price.
 13. **The first seat is Pro. Every seat after it is cheaper.** A team
     subscription is two Stripe line items: `STRIPE_PRO_PRICE_ID` at quantity
     1, and `STRIPE_TEAM_PRICE_ID` at quantity `seats - 1`. Three reasons:
@@ -135,7 +120,6 @@ signals. Enforcement does not.
     would refuse money a buyer was ready to give: whether a firm can put four
     figures a month on a card is the firm's own constraint, and a firm that
     cannot goes to Custom by itself.
-
 15. **`TEAM_MEMBERSHIPS_ENABLED` sets a reader's membership aside.** A
     development switch, read through `core.teams.team_memberships_enabled`,
     and an interface one only: `access_membership` answers `None` and
@@ -145,6 +129,9 @@ signals. Enforcement does not.
     organization each time. It does **not** hide the Team column, does not
     stop a firm buying seats, and does not revoke access — the gate is
     `User.has_active_subscription`, and this is not that gate.
+
+    `conftest.py` pins it on. `base.py` calls `load_dotenv`, so a developer
+    who turns it off in `.env` would otherwise turn three tests red.
 
 ## The models
 
@@ -159,7 +146,8 @@ Two fields are deliberately absent.
 
 - **No `stripe_customer_id`.** dj-stripe's `Customer.subscriber` points at the
   organization, and that is the one link. A second copy can disagree with the
-  first.
+  first. The same reasoning removed the column from `User`; see "What the
+  deploy taught".
 - **No seat count.** The count is the `quantity` on the mirrored Stripe
   subscription, read through `Organization.seats_bought`. Both payload shapes
   are read — the subscription item, and the older top-level `quantity` — so no
@@ -181,138 +169,21 @@ that any of the others exists.
 
 ## The gate
 
-Rewrite `User.has_active_subscription` (`core/models.py:120`). It answers True
-when **either** of these holds:
+`User.has_active_subscription` answers True when **either** of these holds:
 
 1. `self.pro_courtesy` is True.
 2. An organization that this user has a `Membership` in has a `Subscription`
    with `stripe_data__status` in `["active", "trialing"]`.
 
-The branch that tests a personal `Customer.subscriber` link does not survive
-this work. After the migration below, every subscription reaches a person
-through a `Membership`, including the buyer's own.
+The branch that tested a personal `Customer.subscriber` link did not survive
+this work. Every subscription now reaches a person through a `Membership`,
+including the buyer's own.
 
-**Watch the query cost.** This property runs on gated page renders, and
-`CLAUDE.md` records that nearly all traffic is crawlers. Cache the answer on
-the request object, or every provision page pays for the membership join.
-
-## The migration order
-
-**Built and rehearsed on a scratch database, 21-22 August 2026.** Nothing is
-dropped. It is **two migration steps**, and the split is forced, not a
-preference. It is **one deploy**, because the first step is an operator
-command rather than a release.
-
-**Step 1 — `core.0057_organization_membership_invite`, with the old subscriber
-model.** Creates the three tables. Nothing reads them. `DJSTRIPE_SUBSCRIBER_MODEL`
-is read from the environment for exactly this, so the command runs from the
-image being deployed:
-
-```
-docker run --rm --network host   --env-file /home/codechroniclenet/.env   -e DATABASE_URL_SECRET_ID=database_url_owner   -e DJSTRIPE_SUBSCRIBER_MODEL=core.User   ghcr.io/iskanderblue/codechroniclenet:<sha>   python manage.py migrate core 0057
-```
-
-Run it on the VM **before** starting the GitHub Actions deploy. The workflow's
-own migrate step then finds `0057` applied and continues.
-
-**Step 2 — the ordinary deploy, and `core.0058_subscriber_is_the_organization`
-runs.** The migration gives every Stripe customer that names a person an
-organization of one with an `admin` membership, rewrites
-`djstripe_customer.subscriber_id` to that organization, and moves the foreign
-key from `users` to `organizations`. It detects an already-converted database
-and does nothing, and it has a working reverse.
-
-**Later — remove `User.stripe_customer_id`**, once deploy 2 reads correctly in
-production. Nothing writes it any more.
-
-### Why two deploys, and why two migrations
-
-Both splits are forced by the migration graph.
-
-**Two migrations.** Setting `DJSTRIPE_SUBSCRIBER_MODEL_MIGRATION_DEPENDENCY`
-makes `djstripe.0001` depend on the migration that creates `Organization`. The
-migration that repoints the foreign key alters `djstripe_customer`, so it must
-depend on `djstripe.0001`. One migration cannot be both earlier and later than
-dj-stripe's own.
-
-**Two deploys.** Once the setting changes, the already-applied `djstripe.0001`
-declares a dependency on `core.0057`. A deploy carrying both would meet this,
-before touching anything:
-
-```
-django.db.migrations.exceptions.InconsistentMigrationHistory:
-Migration djstripe.0001_initial is applied before its dependency
-core.0057_organization_membership_invite on database 'default'.
-```
-
-That was reproduced on a scratch database in production's state, so it is a
-certainty rather than a risk. `0057` must already be applied when the setting
-changes.
-
-**Why an environment variable rather than two commits.** The seat feature
-cannot be split at the commit: `User.has_active_subscription` queries
-`customer__subscriber__memberships`, so a release carrying the models without
-the setting would break the access gate on every page. Overriding the setting
-for one command puts the split where it belongs — in the deploy, not in the
-history. The whole sequence was rehearsed against a database built from the
-previous commit, and it ends with
-`djstripe_customer_subscriber_id_fk_organizations_id` in place and
-`manage.py check` clean.
-
-**A fresh database needs neither step.** The dependency puts the organization
-table in place before `djstripe.0001` asks for it, which is why the test suite
-never saw this.
-
-### The thing that nearly went wrong
-
-The original worry was that Django would want to write a migration into
-dj-stripe's own package directory. It does not, and the truth is worse.
-
-dj-stripe declares the column as `to=DJSTRIPE_SUBSCRIBER_MODEL`, read from
-settings when its migration module is **imported**. So changing the setting
-rewrites dj-stripe's recorded history rather than producing a change to
-detect. Model state and migration state agree, `makemigrations` reports
-nothing, and the foreign key in the database goes on pointing at `users`.
-A deploy would look clean and then fail on the first write. `core.0058` is
-hand-written for exactly this reason, and `MIGRATION_MODULES` is not needed.
-
-One more constraint, found the same way: **dj-stripe refuses a subscriber
-model with no `email` attribute.** That is why `Organization.email` exists,
-and it is required, not decoration.
-
-### Before you touch production
-
-- **Close the shop.** Unset `STRIPE_PRO_PRICE_ID` in the secret bundle and
-  restart the container. `checkout_is_configured()` then answers False and the
-  purchase control disappears, so nobody buys during the migration. Set the
-  value back after the migration.
-- **Write the mapping down.** Keep the output of this query in a file. It is
-  the insurance for step 2.
-
-```sql
-SELECT id, email, stripe_customer_id
-FROM core_user
-WHERE stripe_customer_id != '';
-```
-
-### If step 3 fails and the dj-stripe tables have to be rebuilt
-
-This is the fallback, not the plan. Stripe is the source of truth and dj-stripe
-is a mirror, so `python manage.py djstripe_sync_models Product Price Customer
-Subscription` pulls the mirror back. The link to a person comes back too,
-because `create_checkout_session` writes `metadata={"django_user_id": ...}`
-onto the Stripe customer (`core/views/billing.py:56`). Keep writing that field.
-
-Until the resync finishes, a subscriber reads as free tier and the pricing page
-states no price. Both are the fail-safe behaviour working. Only the dj-stripe
-webhook event records do not come back, and they record *when* Stripe told us
-something, not the state itself.
+The answer is cached on the request object. This property runs on gated page
+renders, and nearly all traffic is crawlers, so an uncached join would make
+every provision page pay for it.
 
 ## What was built, and where it lives
-
-Built 21 August 2026. Steps 1 to 5 of the original build order are done. Step
-6, the invoice with a purchase order, is not built and waits for a firm to ask
-for terms.
 
 | File | What it holds |
 |---|---|
@@ -321,7 +192,7 @@ for terms.
 | `core/views/teams.py` | Invite, withdraw, remove, and the page where a person takes a seat |
 | `core/views/billing.py` | Checkout with a seat count, and the portal, both keyed to the organization |
 | `core/pricing.py` | `get_team_price` and `team_checkout_is_configured`, the per-seat price read the same way as Pro |
-| `core/migrations/0057…`, `0058…` | The tables, then the subscriber move |
+| `core/migrations/0057…`, `0058…`, `0060…` | The tables, the subscriber move, the dropped column |
 | `templates/partials/_team.html` | The administrator panel in Settings |
 | `templates/team_invite.html` | What an invited person sees before they take the seat |
 | `core/management/commands/link_stripe_customers.py` | The repair, and the invoiced sale |
@@ -329,9 +200,58 @@ for terms.
 | `core/tests/test_link_stripe_customers.py` | That the repair writes nothing without `--apply`, and never guesses |
 
 Two settings are new: `STRIPE_TEAM_PRICE_ID` and
-`DJSTRIPE_SUBSCRIBER_MODEL_MIGRATION_DEPENDENCY`. Until the first is set in
-the secret bundle, the seat band on the pricing page is absent and a team
-checkout refuses — the same fail-safe rule the Pro control follows.
+`DJSTRIPE_SUBSCRIBER_MODEL_MIGRATION_DEPENDENCY`. Both must be re-resolved in
+`production.py`; `base.py` reads `os.environ`, which the container does not
+have.
+
+## What the deploy taught
+
+Three findings worth keeping. The step-by-step deploy plan is spent and is not
+repeated here.
+
+**dj-stripe's subscriber model rewrites recorded history rather than producing
+a migration.** The column is declared `to=DJSTRIPE_SUBSCRIBER_MODEL`, read from
+settings when the migration module is **imported**. So model state and
+migration state agree, `makemigrations` reports nothing, and the foreign key in
+the database goes on pointing at `users`. A deploy looks clean and fails on the
+first write. `core.0058` is hand-written for exactly this reason.
+
+The same mechanism forces the migration order. Once the setting changes, the
+already-applied `djstripe.0001` declares a dependency on `core.0057`, and any
+deploy carrying both meets `InconsistentMigrationHistory` before touching
+anything. `0057` was therefore applied by an operator command with
+`DJSTRIPE_SUBSCRIBER_MODEL=core.User`, and the ordinary deploy applied `0058`.
+The feature cannot be split at the commit instead:
+`User.has_active_subscription` queries `customer__subscriber__memberships`, so
+a release carrying the models without the setting breaks the access gate on
+every page. **A fresh database needs neither step**, which is why the suite
+never saw any of it.
+
+**A migration that changes rows in a table it also alters must drop the
+constraint first.** The first deploy failed applying `0058`:
+
+```
+psycopg.errors.ObjectInUse: cannot ALTER TABLE "djstripe_customer"
+because it has pending trigger events
+```
+
+Django creates a foreign key as `DEFERRABLE INITIALLY DEFERRED`, so the
+`UPDATE` that repoints `subscriber_id` queues a deferred trigger event for each
+row it touches, and Postgres refuses to `ALTER` a table holding pending events.
+`SET CONSTRAINTS ALL IMMEDIATE` is not the alternative: it would run the
+deferred checks while the column already names an organization and the key
+still names a user. The key cannot survive the rewrite in any order, so it goes
+first and the rows change with no key in place. The reverse carried the same
+fault, and a rollback is the worst moment to meet it.
+
+**An empty test database cannot tell you so.** 1452 tests passed and the deploy
+still failed, because with no customer row there is no `UPDATE` and no pending
+event. Production held one row, and one is enough. The fix was rehearsed on a
+database built the way production was, with a customer row present.
+
+**The failure shipped nothing.** The workflow migrates before it replaces the
+container, so the site went on serving the previous image and `0058` stayed
+unapplied. That property is why the order exists.
 
 ## The double-subscription case
 
@@ -380,7 +300,7 @@ Three rules it keeps:
   everybody in the organization, which is the same weight as the destructive
   commands here.
 - **`--organization` writes the id back to Stripe.** A link that existed only
-  in our database would be lost by the rebuild the section above describes.
+  in our database would be lost by a rebuild of the mirror.
 - **A customer that names nothing is left alone**, and named in the report. A
   guessed link hands a stranger every edition; a missing one locks somebody
   out, which a person notices and fixes.
@@ -391,17 +311,38 @@ because what they ask for decides the shape. Until then the pricing page
 points at `support@codechronicle.ca`, which is where a firm too large for the
 seat band already writes.
 
+## If the dj-stripe tables have to be rebuilt
+
+Stripe is the source of truth and dj-stripe is a mirror, so
+`python manage.py djstripe_sync_models Product Price Customer Subscription`
+pulls the mirror back. The link to a person comes back too, because
+`create_checkout_session` writes `metadata={"django_user_id": ...}` onto the
+Stripe customer. Keep writing that field.
+
+Until the resync finishes, a subscriber reads as free tier and the pricing page
+states no price. Both are the fail-safe behaviour working. Only the dj-stripe
+webhook event records do not come back, and they record *when* Stripe told us
+something, not the state itself.
+
+To read the link as it now stands:
+
+```sql
+SELECT c.id AS customer, o.id AS organization, u.email
+FROM djstripe_customer c
+JOIN organizations o ON o.id = c.subscriber_id::bigint
+JOIN organization_memberships m ON m.organization_id = o.id AND m.role = 'admin'
+JOIN users u ON u.id = m.user_id;
+```
+
 ## What is left
 
-- **Set `STRIPE_TEAM_PRICE_ID`.** Make the per-seat price in the Stripe
-  dashboard, and put the id in the secret bundle. Make it a **flat** recurring
-  price, at the same interval as Pro, not a tiered one — see decision 13.
-  Until then a firm cannot buy, and the Team column offers no control.
-- **Deploy in two steps**, as "The migration order" describes. Close the shop
-  first.
-- **Remove `User.stripe_customer_id`**, after deploy 2 reads correctly.
+Nothing blocks a sale. Two things wait on a firm.
+
 - **The self-serve quote and order flow**, when a firm asks for terms. The
-  invoiced sale itself is possible today; see "The invoiced sale".
+  invoiced sale itself is possible today.
+- **The first real seat purchase.** Nobody has bought seats yet, so the
+  two-line-item subscription and the portal's quantity control are proven in
+  test mode only.
 
 Record the first firm that asks, including how many people. It decides nothing
 about the shape now, but it is the first evidence of whether the seat count

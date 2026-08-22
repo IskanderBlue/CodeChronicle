@@ -1,6 +1,6 @@
 """Seats: the gate, the seat count, the invitation, and who may press what.
 
-Every test here holds one of the rules in ``tasks/b-team-payments.md``.  The
+Every test here holds one of the rules in ``tasks/complete/team-payments.md``.  The
 two that matter most are the first two: a role that reads is a role that is
 paid for, and the seat check binds where a person is added.
 """

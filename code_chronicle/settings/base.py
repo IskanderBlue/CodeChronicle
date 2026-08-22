@@ -277,7 +277,7 @@ TEAM_MEMBERSHIPS_ENABLED = (
 # A subscription belongs to an organization, never to a person.  Somebody who
 # buys for themselves gets an organization of one, so there is one billing
 # path and not two, and ``User.has_active_subscription`` has one answer to
-# give.  See tasks/b-team-payments.md.
+# give.  See tasks/complete/team-payments.md.
 #
 # dj-stripe reads this setting when it imports its own initial migration, so
 # the setting decides which table ``djstripe_customer.subscriber_id`` points
