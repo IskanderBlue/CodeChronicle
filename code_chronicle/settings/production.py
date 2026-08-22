@@ -2,9 +2,11 @@
 Django settings for production environment.
 """
 import json
+import logging
 import os
 
 import dj_database_url
+from google.cloud import secretmanager
 
 from .base import *  # noqa: F401, F403
 from .base import (  # noqa: F811
@@ -12,6 +14,7 @@ from .base import (  # noqa: F811
     SECRET_KEY,
     STRIPE_LIVE_SECRET_KEY,
     STRIPE_PRO_PRICE_ID,
+    STRIPE_TEAM_PRICE_ID,
     STRIPE_TEST_SECRET_KEY,
 )
 
@@ -25,7 +28,6 @@ _SECRET_CLIENT = None
 def _get_secret_client():
     global _SECRET_CLIENT
     if _SECRET_CLIENT is None:
-        from google.cloud import secretmanager
         _SECRET_CLIENT = secretmanager.SecretManagerServiceClient()
     return _SECRET_CLIENT
 
@@ -43,7 +45,6 @@ def _get_secret(secret_id):
         response = client.access_secret_version(name=name)
         return response.payload.data.decode("UTF-8")
     except Exception as exc:
-        import logging
         logging.getLogger(__name__).error("Failed to fetch secret %s: %s", secret_id, exc)
         return ""
 
@@ -60,7 +61,6 @@ def _get_bundled_secret(key):
                 parsed = json.loads(raw)
                 _APP_RUNTIME_SECRETS = parsed if isinstance(parsed, dict) else {}
             except Exception as exc:
-                import logging
                 logging.getLogger(__name__).error("Failed to parse app_runtime_secrets: %s", exc)
                 _APP_RUNTIME_SECRETS = {}
     value = _APP_RUNTIME_SECRETS.get(key, "")
@@ -165,6 +165,13 @@ STRIPE_TEST_SECRET_KEY = _resolve_runtime_setting(
 )
 STRIPE_LIVE_MODE = _resolve_runtime_setting("STRIPE_LIVE_MODE", default="true").lower() == "true"
 STRIPE_PRO_PRICE_ID = _resolve_runtime_setting("STRIPE_PRO_PRICE_ID", default=STRIPE_PRO_PRICE_ID)
+# The per-seat price, resolved for the same reason as the one above: base.py
+# reads os.environ, and this container's env-file does not carry it.  Without
+# this line the setting is silently "" in production, the Team column offers
+# no purchase, and nothing in the logs says why.
+STRIPE_TEAM_PRICE_ID = _resolve_runtime_setting(
+    "STRIPE_TEAM_PRICE_ID", default=STRIPE_TEAM_PRICE_ID
+)
 
 # Off-host encrypted backups — `manage.py backup_userdata`, run inside this
 # container on the VM.  `base.py` reads these from `os.environ`, which the GCP

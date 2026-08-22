@@ -49,6 +49,12 @@ def _create_obc_fixtures():
         level=CodeEditionProvision.Level.SUBSECTION,
         division="B",
     )
+    # A container carries a version too — an empty one.  Nothing above article
+    # level holds text, but every provision holds a version: the loader refuses
+    # a payload where one does not, and the reading code counts on it.
+    CodeEditionProvisionVersion.objects.create(
+        provision=parent_provision, version=0, effective_date=date(2024, 1, 1),
+    )
     p1 = CodeEditionProvision.objects.create(
         edition=edition,
         provision_id="3.2.7.1.",
@@ -102,6 +108,9 @@ def _create_nbc_fixtures():
         provision_id="9.10.14.",
         level=CodeEditionProvision.Level.SUBSECTION,
         division="B",
+    )
+    CodeEditionProvisionVersion.objects.create(
+        provision=parent_provision, version=0, effective_date=date(2025, 3, 21),
     )
     p1 = CodeEditionProvision.objects.create(
         edition=edition,

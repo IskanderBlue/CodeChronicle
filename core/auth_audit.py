@@ -23,20 +23,10 @@ from django.contrib.auth.signals import (
 from django.dispatch import receiver
 from django.http import HttpRequest
 
-from core.ip_utils import extract_client_ip
+from core.ip_utils import client_ip
 from core.models import AuthEvent
 
 logger = Logger(__name__)
-
-
-def _ip(request: HttpRequest | None) -> str | None:
-    """Best-effort client IP — never raises (auth must not break on a bad META)."""
-    if request is None:
-        return None
-    try:
-        return extract_client_ip(request.META)
-    except Exception:  # noqa: BLE001 — IP parsing is never fatal to auth
-        return None
 
 
 def _record(
@@ -57,7 +47,7 @@ def _record(
         AuthEvent.objects.create(
             user=real_user,
             email=email or (getattr(user, "email", "") or ""),
-            ip_address=_ip(request),
+            ip_address=client_ip(request),
             event_type=event_type,
         )
     except Exception as e:  # noqa: BLE001 — auditing is never fatal

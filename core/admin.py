@@ -1,12 +1,15 @@
 from django.contrib import admin
 
-from .models import (
+from core.models import (
     AuthEvent,
     Code,
     CodeEdition,
     CodeEditionProvision,
     CodeEditionProvisionVersion,
     EngagementEvent,
+    Invite,
+    Membership,
+    Organization,
     ProvinceCode,
     ProvisionFeedback,
     ProvisionMapping,
@@ -89,3 +92,28 @@ admin.site.register(CodeEditionProvision)
 admin.site.register(CodeEditionProvisionVersion)
 admin.site.register(ProvisionVersionTable)
 admin.site.register(ProvisionMapping)
+
+
+class MembershipInline(admin.TabularInline):
+    """The seats, on the organization that pays for them.
+
+    Inline rather than a separate page because a membership means nothing
+    alone: the question an operator has is always "who is in this firm".
+    """
+
+    model = Membership
+    extra = 0
+
+
+@admin.register(Organization)
+class OrganizationAdmin(admin.ModelAdmin):
+    list_display = ["name", "email", "seats_used", "seats_bought", "created_at"]
+    search_fields = ["name", "email"]
+    inlines = [MembershipInline]
+
+
+@admin.register(Invite)
+class InviteAdmin(admin.ModelAdmin):
+    list_display = ["email", "organization", "role", "created_at", "accepted_at"]
+    search_fields = ["email", "organization__name"]
+    list_filter = ["role"]

@@ -12,9 +12,9 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from api.formatters import _code_order_key, highlight_terms
+from api.formatters import code_order_key, highlight_terms
+from api.schemas import flatten
 from api.search.orchestration import identity_preview
-from config.code_metadata import edition_display_name, get_code_display_name
 from config.part_applicability import (
     AREA_UNITS,
     DEFAULT_AREA_UNIT,
@@ -32,7 +32,13 @@ from config.search_limits import (
     SCORE_BUCKET_WIDTH,
     SEARCH_RESULT_CAP,
 )
-from core.access import edition_allowed
+from core.access import edition_allowed, edition_gate
+from core.attribution import (
+    crown_years_for_editions,
+    crown_years_for_provisions,
+    merge_years,
+)
+from core.code_names import edition_display_name, get_code_display_name
 from core.events import record_event
 from core.ip_utils import extract_client_ip
 from core.models import (
@@ -47,8 +53,10 @@ from core.provision_lineage import (
     annotate_lineage_titles,
     resolve_lineage,
 )
+from core.reading_ledger import record_reads, record_versions
 from core.search_prefs import resolve_match_threshold
 from core.seo import TITLE_SUFFIX
+from core.subtrees import contents_view, walk_subtree
 from services.search_service import run_search
 
 logger = Logger(__name__)
@@ -393,7 +401,7 @@ def viewer_edition_nav(request: HttpRequest):
     successors = None
     if matched is not None:
         lineage = resolve_lineage([matched])[matched.pk]
-        annotate_lineage_locks([lineage], request.user)
+        annotate_lineage_locks([lineage], edition_gate(request.user))
         # Titles come from the annotator, which reads each link's *own*
         # version rather than the target's latest.  This view used to take
         # the latest title; a title can change between versions, so the two
@@ -492,7 +500,7 @@ def _parse_query_date(value: str) -> date | None:
         return None
 
 
-def _active_versions(
+def in_force_versions(
     provisions, query_date: date,
 ) -> list[CodeEditionProvisionVersion]:
     """Return the in-force versions for each provision at ``query_date``.
@@ -587,23 +595,40 @@ def viewer_section_content(request: HttpRequest):
 
     # Subtree root: the provision's parent so we render siblings + descendants.
     # When the provision is top-level, render itself + descendants.
+    #
+    # Bounded, like the permalink and by the same number.  This walk used to
+    # have no limit at all, and a search result is not always a leaf article:
+    # the candidate query does not exclude a version with an empty body, and
+    # BM25F scores the title as its own field, so a part or a section can be
+    # the match.  Its parent's subtree is then the 1,339-provision, 1.9 MB
+    # render that ``CONTENTS_THRESHOLD`` exists to prevent — delivered inline,
+    # with every body highlighted, on the one surface that had no cap.
+    #
+    # The context narrows before the panel changes character.  The parent is
+    # here to give the match its siblings, but the reader searched for one
+    # provision and must still be shown it, so the overlay gives up the
+    # siblings first.  Only when the match's *own* subtree is too big does the
+    # panel become a table of contents — the permalink's behaviour, from the
+    # permalink's builder, so a reader who meets the contents of Part 9 here
+    # and again on its own page meets one list.
+    #
+    # ``subtree_root`` moves with the walk.  The section list below descends
+    # from it, and a root naming a provision no longer in ``all_provisions``
+    # renders an empty panel.
     subtree_root = matched.parent or matched
-
-    # Gather siblings + all descendants via parent walk.
-    all_provisions: list[CodeEditionProvision] = [subtree_root]
-    frontier = [subtree_root.pk]
-    while frontier:
-        children = list(
-            CodeEditionProvision.objects
-            .filter(parent_id__in=frontier)
-            .filter(edition=matched.edition, division=matched.division)
+    all_provisions, oversized = walk_subtree(
+        subtree_root, edition=matched.edition, division=matched.division
+    )
+    if oversized and subtree_root.pk != matched.pk:
+        subtree_root = matched
+        all_provisions, oversized = walk_subtree(
+            matched, edition=matched.edition, division=matched.division
         )
-        if not children:
-            break
-        all_provisions.extend(children)
-        frontier = [c.pk for c in children]
+    if oversized:
+        subtree_root = matched
+        all_provisions = [matched]
 
-    versions = _active_versions(all_provisions, query_date)
+    versions = in_force_versions(all_provisions, query_date)
 
     # Highlight the parsed query keywords in each in-force version body
     # (parity with the results-card highlight in api.formatters). Mutates the
@@ -617,6 +642,31 @@ def viewer_section_content(request: HttpRequest):
     by_provision: dict[int, list[CodeEditionProvisionVersion]] = {}
     for v in versions:
         by_provision.setdefault(v.provision_id, []).append(v)
+
+    # Too big to show: the panel lists what is inside instead, through the
+    # same builder and the same partial the permalink uses.  Built here rather
+    # than beside the walk because the rows are scoped to the versions
+    # overlapping the one on screen, which is not known until the in-force
+    # filter above has run.  A match with nothing in force on this date has no
+    # such version, and then the panel says only that.
+    contents_ctx: dict[str, Any] = {
+        "contents": [], "contents_total": 0, "contents_noun": "",
+    }
+    if oversized and by_provision.get(matched.pk):
+        contents_ctx = contents_view(
+            matched,
+            by_provision[matched.pk][-1],
+            matched.edition.code_name,
+            matched.division,
+        )
+
+    # The reading ledger.  This partial renders the matched provision *and*
+    # every descendant as a flat visible list, so it is a bulk text delivery
+    # exactly like a permalink and is recorded the same way.  Unguarded by
+    # HX-Request, unlike the engagement event below: that event measures a
+    # deliberate click, while this records what left the server, and text
+    # delivered to a refreshed URL left the server just the same.
+    delivered, recorded = record_versions(request, versions)
 
     # Engagement: the user drilled into this provision from search results.
     # Pin the event to the version in force on the query date (the last one
@@ -642,6 +692,18 @@ def viewer_section_content(request: HttpRequest):
                 "provision_id": matched.provision_id,
                 "query_date": query_date.isoformat(),
                 "surface": "search_viewer",
+                # What this response handed over, and what reached the ledger.
+                # ``ledger_health`` compares whole days, so a page that
+                # delivers forty texts and records three passes it; these two
+                # make that visible per request.  This surface needs the check
+                # most — it is the one that still renders a subtree inline.
+                #
+                # Recorded on the HX-guarded event while the ledger write above
+                # is unguarded, so a non-HTMX request writes ledger rows that
+                # no event describes.  The check reads events, so those are
+                # invisible to it rather than counted as a shortfall.
+                "delivered": delivered,
+                "recorded": recorded,
             },
         )
 
@@ -651,7 +713,7 @@ def viewer_section_content(request: HttpRequest):
     for prov in all_provisions:
         children_by_parent.setdefault(prov.parent_id, []).append(prov)
     for group in children_by_parent.values():
-        group.sort(key=lambda p: _code_order_key(p.provision_id))
+        group.sort(key=lambda p: code_order_key(p.provision_id))
 
     sections: list[dict[str, Any]] = []
     transition_active = False
@@ -703,8 +765,31 @@ def viewer_section_content(request: HttpRequest):
             "active_provision_id": provision_id,
             "transition_active": transition_active,
             "query_date": query_date.isoformat(),
+            **contents_ctx,
         },
     )
+
+
+def _result_keys(cards: list[dict[str, Any]]) -> list[tuple[str, str, str, int]]:
+    """Ledger keys for the result cards that carry a body.
+
+    A card with no ``html_content`` delivered nothing to copy — a container
+    heading, or a locked row where the gate did its job — and recording it
+    would inflate coverage with text the reader never received.
+    """
+    keys: list[tuple[str, str, str, int]] = []
+    for card in flatten(cards):
+        if not (card.get("html_content") or "").strip():
+            continue
+        edition = str(card.get("code_edition") or card.get("code") or "")
+        version = card.get("version")
+        provision_id = str(card.get("id") or "")
+        if not edition or not provision_id or version is None:
+            continue
+        keys.append((
+            edition, str(card.get("division") or ""), provision_id, version.version,
+        ))
+    return keys
 
 
 def _teaser_context(result: dict[str, Any]) -> dict[str, Any]:
@@ -723,19 +808,28 @@ def _teaser_context(result: dict[str, Any]) -> dict[str, Any]:
     results = result.get("results") or []
     locked_editions = result.get("locked_editions") or {}
     accessible = result.get("accessible_match_count", 0)
+    # Bound once and reused below.  It was called three times for the three
+    # figures it feeds, and this adds a fourth reader (the acknowledgement).
+    preview = identity_preview(results)
     return {
         "success": True,
         "teaser_only": True,
         "results": [],
         "teaser_rows": [
             {**row, "edition_name": edition_display_name(row["code_edition"])}
-            for row in identity_preview(results)
+            for row in preview
         ],
+        # A teaser withholds the body and still prints titles, which are
+        # legislative text, so the acknowledgement is owed here too.  The
+        # editions named are the ones this page actually shows.
+        "crown_years": crown_years_for_editions(
+            [row["code_edition"] for row in preview] + list(locked_editions)
+        ),
         # Counts the whole match set, not the previewed slice — the preview is
         # capped and the count is not, so they are different numbers and the
         # template says so with the "and N more" tail.
         "teaser_match_count": accessible + sum(locked_editions.values()),
-        "teaser_row_remainder": max(0, accessible - len(identity_preview(results))),
+        "teaser_row_remainder": max(0, accessible - len(preview)),
         "teaser_edition_counts": [
             {"name": edition_display_name(code), "count": count}
             for code, count in sorted(_teaser_edition_counts(results, locked_editions).items())
@@ -897,6 +991,18 @@ def search_results(request):
             },
         )
 
+    # The reading ledger.  A results page is not a map: every card carries the
+    # provision's body, up to ``SEARCH_RESULT_CAP`` of them in one response, so
+    # a search is one of the larger text deliveries in the product and has to
+    # be recorded as one.
+    #
+    # ``flatten`` because the page's grouping shapes are presentation, not
+    # identity: a parent-and-children card prints the parent's number over the
+    # top child's text, and recording it as the parent would file the wrong
+    # provision.  Its parts go in instead, and both sides of a transition pair
+    # go in, because both texts were delivered.
+    record_reads(request, _result_keys(result.get("results") or []))
+
     response = render(
         request,
         "partials/search_results_partial.html",
@@ -911,6 +1017,20 @@ def search_results(request):
             "export_query": query,
             "export_date": date_override or "",
             "export_province": province_override or "",
+            # The regulations that enacted the text on this page.  Taken from
+            # the version behind each card, not from its edition: a provision
+            # amended in 2024 sits in OBC 2012, and naming 2012 would credit
+            # the wrong instrument by twelve years.
+            #
+            # The locked previews are a different case — they print titles for
+            # editions this reader cannot open, and the card set carries no
+            # version for them, so those fall back to the edition year.
+            "crown_years": merge_years(
+                crown_years_for_provisions(
+                    card.get("provision") for card in flatten(result["results"])
+                ),
+                crown_years_for_editions(locked_editions or {}),
+            ),
             "meta": {"applicable_codes": result["applicable_codes"]},
             # Same editions as meta.applicable_codes, as prose. The meta key
             # keeps the raw code_names because the JSON API publishes them;

@@ -23,12 +23,11 @@ Three things live here rather than in the view:
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from django.urls import reverse
 
-from core.access import edition_allowed
 from core.models import CodeEditionProvisionVersion
 from core.provision_lineage import LineageDirection, LineageLink, resolve_lineage
 
@@ -390,7 +389,7 @@ class VersionTimeline:
 def version_timeline(
     earlier: CodeEditionProvisionVersion,
     later: CodeEditionProvisionVersion,
-    user: object,
+    may_read: Callable[[str], bool],
 ) -> VersionTimeline:
     """Build the axis for the comparison of ``earlier`` and ``later``.
 
@@ -423,7 +422,7 @@ def version_timeline(
             .filter(provision__in=provisions.values())
             .order_by("effective_date", "version")
         )
-        if edition_allowed(user, version.provision.edition.code_name)
+        if may_read(version.provision.edition.code_name)
     ]
     if not versions:
         return VersionTimeline(rows=[], editions=[])

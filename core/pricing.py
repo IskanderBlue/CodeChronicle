@@ -49,6 +49,10 @@ class ProPrice:
     #: Canadian buyer and wrong to an American one.
     currency: str
     interval: str
+    #: The same figure in cents, as Stripe stores it.  The Team card totals a
+    #: seat count in the browser, and money arithmetic on the rendered string
+    #: is how a page ends up quoting a figure Stripe would not charge.
+    cents: int
 
 
 def checkout_is_configured() -> bool:
@@ -61,28 +65,66 @@ def checkout_is_configured() -> bool:
     return bool(settings.STRIPE_PRO_PRICE_ID)
 
 
-def _format_amount(unit_amount: int) -> str:
-    """Stripe stores cents. Render whole dollars whole, and cents when present."""
+def format_amount(unit_amount: int) -> str:
+    """Stripe stores cents. Render whole dollars whole, and cents when present.
+
+    Public because the Team card renders a *total* — the Pro price plus a seat
+    price times a seat count — and that total has to be spelled the same way
+    every other figure on the page is.
+    """
     dollars, cents = divmod(int(unit_amount), 100)
     return f"{dollars}" if cents == 0 else f"{dollars}.{cents:02d}"
 
 
+def team_checkout_is_configured() -> bool:
+    """Whether a firm can buy seats.
+
+    It answers the same question for the team plan that
+    ``checkout_is_configured`` answers for Pro: is there any way to pay?  With
+    no way to pay the control is hidden, never offered and then refused.
+
+    **Both ids are needed, because a team checkout sends two line items.**  A
+    firm buys the first seat at the Pro price and every seat after it at the
+    per-seat price, so a team purchase fails on a missing Pro id exactly as it
+    fails on a missing seat id.  ``create_checkout_session`` makes both tests,
+    and this makes both for the same reason.
+    """
+    return bool(settings.STRIPE_PRO_PRICE_ID) and bool(
+        getattr(settings, "STRIPE_TEAM_PRICE_ID", "")
+    )
+
+
 def get_pro_price() -> ProPrice | None:
-    """The Pro price from dj-stripe, or ``None`` when it cannot be read.
+    """The Pro price from dj-stripe, or ``None`` when it cannot be read."""
+    return _price_for(settings.STRIPE_PRO_PRICE_ID, "STRIPE_PRO_PRICE_ID")
+
+
+def get_team_price() -> ProPrice | None:
+    """The per-seat team price, or ``None`` when it cannot be read.
+
+    Read exactly as the Pro price is, from the same mirrored table, with the
+    same rule: no fallback figure.  The page multiplies this by the seat count
+    the buyer chose, and Stripe multiplies the same figure by the same
+    quantity, so the two cannot disagree.
+    """
+    return _price_for(settings.STRIPE_TEAM_PRICE_ID, "STRIPE_TEAM_PRICE_ID")
+
+
+def _price_for(price_id: str, setting_name: str) -> ProPrice | None:
+    """One mirrored ``Price`` row, rendered, or ``None``.
 
     Never raises.  Every failure path — no configured id, no mirrored row, a
     payload with no flat amount — logs and answers ``None``, because this runs
     on a public page whose job is to state a number correctly or not at all.
     """
-    price_id = settings.STRIPE_PRO_PRICE_ID
     if not price_id:
-        logger.warning("STRIPE_PRO_PRICE_ID is not set; the pricing page cannot offer Pro")
+        logger.warning("%s is not set; the pricing page cannot offer that plan", setting_name)
         return None
 
     try:
         price = Price.objects.filter(id=price_id).first()
     except Exception as exc:  # pragma: no cover - defensive; DB is up on this path
-        logger.warning("Could not read the Pro price row: %s", exc)
+        logger.warning("Could not read the price row for %s: %s", setting_name, exc)
         return None
 
     if price is None:
@@ -103,7 +145,8 @@ def get_pro_price() -> ProPrice | None:
     stripe_interval: str = recurring.get("interval") or ""
 
     return ProPrice(
-        amount=_format_amount(unit_amount),
+        amount=format_amount(unit_amount),
+        cents=int(unit_amount),
         currency=(data.get("currency") or "").upper(),
         interval=INTERVAL_LABELS.get(stripe_interval, stripe_interval),
     )

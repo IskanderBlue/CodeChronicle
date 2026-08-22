@@ -633,6 +633,41 @@ class TestLoadEdition:
             == 2
         )
 
+    def test_refuses_a_provision_with_no_version(
+        self, edition_json: Path, tmp_path: Path
+    ) -> None:
+        # A provision holds no content of its own — title, text and dates all
+        # live on a version — so a provision with no version cannot be read.
+        # The load must name it and refuse, because everything downstream of
+        # the loader reads ``provision.versions`` and uses the answer.
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        for prov in data["provisions"]:
+            if prov["provision_id"] == "1.1." and prov["division"] == "Division A":
+                prov["versions"] = []
+                break
+        bad = tmp_path / "OBC_1997_versionless.json"
+        bad.write_text(json.dumps(data), encoding="utf-8")
+        with pytest.raises(CommandError, match=r"carry no version.*1\.1\."):
+            call_command("load_edition", "--source", str(bad))
+
+    def test_a_refused_load_writes_nothing(
+        self, edition_json: Path, tmp_path: Path
+    ) -> None:
+        # The loader is transactional per edition, so the refusal above leaves
+        # no half-written corpus behind.
+        data = json.loads(edition_json.read_text(encoding="utf-8"))
+        for prov in data["provisions"]:
+            if prov["provision_id"] == "1.1." and prov["division"] == "Division A":
+                prov["versions"] = []
+                break
+        bad = tmp_path / "OBC_1997_versionless.json"
+        bad.write_text(json.dumps(data), encoding="utf-8")
+        with pytest.raises(CommandError):
+            call_command("load_edition", "--source", str(bad))
+
+        assert CodeEditionProvision.objects.count() == 0
+        assert CodeEdition.objects.count() == 0
+
     def test_loads_regulation_assets(self, edition_json: Path, tmp_path: Path) -> None:
         data = json.loads(edition_json.read_text(encoding="utf-8"))
         # Inject assets onto the amending regulation per the

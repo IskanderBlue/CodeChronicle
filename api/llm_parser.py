@@ -2,6 +2,7 @@
 Claude-based query parser to extract structured search parameters from natural language.
 """
 
+import hashlib
 import re
 from datetime import date
 from typing import Any, Dict, cast
@@ -12,6 +13,7 @@ from django.conf import settings
 from config.keywords import VALID_KEYWORDS
 from config.part_applicability import OCCUPANCIES
 from config.query_keywords import KEYWORD_SET, plural_variants, typed_keywords
+from core.models import QueryCache, QueryPrompt
 
 SECTION_REF_RE = re.compile(
     r"\b((?:(?:table|[a-z])-)?\d{1,2}(?:\.\d{1,2}){1,4}\.?(?:\(\d+(?:-\d+|(?:,\d+)*)\))?)(?=\s|$|[,;:!\?)\]])",
@@ -23,7 +25,7 @@ SECTION_REF_RE = re.compile(
 # `\d+.\d+` shape never matches them; the space form ("Table 9.10.14.1", no
 # hyphen) would also drop its "table" flag and degrade to a bare provision id.
 # The captured token keeps the "Table" word — exactly the marker the engine's
-# ``_ref_parts`` reads to route a reference against a provision's tables rather
+# ``ref_parts`` reads to route a reference against a provision's tables rather
 # than its id.
 TABLE_REF_RE = re.compile(
     r"\btable[\s\-.]+"
@@ -53,7 +55,7 @@ def strip_table_references(query: str) -> str:
 def _as_table_ref(ref: str) -> str:
     """Coerce an LLM-supplied table id into a marker the engine recognizes.
 
-    ``_ref_parts`` flags a reference as a table only when it starts with a
+    ``ref_parts`` flags a reference as a table only when it starts with a
     ``table`` marker, so a bare id the model returns ("A-1", "9.10.14.1") is
     prefixed; an already-prefixed "Table A-1" passes through untouched.
     """
@@ -197,15 +199,11 @@ If no date or year is mentioned, use today's date (provided in the user message)
 
 def get_prompt_hash(content: str) -> str:
     """Generate SHA-256 hash of the prompt content."""
-    import hashlib
-
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def get_query_hash(query: str) -> str:
     """Generate SHA-256 hash of the normalized query."""
-    import hashlib
-
     # Normalize: lowercase, strip whitespace
     normalized = query.lower().strip()
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
@@ -232,12 +230,10 @@ def parse_user_query(query: str) -> Dict[str, Any]:
     If the query is *only* section references, the LLM call is skipped entirely.
     Checks QueryCache before calling API.
     """
-    from core.models import QueryCache, QueryPrompt
-
     # Tables first: strip the table forms, then run the provision regex on what
     # remains, so "Table 9.10.14.1" is one table reference and not also a bare
     # "9.10.14.1" provision hit. Both lists feed the single ``section_references``
-    # channel the engine consumes; ``_ref_parts`` re-derives table-vs-provision
+    # channel the engine consumes; ``ref_parts`` re-derives table-vs-provision
     # from each token's own marker.
     table_refs = extract_table_references(query)
     q_no_tables = strip_table_references(query)

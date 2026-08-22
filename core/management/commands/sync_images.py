@@ -42,10 +42,13 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import boto3
+from botocore.exceptions import ClientError
 from coloured_logger import Logger
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -90,8 +93,6 @@ class _LocalBackend:
         return _sha256_of_file(dest) if dest.exists() else None
 
     def put(self, src: Path, key: str, sha256: str | None) -> None:
-        import shutil
-
         dest = self._dest(key)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
@@ -116,8 +117,6 @@ class _R2Backend:
                 "--backend r2 requires these settings/env vars: " + ", ".join(missing)
             )
 
-        import boto3  # local dep; imported lazily so the local backend never needs it
-
         self.bucket = settings.R2_BUCKET
         # R2 ignores region but botocore requires one; "auto" is the documented value.
         self.client = boto3.client(
@@ -129,8 +128,6 @@ class _R2Backend:
         )
 
     def head(self, key: str) -> tuple[bool, int, str | None]:
-        from botocore.exceptions import ClientError
-
         try:
             resp = self.client.head_object(Bucket=self.bucket, Key=key)
         except ClientError as err:

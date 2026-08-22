@@ -1,5 +1,8 @@
 """
-Helpers for looking up code metadata stored in the database.
+The reader-facing name of each code system.
+
+Data only, and Django-free, like the rest of ``config``.  The lookups that
+prefer the ``Code`` row live in :mod:`core.code_names`.
 """
 
 #: The name a reader would use for each code system.
@@ -22,35 +25,3 @@ DISPLAY_NAMES = {
     "NPC": "National Plumbing Code",
     "ABC": "Alberta Building Code",
 }
-
-
-def get_code_display_name(system_code: str) -> str:
-    """
-    Get the display name for a code system (e.g., OBC -> Ontario Building Code).
-
-    The database row answers first, because ``load_edition`` keeps it equal to
-    ``DISPLAY_NAMES``.  The map answers for a code whose row is unnamed or
-    absent — a code the loader has not reached, and any caller running without
-    a database.
-    """
-    try:
-        from core.models import Code
-    except Exception:
-        return DISPLAY_NAMES.get(system_code, system_code)
-
-    system = Code.objects.filter(code=system_code).first()
-    if system and system.display_name:
-        return system.display_name
-    return DISPLAY_NAMES.get(system_code, system_code)
-
-
-def edition_display_name(code_name: str) -> str:
-    """Turn a ``CodeEdition.code_name`` into prose: OBC_2012 -> OBC 2012's name.
-
-    ``code_name`` is the internal join of system code and edition id; it should
-    never reach a user (see the no-internal-identifiers rule), but several
-    surfaces carry it as a dict key.  Unknown shapes pass through unchanged
-    rather than raising — a teaser is not worth a 500.
-    """
-    system_code, _, edition_id = (code_name or "").partition("_")
-    return f"{get_code_display_name(system_code)} {edition_id}".strip()

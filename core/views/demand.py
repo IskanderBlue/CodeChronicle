@@ -11,13 +11,12 @@ most people will not make.
 
 from typing import Any
 
-from django.core.exceptions import ValidationError
-from django.core.validators import validate_email
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from core.email_utils import clean_optional_email
 from core.ip_utils import extract_client_ip
 from core.models import EditionRequest, SearchHistory
 
@@ -30,23 +29,6 @@ MAX_REQUESTS_PER_IP_PER_DAY = 5
 #: Longest text we store.  Matches the model field; enforced here so an
 #: oversized post is truncated rather than raising.
 MAX_CODE_TEXT = 200
-
-
-def _clean_email(raw: str) -> str:
-    """Return a valid address, or empty string.
-
-    A malformed address is dropped rather than rejected.  The need is the
-    field that matters; refusing the whole submission over a typo in the
-    optional field would lose the part we actually wanted.
-    """
-    candidate = (raw or "").strip()[:254]
-    if not candidate:
-        return ""
-    try:
-        validate_email(candidate)
-    except ValidationError:
-        return ""
-    return candidate
 
 
 @require_POST
@@ -79,7 +61,7 @@ def edition_request(request: HttpRequest) -> HttpResponse:
     if not over_limit:
         EditionRequest.objects.create(
             code_text=code_text,
-            email=_clean_email(request.POST.get("email", "")),
+            email=clean_optional_email(request.POST.get("email", "")),
             user=user,
             ip_address=ip,
             surface=surface,

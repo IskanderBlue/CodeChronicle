@@ -1,0 +1,19 @@
+{% comment %} One provision's body: the transition pair, the single version, or
+   the "not in force" line. Context: `section`, one row of the `sections` list.
+
+   Split out of _viewer_section_content.html so that `provision_text` — the
+   fragment a signed-in reader's page fetches per provision — renders the body
+   through the same markup the whole-subtree render uses. Two copies of this
+   would let a lazily-loaded body differ from a printed one, which is exactly
+   the guarantee the print branch exists to make. {% endcomment %}
+{% if section.active_versions|length > 1 %}
+    {% include "provenance/_transition_view.html" with versions=section.active_versions %}
+{% elif section.active_versions %}
+    {% with version=section.active_versions.0 %}
+        {% include "provenance/_provision_content.html" with version=version is_container=section.is_container %}
+    {% endwith %}
+{% else %}
+<p class="font-serif text-sm italic text-ink-3">
+    Not in force at this date.
+</p>
+{% endif %}

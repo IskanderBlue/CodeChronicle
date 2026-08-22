@@ -50,7 +50,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
-from config.code_metadata import get_code_display_name
+from core.code_names import get_code_display_name
 from core.models import CodeEdition, CodeEditionProvision, CodeEditionProvisionVersion
 from core.permalinks import provision_permalink_url
 from core.seo import base_regulation, effective_window, last_governed_day

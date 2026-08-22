@@ -13,6 +13,7 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.test import Client
 
+from core.access import edition_gate
 from core.compare import (
     PreparedPair,
     parse_version_ref,
@@ -559,7 +560,7 @@ class TestVersionTimeline:
     ):
         settings.FREE_TIER_CODE_NAMES = FREE
         timeline = version_timeline(
-            corpus["versions"][0], corpus["versions"][1], AnonymousUser(),
+            corpus["versions"][0], corpus["versions"][1], edition_gate(AnonymousUser()),
         )
         assert [row.label for row in timeline.rows] == ["A", "B"]
         # Each row leaves out the one version it can never hold: the earlier
@@ -587,7 +588,7 @@ class TestVersionTimeline:
         settings.FREE_TIER_CODE_NAMES = FREE
         # From (v0, v1): the B row moves B alone.
         row_b = version_timeline(
-            corpus["versions"][0], corpus["versions"][1], AnonymousUser(),
+            corpus["versions"][0], corpus["versions"][1], edition_gate(AnonymousUser()),
         ).rows[1]
         assert row_b.ticks[-1].url == (
             "/compare/?a=OBC_2006/B/3.2.5.7./v0&b=OBC_2006/B/3.2.5.7./v2"
@@ -596,7 +597,7 @@ class TestVersionTimeline:
         # the old nearest-pin rule could never produce, because every click
         # replaced the pin that had just moved.
         row_a = version_timeline(
-            corpus["versions"][0], corpus["versions"][2], AnonymousUser(),
+            corpus["versions"][0], corpus["versions"][2], edition_gate(AnonymousUser()),
         ).rows[0]
         assert row_a.ticks[1].url == (
             "/compare/?a=OBC_2006/B/3.2.5.7./v1&b=OBC_2006/B/3.2.5.7./v2"
@@ -608,7 +609,7 @@ class TestVersionTimeline:
         """Leaving it out would make the two rows disagree about what exists."""
         settings.FREE_TIER_CODE_NAMES = FREE
         row_a = version_timeline(
-            corpus["versions"][0], corpus["versions"][1], AnonymousUser(),
+            corpus["versions"][0], corpus["versions"][1], edition_gate(AnonymousUser()),
         ).rows[0]
         assert row_a.ticks[1].state == "taken"
         assert row_a.ticks[1].url == ""
@@ -623,7 +624,7 @@ class TestVersionTimeline:
         """
         settings.FREE_TIER_CODE_NAMES = FREE
         row_a, row_b = version_timeline(
-            corpus["versions"][0], corpus["versions"][1], AnonymousUser(),
+            corpus["versions"][0], corpus["versions"][1], edition_gate(AnonymousUser()),
         ).rows
         assert 2 not in [tick.version.version for tick in row_a.ticks]
         assert 0 not in [tick.version.version for tick in row_b.ticks]
@@ -640,7 +641,7 @@ class TestVersionTimeline:
         corpus["versions"][1].effective_date = corpus["versions"][0].effective_date
         corpus["versions"][1].save()
         timeline = version_timeline(
-            corpus["versions"][0], corpus["versions"][2], AnonymousUser(),
+            corpus["versions"][0], corpus["versions"][2], edition_gate(AnonymousUser()),
         )
         assert [tick.lane for tick in timeline.rows[0].ticks] == [0, 1]
         assert [tick.lane for tick in timeline.rows[1].ticks] == [1, 0]
@@ -656,7 +657,7 @@ class TestVersionTimeline:
         """
         settings.FREE_TIER_CODE_NAMES = FREE
         timeline = version_timeline(
-            corpus["versions"][0], corpus["versions"][2], AnonymousUser(),
+            corpus["versions"][0], corpus["versions"][2], edition_gate(AnonymousUser()),
         )
         row_a, row_b = timeline.rows
         assert row_a.pin_offset == 0.0
@@ -675,7 +676,7 @@ class TestVersionTimeline:
         corpus["versions"][1].effective_date = date(2010, 7, 2)
         corpus["versions"][1].save()
         timeline = version_timeline(
-            corpus["versions"][0], corpus["versions"][2], AnonymousUser(),
+            corpus["versions"][0], corpus["versions"][2], edition_gate(AnonymousUser()),
         )
         # Row A drops the newest version and row B the oldest, so the two ends
         # of the scale come from one row each.
@@ -689,7 +690,7 @@ class TestVersionTimeline:
         """A tick is a control, and a locked tick would fail on click."""
         settings.FREE_TIER_CODE_NAMES = FREE
         free = version_timeline(
-            corpus["old_v0"], corpus["old_v0"], AnonymousUser(),
+            corpus["old_v0"], corpus["old_v0"], edition_gate(AnonymousUser()),
         )
         assert all(
             tick.version.provision.edition.code_name == "OBC_2006"
@@ -713,7 +714,7 @@ class TestVersionTimeline:
             )
             for n in range(2)
         ]
-        timeline = version_timeline(pair[0], pair[1], AnonymousUser())
+        timeline = version_timeline(pair[0], pair[1], edition_gate(AnonymousUser()))
         assert not timeline.is_useful
 
         body = client.get(

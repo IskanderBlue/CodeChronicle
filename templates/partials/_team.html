@@ -1,0 +1,105 @@
+{% comment %} Seats.  Drawn only for somebody who administers an organization
+   that holds more than themselves (the including page filters on
+   is_personal), because a reader who bought for themselves must never meet
+   the word "organization".
+
+   The seat figures come from the Stripe subscription, not from a stored
+   count, so the number here is the number on the invoice. {% endcomment %}
+{% for team in teams %}
+<div id="team" class="my-6 scroll-mt-24 bg-surface-2 border border-rule">
+    <div class="px-4 py-5 sm:p-6">
+        <h2 class="font-serif text-lg font-semibold text-ink mb-1">{{ team.name }}</h2>
+        <p class="text-sm text-ink-2 mb-4">
+            {{ team.seats_used }} of {{ team.seats_bought }} seat{{ team.seats_bought|pluralize }} in use.
+            {% if team.seats_free %}
+            {{ team.seats_free }} free.
+            {% else %}
+            Add a seat in <span class="text-ink">Manage billing</span> before you invite somebody else.
+            {% endif %}
+        </p>
+
+        {% if team.memberships.all %}
+        <ul class="mb-6 divide-y divide-rule border-t border-b border-rule">
+            {% for member in team.memberships.all %}
+            <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-ink">{{ member.user.email }}</p>
+                    <p class="font-mono text-xs text-ink-3">
+                        {{ member.get_role_display }}
+                        &middot; {% if member.consumes_seat %}holds a seat{% else %}no seat{% endif %}
+                        &middot; joined {{ member.created_at|date:"j M Y" }}
+                    </p>
+                </div>
+                <form method="POST" action="{% url 'core:remove_member' member.pk %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                        class="ui-action shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]">
+                        Remove
+                    </button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% comment %} Invitations nobody has answered yet.  Shown because they
+           are promised seats: an administrator who cannot see them cannot
+           tell why the free count is lower than the arithmetic. {% endcomment %}
+        {% for invite in team.invites.all %}
+        {% if invite.is_open %}
+        <ul class="mb-4 border-t border-rule">
+            <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div class="min-w-0">
+                    <p class="truncate text-sm text-ink-2">{{ invite.email }}</p>
+                    <p class="font-mono text-xs text-ink-3">
+                        invited {{ invite.created_at|date:"j M Y" }}
+                        &middot; expires {{ invite.expires_at|date:"j M Y" }}
+                    </p>
+                </div>
+                <form method="POST" action="{% url 'core:revoke_invite' invite.pk %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                        class="ui-action shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]">
+                        Withdraw
+                    </button>
+                </form>
+            </li>
+        </ul>
+        {% endif %}
+        {% endfor %}
+
+        <form method="POST" action="{% url 'core:invite_to_team' team.pk %}"
+            class="flex flex-wrap items-end gap-3 border-t border-rule pt-4">
+            {% csrf_token %}
+            <div class="min-w-0 grow">
+                <label for="invite-email-{{ team.pk }}"
+                    class="block font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3 mb-1">
+                    Invite by email
+                </label>
+                <input type="email" required name="email" id="invite-email-{{ team.pk }}"
+                    class="w-full border border-rule bg-surface px-3 py-2 text-sm text-ink"
+                    placeholder="colleague@firm.ca">
+            </div>
+            <div>
+                <label for="invite-role-{{ team.pk }}"
+                    class="block font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3 mb-1">
+                    Role
+                </label>
+                <select name="role" id="invite-role-{{ team.pk }}"
+                    class="border border-rule bg-surface px-3 py-2 text-sm text-ink">
+                    {% for value, label in team_roles %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="ui-btn py-2 px-4 text-sm uppercase tracking-[0.06em]">
+                Send
+            </button>
+        </form>
+        <p class="mt-3 text-xs text-ink-3">
+            The person makes their own login, and their searches stay their own.
+            Nobody here can see what a colleague read.
+        </p>
+    </div>
+</div>
+{% endfor %}

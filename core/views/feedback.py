@@ -17,13 +17,13 @@ first; the two are meant to stay recognisably alike.
 from typing import Any
 
 from django.contrib.auth.decorators import user_passes_test
-from django.core.exceptions import ValidationError
-from django.core.validators import validate_email
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from core.access import is_staff
+from core.email_utils import clean_optional_email
 from core.insights import feedback_row
 from core.ip_utils import extract_client_ip
 from core.models import ProvisionFeedback
@@ -40,24 +40,7 @@ MAX_REPORTS_PER_IP_PER_DAY = 10
 MAX_NOTE = 4000
 
 
-def _clean_email(raw: str) -> str:
-    """Return a valid address, or empty string.
-
-    A malformed address is dropped rather than rejected.  The note is the
-    field that matters; refusing the whole report over a typo in the optional
-    field would lose the part we actually wanted.
-    """
-    candidate = (raw or "").strip()[:254]
-    if not candidate:
-        return ""
-    try:
-        validate_email(candidate)
-    except ValidationError:
-        return ""
-    return candidate
-
-
-def _version(raw: Any) -> int | None:
+def _posted_version(raw: Any) -> int | None:
     """The posted version number, or ``None`` when absent or not a number."""
     try:
         parsed = int(raw)
@@ -72,7 +55,7 @@ def _target(request: HttpRequest) -> dict[str, Any]:
         "code_edition": (request.POST.get("code_edition") or "").strip()[:50],
         "division": (request.POST.get("division") or "").strip()[:10],
         "provision_id": (request.POST.get("provision_id") or "").strip()[:50],
-        "version": _version(request.POST.get("version")),
+        "version": _posted_version(request.POST.get("version")),
         "reg_id": (request.POST.get("reg_id") or "").strip()[:50],
     }
 
@@ -106,7 +89,7 @@ def report_form(request: HttpRequest) -> HttpResponse:
             "code_edition": (request.GET.get("code_edition") or "").strip()[:50],
             "division": (request.GET.get("division") or "").strip()[:10],
             "provision_id": (request.GET.get("provision_id") or "").strip()[:50],
-            "version": _version(request.GET.get("version")),
+            "version": _posted_version(request.GET.get("version")),
             "reg_id": (request.GET.get("reg_id") or "").strip()[:50],
         },
     )
@@ -150,7 +133,7 @@ def report_problem(request: HttpRequest) -> HttpResponse:
     if not over_limit:
         ProvisionFeedback.objects.create(
             note=note,
-            email=_clean_email(request.POST.get("email", "")),
+            email=clean_optional_email(request.POST.get("email", "")),
             user=user,
             ip_address=ip,
             surface=surface,
@@ -164,12 +147,7 @@ def report_problem(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _is_staff(user: Any) -> bool:
-    """Gate predicate. ``Any`` because the check also sees ``AnonymousUser``."""
-    return bool(getattr(user, "is_active", False) and getattr(user, "is_staff", False))
-
-
-@user_passes_test(_is_staff)
+@user_passes_test(is_staff)
 @require_POST
 def feedback_status(request: HttpRequest, pk: int) -> HttpResponse:
     """Move one report through triage, from the insights queue.

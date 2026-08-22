@@ -62,6 +62,11 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "core.middleware.RateLimitMiddleware",
+    # Last, so it runs after authentication has resolved request.user and
+    # after the session is available.  It answers from the session on all but
+    # the first request of a session, so the DB cost is per sign-in, not per
+    # page.
+    "core.middleware.TermsReacceptanceMiddleware",
 ]
 
 ROOT_URLCONF = "code_chronicle.urls"
@@ -210,8 +215,29 @@ ACCOUNT_ADAPTER = "core.adapters.AccountAdapter"
 # that changed, and only when the change is substantive — a typo fix is not a
 # new agreement.
 ACCOUNT_SIGNUP_FORM_CLASS = "core.forms.CustomSignupForm"
-TERMS_VERSION = "2026-06-17"
-PRIVACY_VERSION = "2026-08-01"
+TERMS_VERSION = "2026-08-21"
+PRIVACY_VERSION = "2026-08-19"
+
+# The earliest version that still counts as accepted.  A reader whose latest
+# TermsAcceptance is older than one of these meets the re-acceptance wall; see
+# core.reacceptance.
+#
+# These move only for a MATERIAL change, which is the distinction the Terms
+# themselves draw.  Moving them for a typo trains readers to click past the
+# prompt, and a prompt everybody clicks past is not evidence of anything.
+#
+# Both are at a material change.  The Terms gained an ownership section, a
+# review right and post-termination obligations; the Privacy Policy gained the
+# record of which provisions an account opens, and the compliance purpose that
+# record serves.  Neither is a change a reader should first learn about by
+# being audited under it.
+#
+# The Terms floor moved again on 21 August 2026, when the rewritten document
+# went in force.  That edit defined "the Service" for the first time, so every
+# restriction in the agreement changed scope — which is material by any
+# reading, even though most of the same edit only removed duplicated rules.
+TERMS_REACCEPT_FROM = "2026-08-21"
+PRIVACY_REACCEPT_FROM = "2026-08-19"
 
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
@@ -233,7 +259,61 @@ STRIPE_TEST_SECRET_KEY = os.environ.get("STRIPE_TEST_SECRET_KEY", "")
 DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"
 DJSTRIPE_USE_NATIVE_JSONFIELD = True
 STRIPE_PRO_PRICE_ID = os.environ.get("STRIPE_PRO_PRICE_ID", "")
-DJSTRIPE_SUBSCRIBER_MODEL = "core.User"
+#: The per-seat price for a firm.  A second price id, read exactly as the Pro
+#: one is (``core.pricing``).  Empty means a firm cannot buy seats, and the
+#: control is hidden rather than offered and refused.
+STRIPE_TEAM_PRICE_ID = os.environ.get("STRIPE_TEAM_PRICE_ID", "")
+
+#: Whether a signed-in reader's team memberships are honoured on screen.  A
+#: development switch, read through ``core.teams.team_memberships_enabled``.
+#: Off makes the product behave as though this reader belonged to no firm, so
+#: both the "buy seats" and the "manage seats" states are reachable without
+#: making and destroying an organization.  It never hides the Team column and
+#: never revokes access.
+TEAM_MEMBERSHIPS_ENABLED = (
+    os.environ.get("TEAM_MEMBERSHIPS_ENABLED", "True").lower() != "false"
+)
+
+# A subscription belongs to an organization, never to a person.  Somebody who
+# buys for themselves gets an organization of one, so there is one billing
+# path and not two, and ``User.has_active_subscription`` has one answer to
+# give.  See tasks/b-team-payments.md.
+#
+# dj-stripe reads this setting when it imports its own initial migration, so
+# the setting decides which table ``djstripe_customer.subscriber_id`` points
+# at.  The dependency below is what lets that table be created after the
+# organization exists; without it a fresh database cannot resolve the target.
+# An existing database also needs core.0058, which moves the column's contents
+# and its foreign key.
+#
+# **It is read from the environment so one deploy can be made in two steps.**
+# On a database where dj-stripe is already installed against the old subscriber
+# model, `migrate` refuses outright:
+#
+#     InconsistentMigrationHistory: Migration djstripe.0001_initial is applied
+#     before its dependency core.0057_organization_membership_invite
+#
+# because the setting adds that dependency to a migration Django already
+# recorded as applied.  So core.0057 has to land *first*, while dj-stripe still
+# believes the subscriber is the user.  Run this once against production,
+# from the image being deployed, before the normal migrate:
+#
+#     docker run --rm -e DJSTRIPE_SUBSCRIBER_MODEL=core.User <image>
+#         python manage.py migrate core 0057
+#
+# The ordinary deploy then runs with the default, finds core.0057 applied, and
+# applies core.0058 — which moves the column's contents and its foreign key.
+# Rehearsed against a database built from the previous commit.
+#
+# A fresh database needs no such step: the dependency puts the organization
+# table in place before djstripe.0001 asks for it.
+DJSTRIPE_SUBSCRIBER_MODEL = os.environ.get("DJSTRIPE_SUBSCRIBER_MODEL", "core.Organization")
+
+# Only meaningful when the subscriber is the organization.  Declaring it while
+# the subscriber is the user is what would re-create the inconsistency the
+# override exists to avoid.
+if DJSTRIPE_SUBSCRIBER_MODEL == "core.Organization":
+    DJSTRIPE_SUBSCRIBER_MODEL_MIGRATION_DEPENDENCY = "0057_organization_membership_invite"
 
 
 # ===================
@@ -273,6 +353,18 @@ SIGNUP_NOTICE_EMAILS = [
     address.strip()
     for address in os.environ.get(
         "SIGNUP_NOTICE_EMAILS", "rob@codechronicle.ca"
+    ).split(",")
+    if address.strip()
+]
+
+# Who hears that an account has run past its daily API allowance
+# (`core.throttle_notice`).  Nothing refuses that account any more, so a person
+# reading this message is the control.  Empty switches the notice off, which is
+# what a local run wants.
+API_THROTTLE_NOTICE_EMAILS = [
+    address.strip()
+    for address in os.environ.get(
+        "API_THROTTLE_NOTICE_EMAILS", "rob@codechronicle.ca"
     ).split(",")
     if address.strip()
 ]

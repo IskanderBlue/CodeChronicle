@@ -45,6 +45,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import boto3
 from coloured_logger import Logger
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -311,8 +312,6 @@ class Command(BaseCommand):
             missing.append("R2_BACKUP_BUCKET (or R2_BUCKET)")
         if missing:
             raise CommandError("R2 upload requires: " + ", ".join(missing))
-
-        import boto3  # lazy: only needed for the upload path
 
         client = boto3.client(
             "s3",

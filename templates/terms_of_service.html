@@ -1,5 +1,67 @@
 {% extends 'base.html' %}
 
+{% comment %} In force from 21 August 2026. It replaced the 18 August 2026
+   document, which is in this file's git history and nowhere else.
+
+   Not reviewed by a lawyer. That review waits on revenue, and this comment is
+   the record of that decision rather than an oversight.
+
+   New here, against the August 2026 document: Ownership and Your Licence; Records
+   and Review; General (severability, survival, entire agreement, assignment,
+   waiver); a forum-selection sentence in Governing Law. Amended: Accounts
+   (one named person), Acceptable Use (systematic retrieval, masking the
+   source, model training, injunctive relief), Termination (what survives),
+   Changes (re-acceptance for a material change).
+
+   Two things the ownership section depends on, both confirmed in writing by
+   the King's Printer: any person may reproduce Government of Ontario
+   legislation without charge and without asking, on three conditions
+   (accurate reproduction, the Crown copyright acknowledgement, a statement
+   that the copy is not official); and the permission runs to any person, so a
+   reader holds it independently of us. The correspondence is cited in
+   core/attribution.py, and not here — a file reference in a legal document is
+   one edit away from being published.
+
+   Do NOT write the scope as "what Ontario publishes on e-Laws". The
+   correspondence names OBC 1997, 2006 and 2012 by their regulation numbers,
+   and all three predate the e-Laws consolidation. The permission attaches to
+   the legislation, not to the website that carries it.
+
+   The one real limit is the second paragraph: the permission does NOT cover a
+   standard or a model code that a regulation adopts by reference — that
+   document belongs to its publisher. Our corpus holds only editions whose
+   code body is the regulation text, so nothing on the Service today is
+   outside the permission; OBC 2024 is the edition where the distinction
+   starts to bite, and that paragraph is what stops the Terms having to be
+   rewritten when it lands.
+
+   That paragraph says we do NOT reproduce adopted documents. It is a
+   statement of present fact and it must stay true. An earlier draft had a
+   "Licensed materials" section saying third-party material is "identified
+   where it appears" — a promise about a regime we do not operate, and false
+   the day it was written. Load an edition that carries licensed material and
+   this paragraph is what has to change first.
+
+   ONE RULE, ONE HOME. The section that owns a rule states it; every other
+   mention is a pointer. Acceptable Use names a rule and never re-drafts it.
+   This is not tidiness. Ownership forbade using "the content or our work" to
+   train a substitute, and Acceptable Use's copy said "the content" — dropping
+   the compilation, which is the only thing we own. Two copies of one
+   obligation drift, and the drift is invisible because both readings look
+   right on their own page. Cancellation lives in Subscriptions and Billing,
+   the account rule in Accounts, the licence limits in Ownership.
+
+   The licence limit and the covenant are BOTH kept on purpose, and this rule
+   is what makes that safe. Acting outside a licence is infringement; breaking
+   a covenant is breach of contract, and the remedies differ. So the same
+   conduct is barred twice, in two legal registers, with the words written
+   once. Do not collapse them into one mention.
+
+   The consumer savings clause sat in Intended Use and again in Limitation of
+   Liability. It is now one bullet in General, which reaches the whole
+   document — a clause that saves only the two sections it stands beside is a
+   clause a court can read as saving no others. {% endcomment %}
+
 {% block title %}Terms of Service - CodeChronicle{% endblock %}
 
 {% block content %}
@@ -9,23 +71,23 @@
             Terms of Service
         </h1>
         <p class="mt-4 text-sm text-ink-3">
-            Last updated: June 17, 2026
+            Last updated: August 21, 2026
         </p>
     </div>
 
     <div class="border border-rule bg-surface-2 p-8 space-y-8">
         <p class="text-ink-2">
-            This Service is operated by CodeChronicle Corp. ("CodeChronicle", "we", "us").
+            CodeChronicle Corp. ("CodeChronicle", "we", "us") operates CodeChronicle, an online
+            service for searching, comparing and citing historical building code materials.
+        </p>
+        <p class="text-ink-2">
+            <strong class="text-ink">"The Service"</strong> means the CodeChronicle website at
+            codechronicle.ca, our API, the search, comparison and export tools they provide, and the
+            content we make available through them.
+        </p>
+        <p class="text-ink-2">
             By accessing or using the Service, you agree to these Terms.
         </p>
-
-        <section>
-            <h2 class="font-serif text-xl font-bold text-ink mb-3">Purpose of the Service</h2>
-            <p class="text-ink-2">
-                The Service provides tools to search and reference regulatory and building code materials.
-                It is provided for informational and research purposes only.
-            </p>
-        </section>
 
         <section>
             <h2 class="font-serif text-xl font-bold text-ink mb-3">Intended Use</h2>
@@ -33,9 +95,7 @@
                 The Service is intended for use by professionals, businesses, and organizations for
                 business or professional purposes. By using the Service you represent that you are
                 using it for those purposes and not as a consumer for personal, family, or household
-                purposes. Where you nonetheless use the Service as a consumer, nothing in these Terms
-                limits any rights you have under applicable consumer-protection legislation that cannot
-                be waived.
+                purposes.
             </p>
         </section>
 
@@ -66,6 +126,67 @@
             </p>
         </section>
 
+        {% comment %} The section the live document has no equivalent of. It
+           concedes the legislation deliberately: the compilation claim is only
+           credible if the boundary around it is honest, and an overbroad claim
+           over public law would invite a court to distrust the whole section.
+           The last paragraph's carve-out is a statement of fact rather than a
+           concession, because the King's Printer grants that permission to
+           every person directly. {% endcomment %}
+        <section>
+            <h2 class="font-serif text-xl font-bold text-ink mb-3">Ownership and Your Licence</h2>
+
+            <h3 class="font-serif text-base font-semibold text-ink mt-4 mb-2">The legislation</h3>
+            <p class="text-ink-2">
+                The statutes and regulations reproduced on the Service are public law. The King's
+                Printer for Ontario permits any person to reproduce Government of Ontario
+                legislation without charge, on three conditions: the
+                reproduction must be accurate, it must carry the Crown copyright acknowledgement,
+                and it must state that it is not an official version. We reproduce them on those
+                conditions, and the same conditions apply to you when you reproduce them from the
+                Service. We claim no ownership of that text.
+            </p>
+            <p class="text-ink-2 mt-3">
+                That permission does not reach everything a regulation refers to. Where a regulation
+                adopts a standard or a model code, the adopted document belongs to the body that
+                publishes it. We do not reproduce those documents. If we ever do, we will identify
+                them where they appear and publish the terms that apply to them.
+            </p>
+
+            <h3 class="font-serif text-base font-semibold text-ink mt-4 mb-2">Our work</h3>
+            <p class="text-ink-2">
+                Around that public text we build work of our own: the reconstruction of which
+                amendment changed which provision and on what day, the period each version was in
+                force, the link between a version and the regulation that produced it, our
+                verification and editorial records, our search and comparison tools, and the
+                selection, arrangement and presentation of all of it. We own that work and every
+                intellectual property right in it, including copyright in it as a compilation. Those
+                rights are ours whether or not the individual provisions it organises are public.
+            </p>
+
+            <h3 class="font-serif text-base font-semibold text-ink mt-4 mb-2">What your subscription allows</h3>
+            <p class="text-ink-2 mb-3">
+                We grant you a limited, non-exclusive, non-transferable, revocable licence to use the
+                Service for your own professional work while your account is in good standing. We
+                reserve every right we do not expressly grant.
+            </p>
+            <p class="text-ink-2 mb-3">
+                You may quote provisions, and include citations, exports and printed pages generated
+                by the Service, in reports, opinions, submissions, drawings and other work product you
+                deliver. <strong class="text-ink">This permission is perpetual and survives the end of
+                your subscription</strong>, so work you have already delivered stays good.
+            </p>
+            <p class="text-ink-2 mb-3">
+                You may not republish, redistribute, sublicense or sell the content or our work, and
+                you may not use either to build, populate or train a database, model or product that
+                substitutes for the Service.
+            </p>
+            <p class="text-ink-2">
+                That restriction covers our work and our copy of the text. It does not restrict what
+                you may lawfully do with legislation you obtain from its official sources.
+            </p>
+        </section>
+
         <section>
             <h2 class="font-serif text-xl font-bold text-ink mb-3">Limitation of Liability</h2>
             <p class="text-ink-2 mb-3">
@@ -87,17 +208,28 @@
             <p class="text-ink-2 mt-3">
                 Nothing in these Terms excludes or limits liability that cannot be excluded or limited
                 under applicable law &mdash; including liability for fraud, or for death or personal
-                injury caused by negligence &mdash; or any rights you have under consumer-protection
-                legislation that cannot be waived. These limits reflect an agreed allocation of risk
+                injury caused by negligence. These limits reflect an agreed allocation of risk
                 that is reflected in the price of the Service, apply regardless of the form of action,
                 and survive termination of these Terms.
             </p>
         </section>
 
+        {% comment %} Amended. The live document covers credential
+           confidentiality only, and its API clause says "outside your own
+           organisation", which implies an organisation-wide licence that is
+           not what we sell. One rule now, stated once and applied to keys.
+           {% endcomment %}
         <section>
             <h2 class="font-serif text-xl font-bold text-ink mb-3">Accounts</h2>
+            <p class="text-ink-2 mb-3">
+                An account is for one named person. You are responsible for keeping your credentials
+                confidential. Do not share them, and do not let another person use your account. If
+                more than one person at your organisation needs access, each person needs their own
+                account.
+            </p>
             <p class="text-ink-2">
-                You are responsible for maintaining the confidentiality of your account credentials.
+                An API key belongs to the account that made it and carries that account's access. The
+                same rule applies to a key: do not share it.
             </p>
         </section>
 
@@ -114,56 +246,149 @@
                 <li>We will give existing subscribers at least 30 days' notice before a price change
                     applies to them</li>
                 <li>Payments are processed by Stripe; we do not store your card details</li>
-                <li>Except where required by law, or where we terminate your access without cause,
-                    fees are non-refundable</li>
+                <li>Except where required by law, fees are non-refundable</li>
             </ul>
         </section>
 
+        {% comment %} Amended. "Bulk" alone invites the first question a
+           sophisticated defendant asks, so the prohibition turns on the manner
+           of retrieval rather than on a threshold, and it names the manual
+           workaround. The masking line follows CanLII's, which is the closest
+           comparable there is: CanLII v Caseway AI (BCSC, Nov 2024, settled).
+           Stating a number here would also publish our detection threshold.
+           {% endcomment %}
         <section>
             <h2 class="font-serif text-xl font-bold text-ink mb-3">Acceptable Use</h2>
             <p class="text-ink-2 mb-3">
                 You agree not to:
             </p>
             <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2">
-                <li>Scrape or bulk-download content</li>
-                <li>Reverse engineer the Service</li>
+                <li>Retrieve content systematically or in bulk &mdash; through the website or the API,
+                    by a program or by people working manually, in one session or across many</li>
+                <li>Copy the Service's content into another website or product, or present it in a way
+                    that hides where it came from</li>
+                <li>Use the Service outside the licence in <em>Ownership and Your Licence</em> &mdash;
+                    in particular, to build, populate or train a substitute for the Service</li>
+                <li>Share your account or an API key (see <em>Accounts</em>)</li>
+                <li>Reverse engineer the Service, or work around its access controls or its limits</li>
                 <li>Use the Service to violate laws or regulations</li>
             </ul>
+            <p class="text-ink-2 mt-3">
+                API use is subject to a daily limit, which we may change. We may revoke an API key
+                at any time, and will tell you when we do.
+            </p>
+            <p class="text-ink-2 mt-3">
+                A breach of these rules may cause harm that money cannot repair. In addition to any
+                other remedy, we may apply to a court for an injunction.
+            </p>
         </section>
 
+        {% comment %} New. Two jobs in one section: it reserves the review
+           right, and it discloses the record, which PIPEDA requires us to
+           identify as a purpose before we collect for it. The suspension power
+           is constrained on its face — reasonable grounds, notice, and the
+           billing period extended if no breach is found — because Ontario law
+           governs and Bhasin/Wastech police exactly this kind of discretion.
+           The retention sentence is a promise the Privacy Policy must make
+           true in the same change. {% endcomment %}
+        <section>
+            <h2 class="font-serif text-xl font-bold text-ink mb-3">Records and Review</h2>
+            <p class="text-ink-2 mb-3">
+                We keep a record of what each account searches for and which provisions it opens, with
+                the date and time. We use that record to operate and improve the Service, to bill for
+                it, and to check compliance with the Acceptable Use rules.
+            </p>
+            <p class="text-ink-2 mb-3">
+                Where we have reasonable grounds to believe these Terms have been breached, we may
+                review that record, ask you to explain the activity, and suspend access while we do.
+                We will tell you when we suspend access and why. If we do not then terminate your
+                account for breach, we will restore access and extend your billing period by the
+                length of the suspension.
+            </p>
+            <p class="text-ink-2">
+                The <a href="{% url 'core:privacy_policy' %}" class="ui-link">Privacy Policy</a> says
+                what we collect, how long we keep it, and how to ask for a copy or a correction.
+            </p>
+        </section>
+
+        {% comment %} Amended. Continued use is weak acceptance for a material
+           change, and the clickwrap machinery (TermsAcceptance, the separate
+           TERMS_VERSION and PRIVACY_VERSION stamps) already supports asking
+           again. {% endcomment %}
         <section>
             <h2 class="font-serif text-xl font-bold text-ink mb-3">Changes</h2>
             <p class="text-ink-2">
-                We may modify these Terms. For material changes, we will give notice (for example,
-                by email or a notice on the Service) before the change takes effect. Continued use
-                after the effective date constitutes acceptance; if you do not accept a change, you
-                may cancel your subscription and stop using the Service.
+                We may modify these Terms. For a material change we will give notice by email before
+                the change takes effect, and we will ask you to accept the new Terms the next time you
+                sign in. For a minor change we will update this page and the date on it. If you do not
+                accept a material change you may cancel your subscription, and we will refund the
+                unused portion of the current billing period.
             </p>
         </section>
 
+        {% comment %} Amended. The live document says nothing about what
+           happens to content after termination. A flat deletion obligation
+           would make every report a consultant has already filed a breach, and
+           would collide with professional record-retention duties, so both
+           carve-outs are necessary rather than generous. {% endcomment %}
         <section>
             <h2 class="font-serif text-xl font-bold text-ink mb-3">Termination</h2>
-            <p class="text-ink-2">
-                We may suspend or terminate access for breach of these Terms, including the
-                Acceptable Use rules; termination for breach does not entitle you to a refund.
-                If we terminate a paid subscription without cause, we will refund the unused
-                portion of the current billing period.
+            <p class="text-ink-2 mb-3">
+                We may suspend or terminate
+                access for breach of these Terms, including the Acceptable Use rules; termination for
+                breach does not entitle you to a refund. If we terminate a paid subscription without
+                cause, we will refund the unused portion of the current billing period.
             </p>
+            <p class="text-ink-2 mb-3">
+                When your access ends, stop using the Service and delete the copies of the content you
+                hold. You may keep:
+            </p>
+            <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2">
+                <li>content already embedded in work product you have delivered; and</li>
+                <li>copies you must retain by law or by a professional obligation.</li>
+            </ul>
+        </section>
+
+        {% comment %} New. Severability is the highest-value omission in the
+           live document, and it becomes urgent the moment restraint covenants
+           go in: without it, a court that finds the ownership or no-substitute
+           clause overbroad can take more of the document down than intended.
+           {% endcomment %}
+        <section>
+            <h2 class="font-serif text-xl font-bold text-ink mb-3">General</h2>
+            <ul class="list-disc list-inside space-y-2 text-ink-2 ml-2">
+                <li><strong class="text-ink">Consumer rights.</strong> Nothing in these Terms limits
+                    any rights you have under consumer-protection legislation that cannot be
+                    waived.</li>
+                <li><strong class="text-ink">Severability.</strong> If a court finds any provision of
+                    these Terms unenforceable, that provision is limited or removed to the smallest
+                    extent necessary, and the rest stays in force.</li>
+                <li><strong class="text-ink">Survival.</strong> Ownership and Your Licence, Limitation
+                    of Liability, Records and Review, the obligations in Termination that apply after
+                    access ends, Governing Law and this section survive the end of your account.</li>
+                <li><strong class="text-ink">Entire agreement.</strong> These Terms and the Privacy
+                    Policy are the whole agreement between us about the Service.</li>
+                <li><strong class="text-ink">Assignment.</strong> You may not assign these Terms
+                    without our written consent. We may assign them to a successor to our business.</li>
+                <li><strong class="text-ink">No waiver.</strong> If we do not enforce a provision on
+                    one occasion, we keep the right to enforce it later.</li>
+            </ul>
         </section>
 
         <section>
             <h2 class="font-serif text-xl font-bold text-ink mb-3">Governing Law</h2>
             <p class="text-ink-2">
                 These Terms are governed by the laws of the Province of Ontario and the federal
-                laws of Canada applicable therein.
+                laws of Canada applicable therein. You and we attorn to the exclusive jurisdiction of
+                the courts of Ontario, except that we may apply for injunctive relief in any court
+                that has jurisdiction over you.
             </p>
         </section>
 
         <section>
             <h2 class="font-serif text-xl font-bold text-ink mb-3">Contact</h2>
             <p class="text-ink-2">
-                For questions about these Terms, contact us at
-                <a href="mailto:legal@codechronicle.ca" class="ui-link">legal@codechronicle.ca</a>.
+                Questions about these Terms: <a href="mailto:legal@codechronicle.ca" class="ui-link">legal@codechronicle.ca</a>
             </p>
         </section>
     </div>

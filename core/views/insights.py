@@ -15,6 +15,7 @@ from django.contrib.auth.decorators import user_passes_test
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 
+from core.access import is_staff
 from core.insights import (
     CHART_HEIGHT,
     CHART_WIDTH,
@@ -25,6 +26,8 @@ from core.insights import (
     edition_requests,
     export_counts,
     feedback_reports,
+    ledger_health,
+    reading_coverage,
     top_queries,
 )
 from core.models import ProvisionFeedback
@@ -44,12 +47,7 @@ def _resolve_window(raw: str | None) -> int:
     return days if days in WINDOW_CHOICES else DEFAULT_WINDOW_DAYS
 
 
-def _is_staff(user: Any) -> bool:
-    """Gate predicate. ``Any`` because the check also sees ``AnonymousUser``."""
-    return bool(getattr(user, "is_active", False) and getattr(user, "is_staff", False))
-
-
-@user_passes_test(_is_staff)
+@user_passes_test(is_staff)
 def insights(request: HttpRequest) -> HttpResponse:
     """Traction numbers: totals, per-day bars, cumulative lines."""
     days = _resolve_window(request.GET.get("days"))
@@ -61,6 +59,8 @@ def insights(request: HttpRequest) -> HttpResponse:
         # Which of the four exports readers actually take. The table decides
         # what survives the sixty-day review.
         "exports": export_counts(days=days),
+        "reading_coverage": reading_coverage(days=days),
+        "ledger_health": ledger_health(days=days),
         # Not a traction number, and not windowed: "when did the off-host
         # backup last work" has one answer, and the range control must not be
         # able to make a stale backup look absent.

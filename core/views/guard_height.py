@@ -8,7 +8,7 @@ walks the changes that moved the answer, rendered by the product itself.
 **The page is built out of changes, not out of texts.**  It opens on the
 oldest text in full, and every section after it is one amendment shown as a
 redline through ``provenance/_compare_pane.html`` — the same panes ``/compare/``
-draws, prepared the same way by ``core.views.compare._side``.  A list of six
+draws, prepared the same way by ``core.views.compare.comparison_side``.  A list of six
 texts made the reader do the diffing; this is the product doing it, which is
 also the thing the product is for.
 
@@ -16,7 +16,7 @@ also the thing the product is for.
 through the shipping partials, so a corpus that changes changes the article.
 The attestation band on the opening text is the shipping band, not a picture of
 one.  Same reasoning as ``core.views.landing._specimen``, and it reuses that
-page's helper (``_provenance_result``) to say so in code.
+page's helper (``provenance_result``) to say so in code.
 
 **The article is not a gated surface, and it does not need an exception.**
 ``core.access`` answers one question — may this reader open this *edition* —
@@ -44,7 +44,8 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
 
-from api.formatters import _diff_html_content, diff_similarity
+from api.formatters import diff_html_content, diff_similarity
+from config.guard_height_article import OPENING, TRANSITIONS, Ref
 from core.access import edition_allowed
 from core.compare import REDLINE_FLOOR, PreparedPair, version_ref
 from core.cross_refs import annotate_versions
@@ -52,48 +53,8 @@ from core.http_cache import corpus_conditional
 from core.models import CodeEditionProvisionVersion
 from core.permalinks import provision_permalink_url
 from core.seo import article_jsonld, last_governed_day, site_origin
-
-from .compare import _side
-from .regulation import _provenance_result
-
-#: One version of the guard-height article, as
-#: ``(edition_id, division, provision_id, version)``.
-Ref = tuple[str, str, str, int]
-
-#: The oldest text, shown in full because the article starts there.  Everything
-#: after it is a change *to* it.
-OPENING: Ref = ("1997", "", "9.8.8.2.", 0)
-
-#: Every amendment that produced a new text, oldest first, as
-#: ``(slug, earlier, later)``.  The slug is how the template addresses one:
-#: each section carries prose about that particular change, so the sections
-#: cannot be a loop, and a numeric index would not survive a corpus that grows
-#: a version in the middle.
-#:
-#: The provision *number* moves across the first pair: guard height is 9.8.8.2.
-#: in OBC 1997 and 9.8.8.3. from OBC 2006 onward, where 9.8.8.2. becomes "Loads
-#: on Guards".  That is the article's sharpest fact, so the pairs are written
-#: out rather than derived from a single id — no query could find these six by
-#: number.
-#:
-#: OBC 1997 carries no division letter; the later editions are Division B.
-#: ``provision_permalink_url`` and ``core.compare`` both route around the empty
-#: one.
-TRANSITIONS: tuple[tuple[str, Ref, Ref], ...] = (
-    ("renumbered", ("1997", "", "9.8.8.2.", 0), ("2006", "B", "9.8.8.3.", 0)),
-    ("measured", ("2006", "B", "9.8.8.3.", 0), ("2006", "B", "9.8.8.3.", 1)),
-    ("split", ("2006", "B", "9.8.8.3.", 1), ("2012", "B", "9.8.8.3.", 0)),
-    ("exterior", ("2012", "B", "9.8.8.3.", 0), ("2012", "B", "9.8.8.3.", 1)),
-    ("resolved", ("2012", "B", "9.8.8.3.", 1), ("2012", "B", "9.8.8.3.", 2)),
-)
-
-#: There was briefly an ``ASIDES`` tuple beside this one, carrying OBC 2012
-#: B 3.4.6.6. — Part 3's exit-stair guard, where "1 070 mm around landings"
-#: had been one sentence about exit stairs since OBC 2006.  It was gathered to
-#: argue that 9.8.8.3. (5)(b) carried a narrower meaning than it said.  That
-#: argument was wrong: (2) and (5)(b) are both minimums, so they never
-#: conflicted, and the higher one simply governs.  The section went, and the
-#: machinery went with it.  Do not bring either back.
+from core.views.compare import comparison_side
+from core.views.regulation import provenance_result
 
 #: Title and description.  Set here rather than in a ``{% block title %}``:
 #: ``base.html`` resolves the title as ``{% firstof meta_title default_title %}``
@@ -124,7 +85,7 @@ PUBLISHED = date(2026, 8, 14)
 MODIFIED = date(2026, 8, 14)
 
 
-def _version(ref: Ref) -> CodeEditionProvisionVersion | None:
+def _load_version(ref: Ref) -> CodeEditionProvisionVersion | None:
     """One version, or ``None`` when it is not loaded.
 
     ``None`` rather than an exception: a fresh development database has no
@@ -158,7 +119,7 @@ def _load() -> dict[Ref, CodeEditionProvisionVersion]:
     refs = {OPENING, *(ref for _, a, b in TRANSITIONS for ref in (a, b))}
     loaded: dict[Ref, CodeEditionProvisionVersion] = {}
     for ref in refs:
-        version = _version(ref)
+        version = _load_version(ref)
         if version is None:
             continue
         # Citations become permalinks, read at this version's own commencement
@@ -180,7 +141,7 @@ def _opening(version: CodeEditionProvisionVersion, user: Any) -> dict[str, Any]:
     provision = version.provision
     code_name = provision.edition.code_name
     return {
-        "provenance": _provenance_result(
+        "provenance": provenance_result(
             provision,
             version,
             code_name,
@@ -223,12 +184,12 @@ def _transition(
         # Diff the linked bodies, so the citations survive into the redline.
         # The differ passes tags through untouched and compares words only, so
         # the anchors change neither what is marked nor where.
-        old_diff, new_diff = _diff_html_content(
+        old_diff, new_diff = diff_html_content(
             earlier.linked_html or earlier.html,
             later.linked_html or later.html,
         )
-    side_a = _side(earlier, "A")
-    side_b = _side(later, "B")
+    side_a = comparison_side(earlier, "A")
+    side_b = comparison_side(later, "B")
     return {
         "date": later.effective_date,
         "side_a": side_a,

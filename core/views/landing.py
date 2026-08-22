@@ -42,9 +42,8 @@ from core.models import (
     CorpusCurrency,
     Regulation,
 )
-
-from .regulation import _provenance_result
-from .search import EXAMPLE_QUERIES
+from core.views.regulation import provenance_result
+from core.views.search import EXAMPLE_QUERIES
 
 #: The provision the section III specimens are drawn from — Article 1.1.2.4. of
 #: Division A in OBC 2006, at version 2.
@@ -340,7 +339,7 @@ def _specimen(user: Any) -> dict[str, Any]:
     # a whole block and can never end mid-tag. The caption links to the rest.
     lead_html, sep, _rest = (version.linked_html or "").partition("</p>")
     return {
-        "provenance": _provenance_result(
+        "provenance": provenance_result(
             provision, version, code_name, division, provision_id, user
         ),
         "version": version,

@@ -85,9 +85,10 @@ TRACKING = -0.02
 SUBTITLE = "Dated, sourced, searchable building codes."
 BAND_LABEL = "ONTARIO BUILDING CODE"
 
-#: Geometry of the edition staircase.
-BAR_H = 36
-BAR_GAP = 10
+#: Geometry of the edition staircase.  Named for the bands it draws, which is
+#: also what keeps it distinct from the bar geometry of the insights charts.
+BAND_H = 36
+BAND_GAP = 10
 
 #: Paper left above and below the drawing when it is shorter than the frame.
 MIN_PAD = 20
@@ -275,19 +276,19 @@ class Command(BaseCommand):
 
         year_font = _font(MONO_SEMI, 22)
         for index, (edition_id, start, end) in enumerate(bands):
-            top = y + index * (BAR_H + BAR_GAP)
-            draw.rectangle((at(start), top, at(end), top + BAR_H), fill=BAND)
-            draw.rectangle((at(start), top, at(start) + 4, top + BAR_H), fill=OXBLOOD)
+            top = y + index * (BAND_H + BAND_GAP)
+            draw.rectangle((at(start), top, at(end), top + BAND_H), fill=BAND)
+            draw.rectangle((at(start), top, at(start) + 4, top + BAND_H), fill=OXBLOOD)
             label_w = draw.textlength(edition_id, font=year_font)
             middle = (at(start) + at(end)) / 2
             if at(end) - at(start) > label_w + 16:
                 draw.text(
-                    (middle - label_w / 2, top + (BAR_H - 22) // 2),
+                    (middle - label_w / 2, top + (BAND_H - 22) // 2),
                     edition_id, font=year_font, fill=INK,
                 )
 
         date_font = _font(MONO, 19)
-        y_axis = y + len(bands) * (BAR_H + BAR_GAP) + 10
+        y_axis = y + len(bands) * (BAND_H + BAND_GAP) + 10
         draw.line((x0, y_axis, x1, y_axis), fill=RULE, width=2)
         boundaries = [band[1] for band in bands] + [bands[-1][2]]
         for index, when in enumerate(boundaries):
@@ -311,7 +312,7 @@ class Command(BaseCommand):
             raise CommandError(
                 f"the drawing is {height}px tall and the frame is {FRAME_H}px. "
                 "Each edition costs "
-                f"{BAR_H + BAR_GAP}px, so the staircase has outgrown the card. "
+                f"{BAND_H + BAND_GAP}px, so the staircase has outgrown the card. "
                 "Draw the editions as one row of contiguous segments instead: "
                 "they abut, so one row is faithful and its height is constant."
             )

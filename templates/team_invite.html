@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block title %}CodeChronicle - Your seat{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto px-4 py-12">
+    {% if problem %}
+    <h1 class="font-serif text-2xl font-bold text-ink mb-3">This invitation cannot be used</h1>
+    <p class="text-sm text-ink-2 mb-6">{{ problem }}</p>
+    <a href="{% url 'core:search' %}" class="ui-btn py-2 px-4 text-sm uppercase tracking-[0.06em]">
+        Go to CodeChronicle
+    </a>
+    {% else %}
+    <h1 class="font-serif text-2xl font-bold text-ink mb-3">
+        A seat at {{ invite.organization.name }}
+    </h1>
+    <p class="text-sm text-ink-2 mb-6">
+        {% if invite.invited_by %}{{ invite.invited_by.email }}{% else %}An administrator{% endif %}
+        has given you a seat. Taking it opens every edition on CodeChronicle
+        while the seat lasts.
+    </p>
+
+    {% comment %} What the firm can and cannot see.  Stated at the moment the
+       person decides, because that is when it matters to them, and because it
+       is a promise the product keeps in code. {% endcomment %}
+    <ul class="mb-6 border-t border-b border-rule divide-y divide-rule text-sm text-ink-2">
+        <li class="py-3">Your login stays yours, and so do your searches.</li>
+        <li class="py-3">Nobody at {{ invite.organization.name }} can see what you read.</li>
+        <li class="py-3">If the seat ends, your account stays and keeps its history.</li>
+    </ul>
+
+    {% if pays_already %}
+    <div class="mb-6 border border-secondary p-4">
+        <p class="font-mono text-xs uppercase tracking-[0.06em] text-secondary mb-2">
+            You already pay for CodeChronicle
+        </p>
+        <p class="text-sm text-ink-2">
+            Taking this seat does not end your own subscription, and nothing here
+            cancels it for you. Once you have the seat, open
+            <span class="text-ink">Manage billing</span> in Settings and end it there.
+        </p>
+    </div>
+    {% endif %}
+
+    <form method="POST">
+        {% csrf_token %}
+        <button type="submit" class="ui-btn py-2 px-4 text-sm uppercase tracking-[0.06em]">
+            Take the seat
+        </button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

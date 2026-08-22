@@ -6,8 +6,13 @@ What a provision contains, when the provision is too big to show as text.
 _permalink_nav_item item ({provision_id, title, versions:[…]}) plus
 `child_count` and `child_noun`.
 
-Shared by the reading page and the exhibit, because an exhibit must not show
-something the page does not.  Both mount this file; neither builds its own.
+Shared by the reading page, the exhibit and the search overlay.  An exhibit
+must not show something the page does not, and a reader who meets the contents
+of Part 9 in the overlay and again on its own page must meet one list.  All
+three mount this file over core.subtrees.contents_view; none builds its own.
+
+So the copy names no surface — "on one page" was wrong in a panel beside the
+search results, which is not a page.
 
 The register is the navigation's — mono ids, italic titles, `ui-cite` links —
 because these rows point at other provisions, which is exactly what a nav row
@@ -33,7 +38,7 @@ own dated link, the same rule `_permalink_nav_item.html` follows.
         {% endcomment %}
         <p class="mt-1 font-serif text-[13px] text-ink-2">
             This provision contains <strong class="font-semibold">{{ contents_total|intcomma }}</strong>
-            provisions &mdash; too many to show on one page. Its
+            provisions &mdash; too many to show at once. Its
             {{ contents|length }} {{ contents_noun }} are listed here; open one to read it.
         </p>
     </div>

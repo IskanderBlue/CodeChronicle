@@ -119,6 +119,8 @@ this page states each string once.
             <p class="mt-6 border-t border-rule pt-3 font-mono text-[11px] tracking-[0.04em] text-ink-3">
                 <a href="{{ print_url }}" target="_blank" rel="noopener" class="ui-link">Print this version <span aria-hidden="true">&nearr;</span></a>{% if print_needs_sign_in %} <span>&mdash; free account required</span>{% endif %}
             </p>
+
+            {% include "partials/_crown_attribution.html" %}
         </div>
 
         {# Col 3 — provenance metadata rail (lg+ only; folded into the banner on mobile) #}

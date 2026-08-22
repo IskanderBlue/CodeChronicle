@@ -8,7 +8,7 @@ from datetime import date
 
 import pytest
 
-from api.search.engine import CorpusStats, _match_reference, _ref_parts, score_versions
+from api.search.engine import CorpusStats, _match_reference, ref_parts, score_versions
 from core.models import (
     Code,
     CodeEdition,
@@ -23,25 +23,25 @@ class TestRefParts:
     """Normalization of references and table ids into segment tuples."""
 
     def test_plain_provision_with_trailing_dot(self):
-        assert _ref_parts("9.10.14.") == (False, ("9", "10", "14"))
+        assert ref_parts("9.10.14.") == (False, ("9", "10", "14"))
 
     def test_table_hyphen_prefix(self):
-        assert _ref_parts("Table-3.1.4.7.") == (True, ("3", "1", "4", "7"))
+        assert ref_parts("Table-3.1.4.7.") == (True, ("3", "1", "4", "7"))
 
     def test_table_space_prefix(self):
-        assert _ref_parts("Table 3.1.4.7") == (True, ("3", "1", "4", "7"))
+        assert ref_parts("Table 3.1.4.7") == (True, ("3", "1", "4", "7"))
 
     def test_appendix_letter_table(self):
         # Letter-numbered appendix tables ("Table A-1") normalize to a single
         # segment and stay flagged as tables.
-        assert _ref_parts("Table A-1") == (True, ("a-1",))
-        assert _ref_parts("Table-A-12") == (True, ("a-12",))
+        assert ref_parts("Table A-1") == (True, ("a-1",))
+        assert ref_parts("Table-A-12") == (True, ("a-12",))
 
     def test_division_letter_prefix_is_dropped(self):
-        assert _ref_parts("A-3.1.2") == (False, ("3", "1", "2"))
+        assert ref_parts("A-3.1.2") == (False, ("3", "1", "2"))
 
     def test_trailing_clause_suffix_is_stripped(self):
-        assert _ref_parts("3.2.1(1)") == (False, ("3", "2", "1"))
+        assert ref_parts("3.2.1(1)") == (False, ("3", "2", "1"))
 
 
 class TestMatchReference:

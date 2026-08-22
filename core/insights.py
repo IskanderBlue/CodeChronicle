@@ -20,21 +20,35 @@ would draw a shape the data does not have.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
-from django.db.models import Case, Count, IntegerField, Q, QuerySet, Value, When
-from django.db.models.functions import TruncDate
+from django.db.models import (
+    Case,
+    Count,
+    F,
+    IntegerField,
+    Q,
+    QuerySet,
+    Sum,
+    Value,
+    When,
+)
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast, TruncDate
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from djstripe.models import Subscription
 
+from config.exports import EXPORT_KINDS
 from core.models import (
     AuthEvent,
     BackupRun,
+    CodeEditionProvisionVersion,
     EditionRequest,
     EngagementEvent,
     ProvisionFeedback,
+    ProvisionFetch,
     Regulation,
     SearchHistory,
     User,
@@ -53,7 +67,7 @@ CHART_HEIGHT = 132
 #: Gap between adjacent bars, in the same units.  From the house mark spec: a
 #: 2px surface gap between adjacent fills, so a run of non-zero days reads as
 #: separate days rather than one block.
-BAR_GAP = 2
+CHART_BAR_GAP = 2
 
 
 @dataclass(frozen=True)
@@ -112,7 +126,7 @@ class Metric:
         if not n:
             return []
         slot = CHART_WIDTH / n
-        width = max(1.0, slot - BAR_GAP)
+        width = max(1.0, slot - CHART_BAR_GAP)
         peak = self.peak or 1
         bars: list[Bar] = []
         for i, value in enumerate(self.values):
@@ -501,17 +515,6 @@ def feedback_reports(limit: int = 50, days: int = DEFAULT_WINDOW_DAYS) -> list[d
     return [_feedback_dict(row) for row in rows]
 
 
-#: The four exports, and what each row of the table is called.  The order is
-#: cheapest-first, which is also the order they were argued for in
-#: ``tasks/b-provision-exports.md``.
-EXPORT_KINDS: tuple[tuple[str, str, str], ...] = (
-    ("citation", "Citation", "A string copied into somebody else's document."),
-    ("provision_pdf", "Provision", "One provision at one date, laid out to print."),
-    ("results_csv", "Results CSV", "A result set for auditing a building against a date."),
-    ("comparison_pdf", "Comparison", "Two versions and the pairing, laid out to print."),
-)
-
-
 def export_counts(days: int = DEFAULT_WINDOW_DAYS) -> list[dict[str, Any]]:
     """How often each export was taken, in the window and all time.
 
@@ -619,3 +622,270 @@ def top_queries(limit: int = 15, days: int = DEFAULT_WINDOW_DAYS) -> list[dict[s
         .order_by("-n", "query")[:limit]
     )
     return [{"query": row["query"], "count": row["n"]} for row in rows]
+
+
+def ledger_health(days: int = DEFAULT_WINDOW_DAYS) -> dict[str, Any]:
+    """Whether the reading ledger is still recording, from a second record.
+
+    ``core.reading_ledger.record_reads`` swallows every failure, because a
+    ledger write must never break a read.  That is correct and it creates this
+    problem: a ledger which stopped writing looks exactly like an account which
+    stopped reading, and the code best placed to report the failure is the code
+    that is failing.  A counter written by the failing function is not evidence.
+
+    So this compares two records of the same event, written by two functions.
+    ``EngagementEvent`` records a ``PROVISION_VERSION_VIEW`` when a signed-in
+    reader opens a provision; ``ProvisionFetch`` records the texts that page
+    delivered.  A day with the first and none of the second is the alarm.
+
+    Three readings, and they answer different questions:
+
+    * Both counts fall to zero — the readers stopped.  Nothing is broken.
+    * Views continue and ledger writes stop — the ledger broke.
+    * ``last_write`` is old while ``last_view`` is recent — the same failure,
+      visible without waiting for a whole day to close.
+    """
+    since = timezone.now() - timedelta(days=days)
+
+    view_days = {
+        row["day"]
+        for row in EngagementEvent.objects
+        .filter(
+            event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
+            user__isnull=False,
+            timestamp__gte=since,
+        )
+        .annotate(day=TruncDate("timestamp"))
+        .values("day")
+        .distinct()
+    }
+    ledger_days = {
+        row["day"]
+        for row in ProvisionFetch.objects
+        .filter(last_fetched_at__gte=since)
+        .annotate(day=TruncDate("last_fetched_at"))
+        .values("day")
+        .distinct()
+    }
+
+    # A page that delivers forty texts and records three is not a silent day,
+    # so the day-level test above passes it.  The three bulk surfaces stamp
+    # what they handed over beside what reached the ledger, and a request where
+    # the second is lower is a partial failure — the one thing days cannot see.
+    #
+    # ``->>`` then a cast, rather than comparing the JSON values directly: a
+    # jsonb comparison would order 9 after 10, and this is a "fewer than"
+    # question.  A row missing the keys yields NULL and drops out, which is
+    # what should happen to a surface that does not report.
+    #
+    # Signed-in readers only, like everything else here.  ``record_reads``
+    # returns 0 for an anonymous reader by design, so counting those would
+    # report every anonymous read as a total ledger failure.
+    shortfalls = (
+        EngagementEvent.objects
+        .filter(
+            timestamp__gte=since,
+            user__isnull=False,
+            context__has_key="delivered",
+        )
+        .annotate(
+            n_delivered=Cast(
+                KeyTextTransform("delivered", "context"), IntegerField()
+            ),
+            n_recorded=Cast(
+                KeyTextTransform("recorded", "context"), IntegerField()
+            ),
+        )
+        .filter(n_recorded__lt=F("n_delivered"))
+    )
+
+    silent = sorted(view_days - ledger_days)
+    return {
+        "days_with_views": len(view_days),
+        "days_with_ledger": len(ledger_days),
+        # Requests that delivered more text than they recorded.  Any number
+        # above zero is a bug: the two counts describe one response.
+        "shortfall_requests": shortfalls.count(),
+        "last_shortfall": (
+            shortfalls.order_by("-timestamp")
+            .values_list("timestamp", flat=True)
+            .first()
+        ),
+        # Days a signed-in reader opened a provision and nothing reached the
+        # ledger.  One is worth looking at; a run of them is a broken ledger.
+        "silent_days": len(silent),
+        "last_silent_day": silent[-1] if silent else None,
+        "last_view": (
+            EngagementEvent.objects
+            .filter(
+                event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
+                user__isnull=False,
+            )
+            .order_by("-timestamp")
+            .values_list("timestamp", flat=True)
+            .first()
+        ),
+        "last_write": (
+            ProvisionFetch.objects
+            .order_by("-last_fetched_at")
+            .values_list("last_fetched_at", flat=True)
+            .first()
+        ),
+    }
+
+
+#: How long a pause ends a sitting.  A reader who comes back after lunch has
+#: started a second one; a reader turning pages has not.
+SITTING_GAP = timedelta(minutes=30)
+
+
+def _sittings_in_window(since: datetime) -> dict[str, int]:
+    """Per account, how many separate sittings acquired new text.
+
+    Derived from ``first_fetched_at`` rather than stored, and that is the point.
+    The obvious column — a run id minted per session — measures the *session*,
+    and ``SESSION_COOKIE_AGE`` is two weeks here, so a consultant who stays
+    signed in reads a fortnight under one id and scores the single run that is
+    supposed to be the recorder's signature.  A gap in the timestamps is the
+    real thing being asked about, it needs no migration, and ``SITTING_GAP``
+    can be re-tuned against data already collected.
+
+    Only first sightings count, because a sitting here means "when did this
+    account acquire text", and re-reading something it already holds acquires
+    nothing.
+    """
+    stamps: dict[str, list[datetime]] = {}
+    for email, at in (
+        ProvisionFetch.objects
+        .filter(first_fetched_at__gte=since)
+        .order_by("user__email", "first_fetched_at")
+        .values_list("user__email", "first_fetched_at")
+    ):
+        stamps.setdefault(email, []).append(at)
+
+    counts: dict[str, int] = {}
+    for email, times in stamps.items():
+        sittings = 1
+        for before, after in zip(times, times[1:], strict=False):
+            if after - before > SITTING_GAP:
+                sittings += 1
+        counts[email] = sittings
+    return counts
+
+
+def _cold_arrivals_in_window(since: datetime) -> dict[str, int]:
+    """Per account: how many page views arrived with no ``Referer``.
+
+    The question the reading ledger cannot answer.  A reader follows links; a
+    script composes URLs.  ``core.events.arrival_context`` classifies the
+    referrer without storing it, so this counts walks and not reading lists.
+
+    A shape, not a quantity.  It has no threshold and nothing acts on it — a
+    person reads it, and the remedy is the Terms and the revoke.
+    """
+    rows = (
+        EngagementEvent.objects
+        .filter(
+            timestamp__gte=since,
+            user__isnull=False,
+            event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
+            context__arrival="cold",
+        )
+        .values("user__email")
+        .annotate(cold=Count("id"))
+    )
+    return {row["user__email"]: row["cold"] for row in rows}
+
+
+def reading_coverage(days: int = DEFAULT_WINDOW_DAYS) -> list[dict[str, Any]]:
+    """Per account: how much of the corpus it has taken, and how much is new.
+
+    The question this answers is "is anybody recording the corpus", and the
+    reason it is shaped this way is that **volume cannot answer it**.  A busy
+    subscriber and a bulk copy are the same order of magnitude, because the
+    corpus is small.  Novelty separates them cleanly:
+
+    - Somebody recording almost never fetches the same provision twice, so
+      ``new_share`` sits near 100% and ``coverage`` climbs in a straight line.
+    - A consultant returns to the provisions their practice turns on, so most
+      fetches are repeats, ``new_share`` falls away, and ``coverage`` flattens
+      out in the low single digits.
+
+    ``coverage`` is measured against every version this product holds, not
+    against the window, because what matters is the share of the whole an
+    account has accumulated — a copy made a month at a time is still a copy.
+    The denominator counts **versions that carry text**, because the ledger
+    only records those: every division, part, section and subsection has an
+    empty body, and counting headings on one side of the fraction and not the
+    other understates every account.
+
+    **Read ``coverage`` for the website and ``new_share`` for the API.**  An
+    API caller asks for one text at a time, so novelty measures a decision.
+    A website page used to hand over up to forty texts the reader never asked
+    for individually, which made its novelty an artefact of page size.  A
+    signed-in reader's page now fetches each body separately
+    (``core.views.regulation.provision_text``), so ``web_held`` is closing on
+    the same meaning — but rows written before that landed are not, and
+    ``web_held`` and ``api_held`` stay apart for the same underlying reason:
+    one curve over both is a curve over a population that does not exist.
+
+    ``cold`` measures **shape** rather than quantity, and shape has no ceiling
+    problem: a reader follows links, a script composes URLs.
+
+    A report to read, never a limit.  Nothing acts on these numbers; a person
+    does, and the remedy is the Terms and the revoke.
+    """
+    since = timezone.now() - timedelta(days=days)
+    corpus = (
+        CodeEditionProvisionVersion.objects
+        .exclude(html="")
+        .exclude(html__isnull=True)
+        .count()
+    )
+
+    rows = (
+        ProvisionFetch.objects
+        .filter(last_fetched_at__gte=since)
+        .values("user__email")
+        .annotate(
+            held=Count("id"),
+            fetches=Sum("fetch_count"),
+            new_in_window=Count("id", filter=Q(first_fetched_at__gte=since)),
+            web_held=Count("id", filter=Q(source=ProvisionFetch.Source.WEB)),
+            api_held=Count("id", filter=Q(source=ProvisionFetch.Source.API)),
+        )
+        .order_by("-new_in_window", "-held")
+    )
+
+    sittings = _sittings_in_window(since)
+    cold = _cold_arrivals_in_window(since)
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        fetches = row["fetches"] or 0
+        out.append({
+            "email": row["user__email"],
+            # Distinct provision texts this account holds, in total.
+            "held": row["held"],
+            # Requests it made in the window, repeats included.
+            "fetches": fetches,
+            "new_in_window": row["new_in_window"],
+            # Of what it fetched in the window, how much it had never seen.
+            # Near 100 is the recorder's signature; a working reader is low.
+            # Only meaningful for the API side — see the docstring.
+            "new_share": round(100 * row["new_in_window"] / fetches) if fetches else 0,
+            # Which surface delivered it.  Reported apart because the two are
+            # read with different measures, not to be added back together.
+            "web_held": row["web_held"],
+            "api_held": row["api_held"],
+            # How many separate sittings acquired those texts.  The whole
+            # corpus in one sitting and the same texts across a year are
+            # different facts that ``held`` alone cannot tell apart.
+            "sittings": sittings.get(row["user__email"], 0),
+            # Share of the whole corpus this account now holds.
+            "coverage": round(100 * row["held"] / corpus, 1) if corpus else 0.0,
+            # Shape, not quantity: many cold arrivals is composed URLs rather
+            # than followed links.  See ``_cold_arrivals_in_window``.
+            "cold": cold.get(row["user__email"], 0),
+        })
+    return out

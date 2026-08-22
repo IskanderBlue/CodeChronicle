@@ -10,9 +10,10 @@ from datetime import date
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from api.band import parse_iso_date
-from api.search.engine import _ref_parts
-from config.code_metadata import get_code_display_name
+from api.search.engine import ref_parts
 from config.part_applicability import AREA_UNITS, OCCUPANCY_SHORT
+from core.access import edition_gate
+from core.code_names import get_code_display_name
 from core.compare import (
     PreparedPair,
     annotate_chain_comparisons,
@@ -27,6 +28,7 @@ from core.cross_refs import (
     in_container,
     linkify,
 )
+from core.html_tags import HTML_TAG_RE
 from core.models import (
     CodeEdition,
     CodeEditionProvision,
@@ -35,6 +37,7 @@ from core.models import (
     ProvisionCrossReference,
     Regulation,
 )
+from core.provision_levels import CONTAINER_LEVELS
 from core.provision_lineage import (
     annotate_lineage_locks,
     annotate_lineage_titles,
@@ -44,18 +47,6 @@ from core.verification import base_input, build_rail, consolidations_for
 
 logger = logging.getLogger(__name__)
 
-# Structural container levels: these are heading nodes (Division A / Part 3 /
-# Section 3.2 / Subsection 1.3.7.) whose substantive text lives in their child
-# articles — they legitimately carry no body, so the empty-content notice must
-# not read as a data gap for them.  See _result_document_block.html.
-_CONTAINER_LEVELS = frozenset({
-    CodeEditionProvision.Level.DIVISION,
-    CodeEditionProvision.Level.PART,
-    CodeEditionProvision.Level.SECTION,
-    CodeEditionProvision.Level.SUBSECTION,
-})
-
-_HTML_TAG_RE = re.compile(r"(<[^>]+>)")
 # Splits text into words and whitespace runs, preserving both.
 _WORD_SPACE_RE = re.compile(r"(\S+)")
 
@@ -102,10 +93,10 @@ def highlight_terms(html: str, terms: Iterable[str]) -> str:
         r"(?<!\w)(" + "|".join(re.escape(t) for t in cleaned) + r")(?!\w)",
         re.IGNORECASE,
     )
-    parts = _HTML_TAG_RE.split(html)
+    parts = HTML_TAG_RE.split(html)
     out: list[str] = []
     for part in parts:
-        if _HTML_TAG_RE.fullmatch(part):
+        if HTML_TAG_RE.fullmatch(part):
             out.append(part)  # tag — leave untouched
         else:
             out.append(pattern.sub(r'<mark class="match-highlight">\1</mark>', part))
@@ -118,10 +109,10 @@ def _tokenize_html_for_diff(html: str) -> list[tuple[str, str]]:
     token_type is one of: "tag", "word", "space".
     Tags and whitespace are pass-through; only words participate in the diff.
     """
-    tag_parts = _HTML_TAG_RE.split(html)
+    tag_parts = HTML_TAG_RE.split(html)
     tokens: list[tuple[str, str]] = []
     for part in tag_parts:
-        if _HTML_TAG_RE.fullmatch(part):
+        if HTML_TAG_RE.fullmatch(part):
             tokens.append((part, "tag"))
         else:
             # Split into alternating whitespace and word runs
@@ -136,7 +127,7 @@ def _tokenize_html_for_diff(html: str) -> list[tuple[str, str]]:
     return tokens
 
 
-def _diff_html_content(
+def diff_html_content(
     old_html: str | None,
     new_html: str | None,
 ) -> Tuple[str | None, str | None]:
@@ -274,14 +265,14 @@ def _diff_html_content(
 def diff_similarity(old_html: str | None, new_html: str | None) -> float:
     """How much of the two texts is shared, from 0.0 to 1.0.
 
-    The same words, tokenized the same way, that ``_diff_html_content``
+    The same words, tokenized the same way, that ``diff_html_content``
     diffs — so a caller deciding whether a redline is worth drawing measures
     exactly what the redline would draw.  A separate pass rather than a
     second return value, because the existing callers want the annotated
     HTML and nothing else.
 
     Returns 0.0 when either side is empty, which is also what
-    ``_diff_html_content`` treats as undiffable.
+    ``diff_html_content`` treats as undiffable.
     """
     if not old_html or not new_html:
         return 0.0
@@ -308,7 +299,7 @@ def diff_is_empty(old_html: str | None, new_html: str | None) -> bool:
     reader who finds no highlight has to scan both columns to the end, twice,
     to be sure the absence is the answer and not a miss.
 
-    False when either side is empty, matching ``_diff_html_content``: nothing
+    False when either side is empty, matching ``diff_html_content``: nothing
     was compared, so nothing can be reported as unchanged.
     """
     if not old_html or not new_html:
@@ -325,7 +316,7 @@ def _build_code_display_name(code_edition: str) -> str:
     return f"{display} {year}".strip()
 
 
-def _code_order_key(value: str) -> Tuple[Any, ...]:
+def code_order_key(value: str) -> Tuple[Any, ...]:
     parts = re.split(r"(\d+)", value or "")
     key: list[Any] = []
     for part in parts:
@@ -368,8 +359,7 @@ def provenance_lines(
     """
     lines: list[str] = []
     in_force = (
-        version.effective_date.isoformat()
-        if version and version.effective_date else None
+        version.effective_date.isoformat() if version.effective_date else None
     )
     in_force_suffix = f" ({in_force})" if in_force else ""
 
@@ -434,7 +424,7 @@ def _join_terms(terms: Sequence[str]) -> str:
 
 def _reference_label(ref: str) -> str:
     """Human label for a matched reference: 'table-3.1.4.7' -> 'Table 3.1.4.7'."""
-    is_table, segs = _ref_parts(ref)
+    is_table, segs = ref_parts(ref)
     core = ".".join(segs)
     return f"Table {core}" if is_table else core
 
@@ -635,93 +625,85 @@ def _format_single_result(
     building: Mapping[str, Any] | None = None,
 ) -> Dict[str, Any]:
     code_edition = result.get("code_edition", "Unknown")
-    provision = result.get("provision")
-    version = result.get("version")
-    parent_id = ""
-    if provision and provision.parent:
-        parent_id = provision.parent.provision_id
+    # Both required, not fetched with a default.  A result is built by walking
+    # versions (``api.search.engine``), which sets these two keys in one dict
+    # literal, and a version's provision is a non-null FK.  A provision with no
+    # version is a load failure ``load_edition`` refuses.  So neither is a case
+    # to render around.
+    provision = result["provision"]
+    version = result["version"]
+    parent_id = provision.parent.provision_id if provision.parent else ""
 
-    # Derive provenance from prefetched relationships
-    base_regulation = None
-    all_versions = []
+    # Derive provenance from prefetched relationships.
+    # The provision's own base reg — the edition base for a base original,
+    # but the introducing amendment for an amend-add-created provision (see
+    # CodeEditionProvision.origin_regulation). Reads the prefetched v0 + its
+    # contributing clause, falling back to prefetched edition.regulations.
+    base_regulation = provision.origin_regulation
+    # Full version chain: from prefetched provision.versions
+    all_versions = list(provision.versions.all())
+    # Appendix notes: from prefetched provision.appendix_entries
     appendix_notes = []
-    contributing_clauses: list = []
-    if provision:
-        # The provision's own base reg — the edition base for a base original,
-        # but the introducing amendment for an amend-add-created provision (see
-        # CodeEditionProvision.origin_regulation). Reads the prefetched v0 + its
-        # contributing clause, falling back to prefetched edition.regulations.
-        base_regulation = provision.origin_regulation
-        # Full version chain: from prefetched provision.versions
-        all_versions = list(provision.versions.all())
-        # Appendix notes: from prefetched provision.appendix_entries
-        for ap in provision.appendix_entries.all():
-            latest = ap.versions.order_by("-version").first() if ap.versions.all() else None
-            appendix_notes.append({
-                "id": ap.provision_id,
-                "title": latest.title if latest else "",
-                "html": latest.html if latest else "",
-            })
+    for ap in provision.appendix_entries.all():
+        latest = ap.versions.order_by("-version").first() if ap.versions.all() else None
+        appendix_notes.append({
+            "id": ap.provision_id,
+            "title": latest.title if latest else "",
+            "html": latest.html if latest else "",
+        })
 
-    if version:
-        contributing_clauses = list(version.contributing_clauses.all())
+    contributing_clauses = list(version.contributing_clauses.all())
 
     # Next-version-not-in-force: orchestration prefetches into
     # provision.next_versions (to_attr).
     next_version = None
-    if provision is not None and hasattr(provision, "next_versions"):
+    if hasattr(provision, "next_versions"):
         nexts = getattr(provision, "next_versions", []) or []
         next_version = nexts[0] if nexts else None
     # Fallback: pick the next version from the full chain when the
     # to_attr prefetch wasn't applied (e.g. test setups not going
     # through orchestration).
-    if next_version is None and version and all_versions:
+    if next_version is None and all_versions:
         for v in all_versions:
             if v.version > version.version:
                 next_version = v
                 break
 
-    transition_provision_version = (
-        version.transition_provision if version else None
-    )
+    transition_provision_version = version.transition_provision
 
     # The representative "amended by" clause is the last one applied to this
     # version, ordered by the through model's apply_order (see
     # CodeEditionProvisionVersion.last_contributing_clause). Using that
     # property keeps the header, amendment chain, and next-version rows
     # consistent — a plain contributing_clauses[-1] is non-deterministic.
-    most_recent_clause = (
-        version.last_contributing_clause if version else None
-    ) or result.get("clause")
+    most_recent_clause = version.last_contributing_clause or result.get("clause")
 
     # A v0 created by an amend-add clause was *added* (enacted) by that reg, not
     # amended — so its base reg IS the producing clause's reg, and surfaces label
     # it "added" rather than "amended" (band chip, copy text).
-    is_added = version.is_added_origin if version else False
+    is_added = version.is_added_origin
 
     # Attestation rail: derive_status + geometry. The base regulation is folded in
     # as the enactment origin (and, for the base version, its first attestation).
     # The edition's consolidation calendar is identical for every result of an
     # edition, so fetch it once and memoize across the result set.
-    rail = None
-    if version is not None:
-        cons = None
-        if consolidation_memo is not None and provision is not None:
-            cons = consolidation_memo.get(provision.edition_id)
-            if cons is None:
-                cons = consolidations_for(provision.edition_id)
-                consolidation_memo[provision.edition_id] = cons
-        rail = build_rail(
-            version, query_date, date.today(),
-            base=base_input(base_regulation), consolidations=cons,
-        )
+    cons = None
+    if consolidation_memo is not None:
+        cons = consolidation_memo.get(provision.edition_id)
+        if cons is None:
+            cons = consolidations_for(provision.edition_id)
+            consolidation_memo[provision.edition_id] = cons
+    rail = build_rail(
+        version, query_date, date.today(),
+        base=base_input(base_regulation), consolidations=cons,
+    )
 
     # Within-edition citations, linked to the target as it read on the query
     # date (this surface HAS a date, unlike the version-pinned permalink, so
     # each citation resolves to a single version rather than fanning out).
     # Runs BEFORE highlight_terms: highlighting inserts <mark> mid-text and
     # would split a citation's surface string out from under the matcher.
-    cross_ref_records = list(version.cross_references.all()) if version else []
+    cross_ref_records = list(version.cross_references.all())
     cross_ref_cites: list[dict[str, Any]] = []
     html_content = result.get("html_content")
     if cross_ref_records:
@@ -757,7 +739,7 @@ def _format_single_result(
     provision_ref = str(result.get("id", ""))
     division_ref = result.get("division", "")
     from_commencement = most_recent_clause.commencement if most_recent_clause else None
-    if from_commencement is None and most_recent_clause is None and version and base_regulation:
+    if from_commencement is None and most_recent_clause is None and base_regulation:
         from_commencement = select_commencement_record(
             base_regulation.commencement,
             provision_ref,
@@ -770,9 +752,7 @@ def _format_single_result(
     if (
         until_commencement is None
         and next_version is None
-        and version is not None
         and version.ineffective_date is not None
-        and provision is not None
     ):
         until_commencement = replacement_commencement(
             provision.edition,
@@ -830,7 +810,7 @@ def _format_single_result(
         # Structural heading node (part/section/subsection/division): never
         # carries body text, so the document block suppresses the
         # "Content not yet available" notice rather than implying a data gap.
-        "is_structural": bool(provision and provision.level in _CONTAINER_LEVELS),
+        "is_structural": provision.level in CONTAINER_LEVELS,
         "version": version,
         "provision": provision,
         "base_regulation": base_regulation,
@@ -872,15 +852,12 @@ def _in_force_title(
     "Revoked: …" sentinel title even when the query lands while it was
     substantively in force (see ``order_by("-version")`` regression).
 
-    Falls back to the latest version when there's no as-of date, when the
-    provision has no versions, or when *nothing* is in force on the date —
-    the last case is a data anomaly for a provision search just surfaced, so
-    it's logged as an error.  Zero-width "as-filed but superseded same day"
-    versions (``ineffective == effective``) are skipped, mirroring the
-    in-force search filter.
+    Falls back to the latest version when there's no as-of date, or when
+    *nothing* is in force on the date — the second case is a data anomaly for
+    a provision search just surfaced, so it's logged as an error.  Zero-width
+    "as-filed but superseded same day" versions (``ineffective == effective``)
+    are skipped, mirroring the in-force search filter.
     """
-    if not versions:
-        return fallback_id
     latest = max(versions, key=lambda v: v.version)
     if query_date is None:
         return latest.title or fallback_id
@@ -961,7 +938,7 @@ def _load_group_hierarchy(
                 "page": None,
                 "page_end": None,
             })
-        child_nodes.sort(key=lambda item: _code_order_key(str(item.get("node_id") or "")))
+        child_nodes.sort(key=lambda item: code_order_key(str(item.get("node_id") or "")))
 
         hierarchy[(code_edition, parent_id, division)] = {
             "parent_title": parent_title,
@@ -1198,7 +1175,7 @@ def merge_transition_compare_results(
             or new_version.get("html_content")
             or new_version.get("page_images")
         )
-        old_diff, new_diff = _diff_html_content(
+        old_diff, new_diff = diff_html_content(
             old_version.get("html_content"),
             new_version.get("html_content"),
         )
@@ -1309,7 +1286,7 @@ def _nest_child_results(
         parent_self = dict(parent)
         top_child = max(children, key=lambda c: (c.get("score", 0),))
         child_entries = []
-        for child in sorted(children, key=lambda c: _code_order_key(str(c.get("id", "")))):
+        for child in sorted(children, key=lambda c: code_order_key(str(c.get("id", "")))):
             child_id = str(child.get("id", ""))
             child_entries.append({
                 "id": child_id,
@@ -1351,11 +1328,10 @@ def _attach_cited_by(formatted: List[Dict[str, Any]]) -> None:
     Restricted per result to the citing versions in force alongside the version
     shown (``core.cross_refs.cited_by_map``).
     """
-    versions = [r["version"] for r in formatted if r.get("version")]
+    versions = [r["version"] for r in formatted]
     fan_in = cited_by_map(versions)
     for result in formatted:
-        version = result.get("version")
-        result["cited_by"] = fan_in.get(version.pk, []) if version else []
+        result["cited_by"] = fan_in.get(result["version"].pk, [])
 
 
 def _attach_lineage(formatted: List[Dict[str, Any]], user: Any = None) -> None:
@@ -1369,14 +1345,11 @@ def _attach_lineage(formatted: List[Dict[str, Any]], user: Any = None) -> None:
     of this provision in this edition"; lineage entries carry their own
     edition/division/id and prebuilt URLs).
     """
-    lineage = resolve_lineage(
-        [r["provision"] for r in formatted if r.get("provision")]
-    )
-    annotate_lineage_locks(lineage.values(), user)
+    lineage = resolve_lineage([r["provision"] for r in formatted])
+    annotate_lineage_locks(lineage.values(), edition_gate(user))
     annotate_lineage_titles(lineage.values())
     for result in formatted:
-        provision = result.get("provision")
-        lin = lineage.get(provision.pk) if provision is not None else None
+        lin = lineage.get(result["provision"].pk)
         result["lineage_predecessors"] = lin.predecessors if lin else None
         result["lineage_successors"] = lin.successors if lin else None
         _attach_compare_pair(result)
@@ -1394,10 +1367,7 @@ def _attach_compare_pair(result: Dict[str, Any]) -> None:
     ``None`` when this version has no other version anywhere; the template
     then renders no control rather than one that fails on click.
     """
-    version = result.get("version")
-    if version is None:
-        result["compare_pair"] = None
-        return
+    version = result["version"]
     chain = result.get("amendment_chain") or [version]
     annotate_lineage_comparisons(
         version,

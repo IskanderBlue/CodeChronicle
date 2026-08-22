@@ -40,6 +40,34 @@ def edition_contents_url(code_name: str) -> str:
     return reverse("core:edition_contents", args=[code_name])
 
 
+def provision_text_url(
+    code_name: str, division: str, provision_id: str, version: int
+) -> str:
+    """Reverse the one-provision text fragment for a version.
+
+    The website's answer to ``/api/provision``: one text, one request.  A
+    permalink page hands a signed-in reader the headings and fetches each body
+    through this, so the reading ledger records a text per text delivered
+    rather than up to forty per page render.
+
+    Same shape as every other provision URL — the permalink with ``/text/``
+    on the end, exactly as the print route is the permalink with ``/print/``.
+    A row with no version in force is never deferred (it has no body to
+    fetch), so every URL this builds names a version that exists.
+
+    Same empty-division split as :func:`provision_permalink_url`.
+    """
+    if division:
+        return reverse(
+            "core:provision_text",
+            args=[code_name, division, provision_id, version],
+        )
+    return reverse(
+        "core:provision_text_no_division",
+        args=[code_name, provision_id, version],
+    )
+
+
 def provision_print_url(
     code_name: str, division: str, provision_id: str, version: int
 ) -> str:

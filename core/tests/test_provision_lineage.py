@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from core.access import edition_gate
 from core.models import (
     Code,
     CodeEdition,
@@ -405,7 +406,7 @@ class TestRenderFields:
             email="pro@example.com", password="testpass", pro_courtesy=True,
         )
         lineage = resolve_lineage(list(CodeEditionProvision.objects.all()))
-        annotate_lineage_locks(lineage.values(), pro)
+        annotate_lineage_locks(lineage.values(), edition_gate(pro))
         for lin in lineage.values():
             for direction in (lin.predecessors, lin.successors):
                 assert all(li.locked is False for li in direction.links)
@@ -420,7 +421,7 @@ class TestRenderFields:
         lineage = resolve_lineage(
             [lineage_fixtures["p06_renum_old"], lineage_fixtures["p12_renum_new"]]
         )
-        annotate_lineage_locks(lineage.values(), None)
+        annotate_lineage_locks(lineage.values(), edition_gate(None))
         forward = lineage[lineage_fixtures["p06_renum_old"].pk].successors.links[0]
         backward = lineage[lineage_fixtures["p12_renum_new"].pk].predecessors.links[0]
         assert forward.locked is True

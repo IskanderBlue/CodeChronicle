@@ -393,7 +393,7 @@ class TestProvisionPermalinkUrl:
 @pytest.mark.django_db
 class TestPermalinkLineageRows:
     """The permalink page's provenance rail carries the lineage rows
-    (``_provenance_result`` calls the resolver for the matched provision)."""
+    (``provenance_result`` calls the resolver for the matched provision)."""
 
     @pytest.fixture
     def mapped_editions(self, db):

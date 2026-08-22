@@ -41,13 +41,12 @@ Per provision, per direction, exactly one of four states:
 """
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
 from django.db.models import Max, Min, Q
 
-from core.access import edition_allowed
 from core.models import (
     CodeEdition,
     CodeEditionProvision,
@@ -395,7 +394,10 @@ def resolve_lineage(
     }
 
 
-def annotate_lineage_locks(lineages: Iterable[Lineage], user: Any) -> None:
+def annotate_lineage_locks(
+    lineages: Iterable[Lineage],
+    may_read: Callable[[str], bool],
+) -> None:
     """Stamp the free-tier gate verdict on every link, in place.
 
     Lineage links are inherently cross-edition, so a link's target can sit
@@ -407,7 +409,7 @@ def annotate_lineage_locks(lineages: Iterable[Lineage], user: Any) -> None:
     for lineage in lineages:
         for direction in (lineage.predecessors, lineage.successors):
             for link in direction.links:
-                link.locked = not edition_allowed(user, link.edition.code_name)
+                link.locked = not may_read(link.edition.code_name)
 
 
 def annotate_lineage_titles(lineages: Iterable[Lineage]) -> None:

@@ -52,6 +52,7 @@ def run_search(
     province_override: str | None = None,
     match_threshold: float = CLOSE_MATCH_THRESHOLD,
     building: Building | None = None,
+    source: str = SearchHistory.Source.WEB,
 ) -> dict[str, Any]:
     """
     Execute a full search pipeline: parse → search → format → save history.
@@ -71,6 +72,10 @@ def run_search(
             part the code says governs such a building, and nothing here
             reaches the scored keywords.  Absent keys leave the parser's
             answer, and an absent occupancy means no preference at all.
+        source: Which surface ran the search, stamped on the ``SearchHistory``
+            row.  The API's daily quota counts its own rows, and a run of
+            automated searches is only recognisable as one if the rows say
+            where they came from.
 
     Returns:
         A dict with keys: success, results, error, applicable_codes,
@@ -229,6 +234,7 @@ def run_search(
                 parsed_params=params,
                 result_count=len(formatted),
                 top_results=top_results_metadata,
+                source=source,
             )
             search_history_id = history.pk
         except Exception as e:

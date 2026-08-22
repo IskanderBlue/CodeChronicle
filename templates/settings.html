@@ -71,6 +71,10 @@
         </div>
     </div>
 
+    {% if teams %}{% include "partials/_team.html" %}{% endif %}
+
+    {% if api_access %}{% include "partials/_api_keys.html" %}{% endif %}
+
     <!-- Sign Out -->
     <div class="my-6 bg-surface-2 border border-rule">
         <div class="px-4 py-5 sm:p-6">

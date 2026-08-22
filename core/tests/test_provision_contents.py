@@ -24,7 +24,7 @@ from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
 )
-from core.views.regulation import CONTENTS_THRESHOLD
+from core.subtrees import CONTENTS_THRESHOLD
 
 
 def _version(provision, version=0, title="Scope", html="<p>Text</p>"):
@@ -69,7 +69,7 @@ PART = "/provision/OBC_2006/B/Part 9/v0/"
 #: A fragment of the block's own copy.  The bare word "Contents" is no good:
 #: the edition-nav row's tooltip says "Contents of OBC 2006", so asserting on
 #: it passes on every page.
-CONTENTS_MARKER = "too many to show on one page"
+CONTENTS_MARKER = "too many to show at once"
 
 
 @pytest.mark.django_db
@@ -142,7 +142,7 @@ class TestAnOversizedSubtreeBecomesContents:
         """The count is stated, not implied.
 
         The subtree walk stops early once it knows the answer is "too many",
-        so this number is not a by-product — ``_descendant_count`` asks for it.
+        so this number is not a by-product — ``descendant_count`` asks for it.
         A reader told their text is withheld is owed the size of it.
         """
         _tree(edition, children=CONTENTS_THRESHOLD, grandchildren=2)
@@ -307,3 +307,84 @@ class TestTheExhibitFollowsThePage:
         body = client.get(url).content.decode()
         assert CONTENTS_MARKER in body
         assert "Sub 1" not in body
+
+
+def _overlay(client, provision_id: str, **extra):
+    """The search overlay's panel for one provision, as the results page asks
+    for it."""
+    return client.get(
+        reverse("core:viewer_section_content"),
+        {
+            "code": "OBC", "edition_id": "2006", "division": "B",
+            "provision_id": provision_id, "query_date": "2007-06-01",
+            **extra,
+        },
+        HTTP_HX_REQUEST="true",
+    ).content.decode()
+
+
+@pytest.mark.django_db
+class TestTheSearchOverlayIsBoundedToo:
+    """The overlay walks the *parent's* subtree, so a reader sees the match in
+    context.  That walk had no limit at all, and a search result is not always
+    a leaf article: the candidate query does not exclude an empty body, and
+    BM25F scores the title as its own field, so a part or a section can be the
+    match.  Its parent's subtree is then the render CONTENTS_THRESHOLD exists
+    to prevent — inline, highlighted, on the one surface that had no cap.
+    """
+
+    def test_a_small_subtree_still_arrives_whole(self, client, edition):
+        _tree(edition, children=3, grandchildren=2)
+
+        body = _overlay(client, "9.1.")
+
+        assert "Sub 1" in body
+        assert "9.2." in body, "the siblings are the context this panel is for"
+
+    def test_an_oversized_parent_gives_up_the_siblings_first(
+        self, client, edition
+    ):
+        """Context is what the parent is here for, but the reader searched for
+        one provision and must still be shown it.  So the root narrows to the
+        match rather than the panel changing character."""
+        _tree(edition, children=CONTENTS_THRESHOLD, grandchildren=2)
+
+        body = _overlay(client, "9.1.")
+
+        assert "9.1.1." in body, "the match keeps its own subtree"
+        assert "9.40." not in body, "the siblings are what was given up"
+
+    def test_an_oversized_match_lists_what_is_inside(self, client, edition):
+        """The permalink's behaviour, from the permalink's builder and the
+        permalink's partial.  A reader who meets the contents of Part 9 here
+        and again on its own page must meet one list."""
+        _tree(edition, children=CONTENTS_THRESHOLD, grandchildren=2)
+
+        body = _overlay(client, "Part 9")
+
+        assert CONTENTS_MARKER in body
+        assert "Sub 1" not in body, "no generation past the limit is rendered"
+        assert '<a href="/provision/OBC_2006/B/9.1./v0/"' in body
+
+    def test_the_two_surfaces_show_the_same_list(self, client, edition):
+        """The whole reason the builder moved out of the view layer.  Two
+        lists of one thing drift, and the drift is invisible until somebody
+        opens both."""
+        _tree(edition, children=CONTENTS_THRESHOLD, grandchildren=2)
+
+        panel = _overlay(client, "Part 9")
+        page = client.get(PART).content.decode()
+
+        for row in range(1, CONTENTS_THRESHOLD + 1):
+            link = f'<a href="/provision/OBC_2006/B/9.{row}./v0/"'
+            assert (link in panel) == (link in page)
+        assert "2 subsections" in panel
+        assert "2 subsections" in page
+
+    def test_a_whole_subtree_that_fits_lists_nothing(self, client, edition):
+        _tree(edition, children=3, grandchildren=2)
+
+        body = _overlay(client, "Part 9")
+
+        assert CONTENTS_MARKER not in body
+        assert "Sub 1" in body, "it fits, so it is rendered"

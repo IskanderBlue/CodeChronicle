@@ -19,9 +19,9 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 
 from api.formatters import diff_similarity
+from config.guard_height_article import OPENING, TRANSITIONS
 from core.compare import REDLINE_FLOOR
 from core.models import CodeEditionProvision
-from core.views.guard_height import OPENING, TRANSITIONS
 
 _TAG = re.compile(r"<[^>]+>")
 _ALLOWANCE = re.compile(r"less than\s+800\s*mm", re.IGNORECASE)
@@ -56,8 +56,10 @@ class Command(BaseCommand):
         versions = {}
 
         # Every version the article draws: the opening text, plus both sides of
-        # every transition.  Taken from the view rather than restated, so a
-        # transition added there is checked here without a second edit.
+        # every transition.  Read from the article's spine rather than
+        # restated, so a transition added there is checked here without a
+        # second edit — and the command reads the data the page reads, not the
+        # page's module.
         refs = [OPENING]
         for _, earlier, later in TRANSITIONS:
             for ref in (earlier, later):

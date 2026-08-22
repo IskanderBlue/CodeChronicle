@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ipaddress
 
+from django.http import HttpRequest
+
 
 def normalize_client_ip(value: str | None) -> str | None:
     """Return a normalized IP string, or None when invalid/missing."""
@@ -35,3 +37,21 @@ def extract_client_ip(meta: dict) -> str | None:
     if isinstance(remote_addr, str):
         return normalize_client_ip(remote_addr)
     return None
+
+
+def client_ip(request: HttpRequest | None) -> str | None:
+    """The caller's IP, best effort, and this never raises.
+
+    The callers are audit and notice paths that run *beside* the work rather
+    than as part of it: a sign-in, a signup notice.  A malformed ``META`` must
+    not fail the sign-in it is only there to record, so every failure reads as
+    "no IP".  ``None`` covers both "no request" and "could not tell"; a caller
+    that needs a word for the second writes ``client_ip(request) or
+    "unknown"``.
+    """
+    if request is None:
+        return None
+    try:
+        return extract_client_ip(request.META)
+    except Exception:  # noqa: BLE001 — reading an IP is never fatal to the caller
+        return None

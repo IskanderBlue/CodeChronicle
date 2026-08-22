@@ -15,6 +15,39 @@ from core.models import (
 )
 
 
+def a_match(
+    code_edition: str, provision_id: str, division: str = "B"
+) -> dict[str, Any]:
+    """The two keys every search result carries, saved and real.
+
+    ``api.search.engine`` builds a result by walking versions, and sets
+    ``version`` and ``provision`` in one dict literal; a version's provision is
+    a non-null FK; and ``load_edition`` refuses a payload where a provision
+    carries no version.  So a result missing either key is not a shape the
+    formatter can meet, and a test that builds one tests nothing.
+    """
+    code_name, edition_id = code_edition.split("_", 1)
+    system, _ = Code.objects.get_or_create(
+        code=code_name, defaults={"display_name": code_name}
+    )
+    edition, _ = CodeEdition.objects.get_or_create(
+        code=system,
+        edition_id=edition_id,
+        defaults={"year": 2024, "effective_date": date(2024, 1, 1)},
+    )
+    provision, _ = CodeEditionProvision.objects.get_or_create(
+        edition=edition,
+        provision_id=provision_id,
+        division=division,
+        defaults={"level": "article"},
+    )
+    version = CodeEditionProvisionVersion.objects.create(
+        provision=provision, version=0, effective_date=edition.effective_date,
+    )
+    return {"version": version, "provision": provision}
+
+
+@pytest.mark.django_db
 def test_format_search_results_emits_span_fields_without_bbox(monkeypatch):
     monkeypatch.setattr(
         formatters, "_build_code_display_name", lambda code_edition: "National Building Code 2025"
@@ -33,6 +66,7 @@ def test_format_search_results_emits_span_fields_without_bbox(monkeypatch):
                 "final_page_bottom": 88.0,
                 "score": 1.0,
                 "division": "B",
+                **a_match("NBC_2025", "3.2.9."),
             }
         ]
     )
@@ -299,16 +333,21 @@ def test_container_levels_cover_structural_headings():
     # suppression off — headings never carry body text; leaves do.
     from core.models import CodeEditionProvision as P
 
-    assert P.Level.DIVISION in formatters._CONTAINER_LEVELS
-    assert P.Level.PART in formatters._CONTAINER_LEVELS
-    assert P.Level.SECTION in formatters._CONTAINER_LEVELS
-    assert P.Level.SUBSECTION in formatters._CONTAINER_LEVELS
-    assert P.Level.ARTICLE not in formatters._CONTAINER_LEVELS
+    assert P.Level.DIVISION in formatters.CONTAINER_LEVELS
+    assert P.Level.PART in formatters.CONTAINER_LEVELS
+    assert P.Level.SECTION in formatters.CONTAINER_LEVELS
+    assert P.Level.SUBSECTION in formatters.CONTAINER_LEVELS
+    assert P.Level.ARTICLE not in formatters.CONTAINER_LEVELS
 
 
 @pytest.mark.django_db
 def test_format_single_result_marks_structural_headings(monkeypatch):
-    from core.models import Code, CodeEdition, CodeEditionProvision
+    from core.models import (
+        Code,
+        CodeEdition,
+        CodeEditionProvision,
+        CodeEditionProvisionVersion,
+    )
 
     monkeypatch.setattr(formatters, "_build_code_display_name", lambda code_edition: code_edition)
     system = Code.objects.create(code="OBC", display_name="OBC", is_national=False)
@@ -323,12 +362,23 @@ def test_format_single_result_marks_structural_headings(monkeypatch):
         edition=edition, provision_id="1.3.7.1.", level="article", division="C",
         parent=subsection,
     )
+    # Every provision has a version — the loader refuses a payload where one
+    # does not (see Command._check_every_provision_has_a_version), so a
+    # versionless provision is not a case this function can meet.
+    sub_v0 = CodeEditionProvisionVersion.objects.create(
+        provision=subsection, version=0, title="Application",
+        effective_date=date(2024, 1, 1),
+    )
+    art_v0 = CodeEditionProvisionVersion.objects.create(
+        provision=article, version=0, title="Smoke Alarms",
+        effective_date=date(2024, 1, 1),
+    )
 
     sub_fmt = formatters._format_single_result(
-        {"code_edition": "OBC_2024", "provision": subsection, "version": None}
+        {"code_edition": "OBC_2024", "provision": subsection, "version": sub_v0}
     )
     art_fmt = formatters._format_single_result(
-        {"code_edition": "OBC_2024", "provision": article, "version": None}
+        {"code_edition": "OBC_2024", "provision": article, "version": art_v0}
     )
 
     assert sub_fmt["is_structural"] is True
@@ -698,6 +748,7 @@ def test_in_force_title_skips_zero_width_version():
     assert formatters._in_force_title(versions, date(2022, 6, 1), "x", log_label="x") == "Real"
 
 
+@pytest.mark.django_db
 def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch):
     monkeypatch.setattr(formatters, "_build_code_display_name", lambda code_edition: code_edition)
     monkeypatch.setattr(formatters, "_load_group_hierarchy", lambda formatted_results, query_date=None: {})
@@ -723,6 +774,7 @@ def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch
                     "citation_text": "Transition regulation",
                     "is_primary": True,
                 },
+                **a_match("BCBC_2024", "3.2.9."),
             },
             {
                 "id": "3.2.9.",
@@ -743,6 +795,7 @@ def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch
                     "citation_text": "Transition regulation",
                     "is_primary": False,
                 },
+                **a_match("BCBC_2018", "3.2.9."),
             },
         ]
     )
@@ -759,7 +812,7 @@ def test_formatter_merges_transition_pair_into_single_compare_result(monkeypatch
 def test_diff_html_content_marks_unchanged_and_changed():
     old_html = "<p>The fire safety requirements apply to all buildings.</p>"
     new_html = "<p>The fire safety standards apply to most buildings.</p>"
-    old_diff, new_diff = formatters._diff_html_content(old_html, new_html)
+    old_diff, new_diff = formatters.diff_html_content(old_html, new_html)
     assert old_diff is not None
     assert new_diff is not None
     # Both panes: unchanged text is lowlighted
@@ -778,7 +831,7 @@ def test_diff_html_content_coalesces_a_changed_run():
     # struck phrase reads as a phrase. Marked per word it came out striped.
     old_html = "<p>designed for a concentrated horizontal load of 22 kN today</p>"
     new_html = "<p>designed and constructed to withstand the values today</p>"
-    old_diff, new_diff = formatters._diff_html_content(old_html, new_html)
+    old_diff, new_diff = formatters.diff_html_content(old_html, new_html)
     assert old_diff is not None
     assert new_diff is not None
     assert (
@@ -800,7 +853,7 @@ def test_diff_html_content_never_spans_a_run_across_a_tag():
     # A span straddling `</p><p>` is invalid HTML, so a tag always ends a run.
     old_html = "<p>alpha bravo</p><p>charlie delta</p>"
     new_html = "<p>alpha xray</p><p>yankee delta</p>"
-    old_diff, _ = formatters._diff_html_content(old_html, new_html)
+    old_diff, _ = formatters.diff_html_content(old_html, new_html)
     assert old_diff is not None
     assert "</p><p>" in old_diff
     for fragment in old_diff.split("<span"):
@@ -814,7 +867,7 @@ def test_diff_html_content_keeps_a_search_highlight_intact():
     # rather than the paper-yellow that <mark> already owns.
     old_html = "<p>a continuous curb not less than 150 mm</p>"
     new_html = "<p>a continuous curb not less than 140 mm</p>"
-    old_diff, new_diff = formatters._diff_html_content(
+    old_diff, new_diff = formatters.diff_html_content(
         formatters.highlight_terms(old_html, ["curb"]),
         formatters.highlight_terms(new_html, ["curb"]),
     )
@@ -828,7 +881,7 @@ def test_diff_html_content_keeps_a_search_highlight_intact():
 def test_diff_html_content_preserves_html_tags():
     old_html = "<p><strong>Fire</strong> safety requirements apply.</p>"
     new_html = "<p><strong>Fire</strong> safety standards apply.</p>"
-    old_diff, new_diff = formatters._diff_html_content(old_html, new_html)
+    old_diff, new_diff = formatters.diff_html_content(old_html, new_html)
     assert old_diff is not None
     assert new_diff is not None
     # Original HTML tags should be preserved in the diff output
@@ -844,14 +897,14 @@ def test_diff_html_content_preserves_original_whitespace():
     # "Act, 1997," should NOT get a space before the comma
     old_html = "<p>the Fire Protection and Prevention Act, 1997,</p>"
     new_html = "<p>the Fire Protection and Prevention Act, 1997,</p>"
-    old_diff, new_diff = formatters._diff_html_content(old_html, new_html)
+    old_diff, new_diff = formatters.diff_html_content(old_html, new_html)
     assert old_diff is not None
     assert "1997 ," not in old_diff  # no spurious space before comma
     assert "1997," in old_diff
     # "onlydwelling" should stay unseparated if that's the original
     old_html2 = "<p>onlydwelling units</p>"
     new_html2 = "<p>onlydwelling units</p>"
-    old_diff2, _ = formatters._diff_html_content(old_html2, new_html2)
+    old_diff2, _ = formatters.diff_html_content(old_html2, new_html2)
     assert old_diff2 is not None
     assert "onlydwelling" in old_diff2  # no space inserted
 
@@ -980,10 +1033,10 @@ def test_transition_pair_omits_the_link_without_version_objects():
 
 
 def test_diff_html_content_returns_none_when_input_empty():
-    assert formatters._diff_html_content(None, "<p>text</p>") == (None, None)
-    assert formatters._diff_html_content("<p>text</p>", None) == (None, None)
-    assert formatters._diff_html_content("", "<p>text</p>") == (None, None)
-    assert formatters._diff_html_content(None, None) == (None, None)
+    assert formatters.diff_html_content(None, "<p>text</p>") == (None, None)
+    assert formatters.diff_html_content("<p>text</p>", None) == (None, None)
+    assert formatters.diff_html_content("", "<p>text</p>") == (None, None)
+    assert formatters.diff_html_content(None, None) == (None, None)
 
 
 class _StubRegulation:
@@ -1190,6 +1243,7 @@ def test_unpaired_member_renders_plain_not_self_compare():
     assert result[0].get("result_type") != "transition_compare"
 
 
+@pytest.mark.django_db
 def test_transition_context_passes_through_formatting(monkeypatch):
     monkeypatch.setattr(
         formatters, "_build_code_display_name",
@@ -1213,6 +1267,7 @@ def test_transition_context_passes_through_formatting(monkeypatch):
                 "code_edition": "OBC_2012_v09",
                 "score": 0.95,
                 "transition_context": transition_context,
+                **a_match("OBC_2012_v09", "8.6.2.2"),
             }
         ]
     )
@@ -1337,6 +1392,7 @@ def test_format_single_result_surfaces_explanation_and_suppresses_ref_chips():
             "score": 3.0,
             "match_type": "exact_id",
             "matched_terms": ["3.1.4.7"],
+            **a_match("OBC_2024", "3.1.4.7."),
         },
         query_date=None,
     )
@@ -1356,6 +1412,7 @@ def test_format_single_result_shows_chips_for_keyword_match():
             "score": 0.9,
             "match_type": "exact",
             "matched_terms": ["fire", "sprinkler"],
+            **a_match("OBC_2024", "3.1.8.5."),
         },
         query_date=None,
     )
@@ -1365,8 +1422,12 @@ def test_format_single_result_shows_chips_for_keyword_match():
 
 @pytest.mark.django_db
 def test_format_search_results_attaches_lineage(monkeypatch):
-    """Every result carries lineage keys from one batched resolver call;
-    results without a provision (raw-dict paths) get None, not a KeyError."""
+    """Every result carries lineage keys from one batched resolver call.
+
+    Both directions are asserted on one provision: the mapping gives it a
+    successor, and the absence of a mapping the other way gives it
+    ``no_data_yet`` rather than a missing key.
+    """
     monkeypatch.setattr(formatters, "_build_code_display_name", lambda c: c)
     monkeypatch.setattr(
         formatters, "_load_group_hierarchy", lambda formatted_results, query_date=None: {}
@@ -1386,10 +1447,12 @@ def test_format_search_results_attaches_lineage(monkeypatch):
     new = CodeEditionProvision.objects.create(
         edition=e2012, provision_id="9.10.18.7.", level="article", division="B",
     )
-    for prov in (old, new):
-        CodeEditionProvisionVersion.objects.create(
+    made = {
+        prov: CodeEditionProvisionVersion.objects.create(
             provision=prov, version=0, effective_date=prov.edition.effective_date,
         )
+        for prov in (old, new)
+    }
     ProvisionMapping.objects.create(
         old_provision=old, new_provision=new, mapping_type="renumbered",
     )
@@ -1399,23 +1462,18 @@ def test_format_search_results_attaches_lineage(monkeypatch):
             {
                 "id": "9.10.18.6.", "title": "Old", "code_edition": "OBC_2006",
                 "division": "B", "score": 2.0, "provision": old,
+                "version": made[old],
             },
-            {"id": "1.1.1.1.", "title": "No provision", "code_edition": "OBC_2006",
-             "division": "B", "score": 1.0},
         ]
     )
 
-    with_prov = next(r for r in formatted if r.get("provision") is not None)
+    with_prov = formatted[0]
     succ = with_prov["lineage_successors"]
     assert succ.state == "linked"
     assert succ.links[0].provision == new
     assert succ.links[0].verb == "renumbered to"
     assert succ.links[0].locked is False  # gating disabled → never locked
     assert with_prov["lineage_predecessors"].state == "no_data_yet"
-
-    without_prov = next(r for r in formatted if r.get("provision") is None)
-    assert without_prov["lineage_successors"] is None
-    assert without_prov["lineage_predecessors"] is None
 
 
 class TestPartExplanation:

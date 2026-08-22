@@ -1,12 +1,33 @@
 """
 Django Ninja API endpoints for CodeChronicle.
+
+``/api/search``, ``/api/codes`` and ``/api/history`` need an API key, held by
+an account with an active Pro subscription (``api.auth``).  ``/api/health`` and
+``/api/event`` are open — the first so a monitor can reach it, the second
+because it is the website's own engagement beacon.
+
+Nothing in the website calls the three key-only endpoints, so a browser cookie
+buys nothing here and is not accepted.
 """
 
 import json
+from datetime import date
 
 from django.db import connection
 from ninja import NinjaAPI, Schema
 
+from api.auth import apply_search_throttle, require_api_key
+from api.band import parse_iso_date
+from api.provisions import find_provision, provision_out, record_fetch, version_in_force
+from api.schemas import (
+    ProvisionMetaOut,
+    ProvisionOut,
+    ResultOut,
+    SearchMetaOut,
+    flatten,
+    result_out,
+)
+from core.access import edition_allowed
 from core.events import record_event
 from core.ip_utils import extract_client_ip
 from core.models import CodeEdition, EngagementEvent, SearchHistory
@@ -15,15 +36,28 @@ from services.search_service import PROVINCE_NAMES, run_search
 api = NinjaAPI(
     title="CodeChronicle API",
     version="0.1.0",
-    description="Historical Canadian Building Code Search API",
+    description=(
+        "Historical Canadian Building Code search. "
+        "Authenticate with an API key issued from your CodeChronicle settings "
+        "page, sent as `Authorization: Bearer <key>`. An active Pro "
+        "subscription is required. `/health` needs no key."
+    ),
 )
 
 
 class ApiErrorResponse(Schema):
+    """Every refusal, in the same envelope as an answer.
+
+    ``results`` is always empty and is kept so one client can read a refusal
+    and an answer with the same code.  ``meta`` carries the links a caller
+    acts on (where the docs are, where keys are made, where to subscribe),
+    which is why it is not the search's ``meta``.
+    """
+
     success: bool
-    results: list[dict] = []
+    results: list[ResultOut] = []
     error: str
-    meta: dict | None = None
+    meta: dict[str, str] | None = None
 
 
 class CodeRow(Schema):
@@ -41,10 +75,12 @@ class CodesResponse(Schema):
 
 
 class SearchResponse(Schema):
+    """One entry per matched provision, most relevant first."""
+
     success: bool
-    results: list[dict]
+    results: list[ResultOut]
     error: str | None = None
-    meta: dict | None = None
+    meta: SearchMetaOut | None = None
 
 
 class HealthResponse(Schema):
@@ -78,45 +114,10 @@ class EventResponse(Schema):
     error: str | None = None
 
 
-def _is_paid_user(user) -> bool:
-    """Return True when API access is allowed for this user."""
-    if not getattr(user, "is_authenticated", False):
-        return False
-    if getattr(user, "pro_courtesy", False):
-        return True
-    try:
-        return bool(getattr(user, "has_active_subscription", False))
-    except Exception:
-        return False
-
-
-def _require_paid_api_access(request):
-    """
-    Enforce API-only access for paid users.
-
-    Anonymous and free users should use the website UI endpoint instead.
-    """
-    user = request.user
-    if _is_paid_user(user):
-        return None
-
-    if not getattr(user, "is_authenticated", False):
-        return 401, {
-            "success": False,
-            "results": [],
-            "error": (
-                "Authentication required for direct API access. "
-                "Use the website UI or sign in to a paid account."
-            ),
-            "meta": {"upgrade_url": "/pricing", "ui_search_url": "/"},
-        }
-
-    return 403, {
-        "success": False,
-        "results": [],
-        "error": "Direct API access is a paid feature. Upgrade to Pro to use /api endpoints.",
-        "meta": {"upgrade_url": "/pricing", "ui_search_url": "/"},
-    }
+#: Where a caller goes when a provision is not there or not theirs.  The list
+#: of editions is the useful answer to both: it says what this account can ask
+#: for, which is what a wrong edition key and a locked edition both need.
+_NOT_FOUND_HELP = {"editions_url": "/api/codes", "docs_url": "/api/docs"}
 
 
 def _load_code_rows_from_db() -> list[dict[str, str | int]]:
@@ -144,7 +145,7 @@ def _load_code_rows_from_db() -> list[dict[str, str | int]]:
 )
 def list_codes(request):
     """List known code editions from DB-backed metadata."""
-    denied = _require_paid_api_access(request)
+    denied = require_api_key(request)
     if denied:
         return denied
 
@@ -239,7 +240,13 @@ def _extract_search_params_from_request(request) -> dict[str, str | None]:
 
 @api.post(
     "/search",
-    response={200: SearchResponse, 400: ApiErrorResponse, 401: ApiErrorResponse, 403: ApiErrorResponse},
+    response={
+        200: SearchResponse,
+        400: ApiErrorResponse,
+        401: ApiErrorResponse,
+        403: ApiErrorResponse,
+        429: ApiErrorResponse,
+    },
 )
 def search(request):
     """
@@ -249,9 +256,16 @@ def search(request):
       - ``date`` (YYYY-MM-DD): overrides the LLM-parsed construction date.
       - ``province`` (two-letter code, e.g. "ON"): overrides the LLM-parsed province.
     """
-    denied = _require_paid_api_access(request)
+    denied = require_api_key(request)
     if denied:
         return denied
+
+    # Only the search carries a daily allowance: it costs a language-model
+    # parse and answers with up to a hundred provisions.  Past the allowance
+    # the search still runs, after a wait that grows with the overage — it
+    # never refuses.  Applied before the query is read, so a caller over the
+    # line waits the same whatever they sent.
+    apply_search_throttle(request)
 
     search_params = _extract_search_params_from_request(request)
     query = search_params["query"]
@@ -271,26 +285,33 @@ def search(request):
         ip_address=ip if not request.user.is_authenticated else None,
         date_override=search_params["date"],
         province_override=search_params["province"],
+        # Stamps the history row, which is both what the daily ceiling counts
+        # and what makes a run of automated searches recognisable as one.
+        source=SearchHistory.Source.API,
     )
 
     if not result["success"]:
         return {"success": False, "results": [], "error": result["error"]}
 
-    overrides = {
-        k: v
-        for k, v in {"date": search_params["date"], "province": search_params["province"]}.items()
-        if v is not None
-    }
+    # The page's cards come apart into one entry per matched provision, and
+    # each is projected onto ``ResultOut``.  Both steps live in ``api.schemas``
+    # so ``/api/docs`` describes exactly what a caller receives.
+    rows = [result_out(card) for card in flatten(result["results"])]
+    parsed = result["parsed_params"] or {}
     return {
         "success": True,
-        "results": result["results"],
+        "results": rows,
         "error": None,
+        # What ran, not what was asked: an explicit ``date`` or ``province``
+        # in the request overrides the parser, and a caller that cannot see
+        # which date was used cannot check the answer.
         "meta": {
             "query": query,
-            "parsed_params": result["parsed_params"],
-            "applicable_codes": result["applicable_codes"],
-            "result_count": len(result["results"]),
-            **({"overrides": overrides} if overrides else {}),
+            "date": search_params["date"] or parsed.get("date"),
+            "province": search_params["province"] or parsed.get("province") or "",
+            "keywords": parsed.get("keywords") or [],
+            "editions_searched": result["applicable_codes"],
+            "result_count": len(rows),
         },
     }
 
@@ -298,7 +319,7 @@ def search(request):
 @api.get("/history", response={200: HistoryResponse, 401: ApiErrorResponse, 403: ApiErrorResponse})
 def get_search_history(request):
     """Return user's recent searches."""
-    denied = _require_paid_api_access(request)
+    denied = require_api_key(request)
     if denied:
         return denied
 
@@ -323,7 +344,7 @@ def record_engagement(request, payload: EventPayload):
     Covers result interactions that have no server round-trip of their own —
     following an external source link, a PDF download — and attributes them to
     the originating search via ``search_id``.  Deliberately **not** gated by
-    ``_require_paid_api_access``: tracking applies to all users, anonymous
+    ``require_api_key``: tracking applies to all users, anonymous
     included.  It executes no search, so ``RateLimitMiddleware`` (which only
     guards ``/search-results/``) leaves it untouched.
     """
@@ -340,3 +361,123 @@ def record_engagement(request, payload: EventPayload):
         context=payload.context,
     )
     return {"success": True, "error": None}
+
+
+class ProvisionResponse(Schema):
+    """One provision version, with its text."""
+
+    success: bool
+    #: A list of one, so a caller reads a provision and a search with the same
+    #: code. Empty on a refusal.
+    results: list[ProvisionOut] = []
+    error: str | None = None
+    meta: ProvisionMetaOut | None = None
+
+
+@api.get(
+    "/provision",
+    response={
+        200: ProvisionResponse,
+        400: ApiErrorResponse,
+        401: ApiErrorResponse,
+        403: ApiErrorResponse,
+        404: ApiErrorResponse,
+    },
+)
+def get_provision(
+    request,
+    edition: str,
+    id: str,
+    division: str = "",
+    on: str = "",
+    version: int | None = None,
+):
+    """Fetch one provision, as it read on a date.
+
+    The arguments are the fields a search result already carries, so a caller
+    loops over results and asks for the ones worth reading without composing
+    anything. They are query parameters rather than path segments because a
+    division-less edition has an empty division, and an empty path segment is
+    not a path.
+
+    Name **either** ``on`` (a date, and the usual way to ask — "what did this
+    say when the building was built") **or** ``version`` (an exact version
+    number, for pinning a citation). Naming neither reads as today.
+
+    This is the only endpoint that serves provision text, and every text it
+    serves is recorded against the account (``core.models.ProvisionFetch``).
+    """
+    denied = require_api_key(request)
+    if denied:
+        return denied
+
+    if on and version is not None:
+        return 400, {
+            "success": False,
+            "error": (
+                "Name either 'on' (a date) or 'version' (a number), not both. "
+                "They can disagree, and we will not guess which you meant."
+            ),
+            "meta": None,
+        }
+
+    provision = find_provision(edition, division, id)
+    if provision is None:
+        return 404, {
+            "success": False,
+            "error": (
+                f"No provision {id!r} in {edition!r}"
+                + (f" division {division!r}." if division else ".")
+            ),
+            "meta": _NOT_FOUND_HELP,
+        }
+
+    # The same gate as every other surface. An API key never widens what an
+    # account may read; it only changes how the account asks.
+    if not edition_allowed(request.user, provision.edition.code_name):
+        return 403, {
+            "success": False,
+            "error": f"{provision.edition.code_name} is not included in this plan.",
+            "meta": _NOT_FOUND_HELP,
+        }
+
+    # The two ways of naming a version, and each branch owns everything it
+    # needs — which is also why ``as_of`` is set in one of them rather than
+    # ahead of both: a date only means anything when no version was named.
+    as_of: date | None = None
+    if version is not None:
+        target = provision.versions.filter(version=version).first()
+        resolved_by = "requested"
+    else:
+        as_of = parse_iso_date(on) if on else date.today()
+        if as_of is None:
+            return 400, {
+                "success": False,
+                "error": f"'{on}' is not a date. Use YYYY-MM-DD.",
+                "meta": None,
+            }
+        target = version_in_force(provision, as_of)
+        resolved_by = "in_force_on"
+
+    if target is None:
+        return 404, {
+            "success": False,
+            "error": (
+                f"No version {version} of {id}."
+                if version is not None
+                else f"Nothing governed {id} on {as_of}."
+            ),
+            "meta": _NOT_FOUND_HELP,
+        }
+
+    record_fetch(request.user, target)
+    return {
+        "success": True,
+        "results": [provision_out(target)],
+        "error": None,
+        "meta": {
+            "on": as_of.isoformat() if as_of is not None else None,
+            "resolved_by": resolved_by,
+            "version_count": provision.versions.count(),
+        },
+    }

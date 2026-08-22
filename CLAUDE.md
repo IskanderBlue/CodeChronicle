@@ -103,7 +103,7 @@ Hand-written, non-utility CSS (component classes, `x-cloak`, htmx/diff helpers) 
 ### Django Apps
 
 - **core/** - Custom User model (email-only, no username via `AUTH_USER_MODEL = 'core.User'`), SearchHistory, QueryCache/QueryPrompt models, RateLimitMiddleware, and frontend views (HTMX-based)
-- **api/** - Django Ninja REST API. Key endpoints: `/api/search` (POST), `/api/history` (GET), `/api/codes` (GET), `/api/health` (GET)
+- **api/** - Django Ninja REST API. Key endpoints: `/api/search` (POST), `/api/history` (GET), `/api/codes` (GET), `/api/health` (GET). The first three need an API key — see "The direct API" below.
 - **config/** - Configuration helpers: `code_metadata.py` (`get_code_display_name()`), `keywords.py` has the valid keyword list.
 
 ### Request Flow
@@ -270,8 +270,174 @@ editions in `FREE_TIER_CODE_NAMES` (OBC 2006); Pro (Stripe/dj-stripe or
 The Pro **price** is never a literal: `core/pricing.py` reads the mirrored
 dj-stripe `Price` row keyed by the same `STRIPE_PRO_PRICE_ID` that checkout
 uses, so the page and the charge cannot disagree, and a change in the Stripe
-dashboard needs no deploy. It always returns a number — three logged fallback
-paths — because a pricing page that 500s is worse than a stale figure.
+dashboard needs no deploy. There is **no fallback figure**: when the row does
+not read, `get_pro_price()` answers `None` and the page states no price. A
+stand-in number advertises the old price while checkout takes the new one.
+`checkout_is_configured()` answers the different question — whether there is
+any way to pay — and the page hides the purchase control when there is not.
+
+### The direct API
+
+`api/views.py` holds the endpoints. `/api/search`, `/api/codes` and
+`/api/history` need an **API key**; `/api/health` and `/api/event` are open.
+`api/auth.py` reads the key from an `Authorization: Bearer` header, and
+`core/views/api_keys.py` is where a subscriber makes and revokes one.
+
+- **A key is the only credential.** A browser session does not open these
+  three endpoints. Django Ninja exempts the API from the CSRF check, so an
+  endpoint that trusts the cookie is one another site's page can drive. A
+  browser never sends a bearer token by itself. Nothing in the website calls
+  these three endpoints, so the rule costs no feature.
+- **Only the hash of the key is in the database** (SHA-256). `ApiKey.generate`
+  returns the plain token one time. The settings page prints it one time. A
+  lost key gets replaced, never recovered. A password hasher is the wrong tool
+  here: the token is 32 random bytes, so there is nothing to guess, and each
+  request pays the cost of the slow hash.
+- **The first 11 characters stay in clear** (`ApiKey.lookup`). They find the
+  row in one indexed query, and they let the holder tell two keys apart. The
+  column is indexed but not unique, because a create that fails on a collision
+  is worse than a second hash comparison.
+- **The subscription rule has one home.** `core.access.api_access_allowed`
+  decides, and every other Pro surface uses `user_is_unrestricted` below it.
+  The API adds one test the website does not need: a deactivated account keeps
+  no API access, because a key is a standing credential and a page gate never
+  meets an account that cannot sign in.
+- **401 and 403 answer different questions.** 401 says "send a key" — and a
+  revoked key and an invented key give the same words, so neither confirms the
+  other exists. 403 says the account behind a valid key has no subscription.
+  A key outlives the subscription that justified it, so a lapsed customer
+  meets 403 and pays, rather than making a new key that fails the same way.
+- **A revoke is instant, and a revoked key keeps its row.** The row is the
+  record that the key existed, and a deleted row cannot explain a request in
+  yesterday's log. Anybody can revoke their own key, subscription or not:
+  turning off a leaked key is a safety control, not a paid feature.
+- **`last_used_at` moves at most once a minute** (`LAST_USED_RESOLUTION`). The
+  stamp answers "does anything still call with this key?" before somebody
+  revokes it, and one minute does not change that answer.
+
+`MAX_ACTIVE_KEYS` (5) keeps "revoke the one that leaked" a decision a person
+can still make. `robots.txt` refuses `/api/`, because every endpoint that
+carries corpus content refuses a caller with no key.
+
+#### The map and the text are different calls
+
+`/api/search` answers with **identity only** — id, title, edition, division,
+dates, score, url. `/api/provision` answers with **one** provision's text.
+This mirrors how the page is read: a reader scans numbers, titles and dates,
+then opens the two or three that look right.
+
+It is also the whole basis of the anti-copying signal below. While a search
+answered with a hundred texts at once, nothing could say which provisions an
+account had taken, so volume was the only measure available — and volume
+cannot tell a busy subscriber from a bulk copy, because the corpus is small.
+One provision to a request makes the text countable.
+
+- **A search result's fields are the fetch's arguments.** A caller loops over
+  results and asks for what it was handed; nothing is composed.
+- **Query parameters, not path segments.** A division-less edition (OBC 1997)
+  has `division=""`, and an empty path segment is not a path — the website
+  needed a second URL route to work around exactly this.
+- **`on` or `version`, never both.** They can disagree, and guessing which was
+  meant is how an exhibit quotes a text that was not in force. Neither reads
+  as today.
+- **Every text served is recorded** in `ProvisionFetch`, on the way out, after
+  the fetch succeeded. A refusal delivered nothing, so it writes nothing.
+- **The tier gate still runs** (`edition_allowed`). A key changes how an
+  account asks, never what it may read.
+
+#### What the API answers with
+
+`api/schemas.py` owns the response shape. `/api/search` declared its results
+as `list[dict]` before, which failed twice: `/api/docs` told a caller nothing,
+and the dicts it meant to send are the **template** cards from
+`api.formatters`, which hold live Django model instances. The JSON encoder
+raises `TypeError` on the first one, so the endpoint could not answer a search
+that matched anything. Every test mocked the formatter to `[]`, so nothing
+caught it. `api/tests/test_search_response.py` runs the real pipeline.
+
+- **The schema is a projection, not a dump.** A field reaches a caller because
+  somebody named it in `ResultOut`. `/api/docs` then states the result without
+  anybody writing it down twice.
+- **A card on the page is not a result here.** `flatten()` unpicks the page's
+  two grouping shapes. A parent-and-children card never becomes an entry,
+  because it prints the parent's number over the top child's text — correct as
+  a heading, false as a record; its parts are emitted instead. Both sides of a
+  transition pair are emitted, because both governed real days.
+- **No `<mark>` in the body.** `run_search(highlight=False)`. The page
+  highlights to show a reader where to look; a caller quotes the text into a
+  report. `matched_terms` says what matched.
+- **The `meta` states what ran, not what was asked.** An explicit `date` or
+  `province` overrides the parser, and a caller that cannot see which date was
+  used cannot check the answer.
+
+#### Bulk extraction
+
+**No rate limit can prevent a subscriber copying the corpus.** The measured
+reason: only **8,865 versions carry text** (of 11,365; about 10 MB), so a
+heavy legitimate day and the entire corpus are the same order of magnitude,
+and no threshold separates them. The website is cheaper still — one permalink
+renders a whole subtree, so a Part arrives in one request.
+
+So the control is **detection, not prevention**, and it is built on novelty
+rather than volume (`core.insights.api_coverage`, shown on `/insights/`):
+
+- Somebody recording almost never fetches the same provision twice, so their
+  **new share sits near 100%** and their share of the corpus climbs in a
+  straight line.
+- A consultant returns to the provisions their practice turns on, so most
+  fetches are repeats, the new share falls away, and coverage flattens out in
+  the low single digits.
+
+Coverage is measured against the whole corpus, not against the window: a copy
+made a month at a time is still a copy. It is a **report, never a limit** —
+nothing acts on these numbers, a person does, and the remedy is the Terms and
+the revoke. That signal exists only because the text leaves one provision at
+a time; see the map/text split above.
+
+The rest of what answers copying:
+
+- **The record.** `SearchHistory.source` (`web` / `api`) makes a run of
+  automated searches recognisable as one, and `ProvisionFetch` says exactly
+  which texts an account holds. Both name a paying account.
+- **The Terms**, which name the API in the scraping clause, forbid sharing a
+  key, and state that a limit exists and that we may revoke.
+- **The asset is the pipeline, not the corpus.** The text is public law;
+  Ontario publishes the current consolidation free. What is scarce is the
+  amendment reconstruction, and a copy of today's output is a snapshot that
+  decays from the day it is taken.
+
+**Known gap:** the website has no equivalent ledger, and it is the cheaper
+extraction path. A signed-in reader fetching 400 permalinks an hour is
+currently invisible.
+
+`API_SEARCHES_BEFORE_THROTTLE` (200, `api/auth.py`) is a **cost** control:
+each search costs an LLM parse, and without an allowance a key is an open tap
+on that bill. It counts the **account**, not the key, so a second key buys no
+second allowance; and it counts `SearchHistory.source == "api"` only, because
+a subscriber's own reading on the website is unlimited and must not spend it.
+It applies to `/api/search` alone — listing the editions costs no parse.
+
+**Past the allowance the API slows down; it never refuses.** A hard 429 was
+the wrong shape for both cases it met: it stopped a busy subscriber dead at a
+number nobody warned them about, and it cost a bulk copier only a day, because
+the corpus is small. `apply_search_throttle` makes each further search wait
+`API_THROTTLE_STEP_SECONDS` (2 s) times the overage, up to
+`API_THROTTLE_MAX_SECONDS` (20 s). Three rules:
+
+- **The wait is bounded.** A sleeping request holds a worker, and one that
+  outlives the gateway timeout is a 502 — a hard failure again, by accident.
+  At the ceiling the account is held to about three searches a minute.
+- **The wait grows with the overage.** A flat penalty is one a script plans
+  around. The rate falls away the further somebody goes.
+- **A person is the control, so the notice is load-bearing.**
+  `core/throttle_notice.py` writes to `settings.API_THROTTLE_NOTICE_EMAILS`
+  (`rob@codechronicle.ca` by default) the first time an account crosses the
+  line each day, and records an `EngagementEvent.EventType.API_THROTTLE` row.
+  The row is what makes it once a day rather than once a search, and it
+  outlives a restart. A notice never breaks a search: every failure is
+  swallowed, as in `core.signup_notice`. The message points at `/insights/`,
+  because the count cannot tell a heavy day from a copy and the new-vs-repeat
+  share can.
 
 ### The new-account notice
 
@@ -420,7 +586,7 @@ crawl cost 545 MB of reads while the whole database is 142 MB, and it is the
 first thing to weigh before adding a query to that view.
 
 **Over `CONTENTS_THRESHOLD` (40) the page shows what is inside instead**
-(`core.views.regulation`, `templates/partials/_provision_contents.html`). Not
+(`core/subtrees.py`, `templates/partials/_provision_contents.html`). Not
 pagination: page 3 of Part 9 is not a thing a code consultant can ask for, and
 `?page=` would multiply the URL count when the point is to cut the work.
 Measured over the free-tier corpus, this takes provision renders from
@@ -438,7 +604,7 @@ Measured over the free-tier corpus, this takes provision renders from
   rail's "Subprovisions" names only the direct children and left everything
   deeper reachable only by going back up.
 - **The page states the number it is withholding.** "Too much to show" is a
-  judgement a reader cannot check. `_descendant_count` asks for the total with
+  judgement a reader cannot check. `descendant_count` asks for the total with
   one recursive query, because the walk stops early on purpose and so never
   learns it. An empty body is also never reported as missing text on a
   container (`is_container`); that message claimed a fault on every part and
@@ -454,6 +620,34 @@ The walk already ran a generation at a time, so the limit is a stopping
 condition rather than a second query. It stops on the generation that would
 breach the limit, so at worst it loads one generation too many — bare
 provision rows, where the cost avoided is their versions, tables and scans.
+
+**The search overlay walks the same way, from a different root.**
+`viewer_section_content` starts at the match's *parent*, so a reader sees the
+match among its siblings. That walk had no limit until 21 August 2026, and a
+search result is not always a leaf article: the candidate query does not
+exclude an empty body, and BM25F scores the title as its own field, so a part
+or a section can be the match.
+
+There the **context narrows before the panel changes character**: the overlay
+gives up the siblings first, and only when the match's *own* subtree is too big
+does it show the contents block. `subtree_root` must move with the walk, or the
+section list descends from a provision no longer in the set and the panel
+renders empty.
+
+**All three surfaces show one contents block**, from `core.subtrees.contents_view`
+through `templates/partials/_provision_contents.html` — the reading page, the
+exhibit and the overlay. `contents_view` answers the three context keys
+together because the total is not a by-product of the walk (the walk stops
+early on purpose), so a caller that builds the rows and then asks for the count
+separately can get the two out of step. The block's copy therefore names no
+surface: "too many to show at once", never "on one page".
+
+`core/subtrees.py` holds all of it — `CONTENTS_THRESHOLD`, `walk_subtree`,
+`descendant_count`, `related_links`, `plural`, `contents_view`. It sits below
+the view layer because it must: `core/tests/test_module_conventions.py` rule 3
+refuses a private name read across a module boundary and rule 5 refuses a
+duplicated constant, and `regulation` already imports `in_force_versions` from
+`search`, so a sideways import would be circular.
 
 **The read surfaces answer 304.** `core/http_cache.py` gives
 `provision_permalink`, `regulation_detail`, `compare_versions`,

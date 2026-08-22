@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from math import log
 from typing import Any
 
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 
 from config.search_limits import SEARCH_RESULT_CAP
 from config.synonyms import SYNONYMS
@@ -21,7 +21,7 @@ from core.models import CodeEditionProvisionVersion
 # Re-exported: the orchestrator and its tests read the render cap from here
 # alongside SEARCH_CANDIDATE_LIMIT, but the constant itself lives outside this
 # module — config has no Django imports, and this module imports core.models.
-__all__ = ["SEARCH_CANDIDATE_LIMIT", "SEARCH_RESULT_CAP", "score_versions"]
+__all__ = ["SEARCH_CANDIDATE_LIMIT", "SEARCH_RESULT_CAP", "ref_parts", "score_versions"]
 
 #: Floor on the scored candidate pool handed to the grouping stage.  Grouping
 #: can only pair results it can see, and pair members score identically (same
@@ -228,7 +228,7 @@ def compute_corpus_stats(
 _REF_CLAUSE_RE = re.compile(r"\((?:\d+(?:[-,]\d+)*)\)$")
 
 
-def _ref_parts(token: str) -> tuple[bool, tuple[str, ...]]:
+def ref_parts(token: str) -> tuple[bool, tuple[str, ...]]:
     """Normalize a reference or ``table_id`` into ``(is_table, segments)``.
 
     Both user references (``table-3.1.4.7``, ``A-3.1.2``, ``9.10.14.``,
@@ -259,7 +259,7 @@ def _match_reference(
     an ancestor reference (a true parent path) scores lower and decays with
     distance.  Returns ``None`` when the reference does not apply here.
     """
-    is_table, segs = _ref_parts(ref)
+    is_table, segs = ref_parts(ref)
     if not segs:
         return None
 
@@ -357,8 +357,6 @@ def score_versions(
         return corpus_stats.idf.get(term, 1.0)
 
     # Filter the queryset to candidates matching keywords or references
-    from django.db.models import Q
-
     criteria = Q()
     if query_lower:
         # Keyword matching is via keyword_counts only.  CCM folds the title into
@@ -372,7 +370,7 @@ def score_versions(
             criteria |= Q(keyword_counts__has_key=term)
     if has_refs:
         for ref in provision_references or []:
-            is_table, segs = _ref_parts(ref)
+            is_table, segs = ref_parts(ref)
             if not segs:
                 continue
             # Coarse superset filter on the dotted core; the segment-aware
@@ -385,7 +383,7 @@ def score_versions(
                 criteria |= Q(provision__provision_id__icontains=core)
 
     # No usable filter — e.g. a refs-only query whose references were all
-    # unparseable (every `_ref_parts` returned no segments). An empty Q matches
+    # unparseable (every `ref_parts` returned no segments). An empty Q matches
     # the entire corpus, so bail here rather than scan and score every in-force
     # version only to discard them all.
     if not criteria:
@@ -428,7 +426,7 @@ def score_versions(
         # provision's own tables rather than its number.  Parser-extracted
         # references already cover bare ids typed as keywords, so the old
         # query-text-in-id fallback is folded in here.
-        table_segs = [_ref_parts(t.table_id)[1] for t in version_tables]
+        table_segs = [ref_parts(t.table_id)[1] for t in version_tables]
         for ref in provision_references or []:
             hit = _match_reference(ref, provision_id, table_segs)
             if hit and hit[0] > score:

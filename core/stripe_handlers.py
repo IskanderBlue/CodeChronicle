@@ -7,29 +7,61 @@ Uses the djstripe_receiver decorator (dj-stripe 2.9+) instead of the legacy
 
 from coloured_logger import Logger
 from djstripe.event_handlers import djstripe_receiver
+from djstripe.models import Customer
+
+from core.models import Organization
 
 logger = Logger(__name__)
 
 
 @djstripe_receiver("customer.subscription.created")
 def handle_subscription_created(sender, event, **kwargs):
-    """Reconcile Customer.subscriber with User when a subscription is created."""
-    from djstripe.models import Customer
+    """Link the mirrored customer to the organization that is paying.
 
-    from core.models import User
+    The link comes from ``metadata.django_organization_id``, written on the
+    Stripe customer when checkout created it (``core.views.billing``).  Stripe
+    is asked rather than guessed at, which is the same property that lets the
+    whole dj-stripe mirror be rebuilt from Stripe alone.
 
+    A customer with no such metadata is left unlinked.  An unlinked customer
+    reads as nobody's subscription, which is a state the gate already handles;
+    a wrongly linked one would hand a stranger every edition.
+    """
     data = event.data.get("object", {})
     stripe_customer_id = data.get("customer")
     if not stripe_customer_id:
         return
 
     customer = Customer.objects.filter(id=stripe_customer_id).first()
-    if customer and not customer.subscriber:
-        user = User.objects.filter(stripe_customer_id=stripe_customer_id).first()
-        if user:
-            customer.subscriber = user
-            customer.save(update_fields=["subscriber"])
-            logger.info("Linked dj-stripe Customer %s to User %s", stripe_customer_id, user.email)
+    if customer is None or customer.subscriber:
+        return
+
+    organization_id = (customer.stripe_data or {}).get("metadata", {}).get(
+        "django_organization_id"
+    )
+    if not organization_id:
+        logger.warning(
+            "Stripe customer %s names no organization; leaving it unlinked",
+            stripe_customer_id,
+        )
+        return
+
+    organization = Organization.objects.filter(id=organization_id).first()
+    if organization is None:
+        logger.warning(
+            "Stripe customer %s names organization %s, which does not exist",
+            stripe_customer_id,
+            organization_id,
+        )
+        return
+
+    customer.subscriber = organization
+    customer.save(update_fields=["subscriber"])
+    logger.info(
+        "Linked dj-stripe Customer %s to organization %s",
+        stripe_customer_id,
+        organization.name,
+    )
 
 
 @djstripe_receiver("customer.subscription.deleted")

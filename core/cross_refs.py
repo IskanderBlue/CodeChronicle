@@ -24,13 +24,13 @@ rebuild.
 
 from __future__ import annotations
 
-import re
 from datetime import date
 from typing import Any, Iterable, Sequence
 
 from django.template.defaultfilters import date as format_date
 from django.utils.html import escape
 
+from core.html_tags import HTML_TAG_RE
 from core.models import (
     CodeEditionProvision,
     CodeEditionProvisionVersion,
@@ -40,10 +40,6 @@ from core.models import (
 )
 from core.permalinks import provision_permalink_url
 from core.seo import last_governed_day
-
-#: Tag spans, excluded from surface-text matching (same shape as the splitter
-#: ``api.formatters.highlight_terms`` uses, which is why the two compose).
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def locate_surfaces(
@@ -82,7 +78,7 @@ def _text_spans(html: str) -> list[tuple[int, int]]:
     """Character ranges of ``html`` that are text, not markup."""
     spans: list[tuple[int, int]] = []
     cursor = 0
-    for tag in _HTML_TAG_RE.finditer(html):
+    for tag in HTML_TAG_RE.finditer(html):
         if tag.start() > cursor:
             spans.append((cursor, tag.start()))
         cursor = tag.end()

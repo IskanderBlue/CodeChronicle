@@ -844,12 +844,45 @@ class Command(BaseCommand):
                 versions_to_create.append(version)
                 version_lookup[(provision_id, division, version_num)] = version
 
+        self._check_every_provision_has_a_version(provisions)
         self._check_in_force_overlaps(versions_to_create)
 
         if versions_to_create:
             CodeEditionProvisionVersion.objects.bulk_create(versions_to_create)
 
         return version_lookup
+
+    def _check_every_provision_has_a_version(
+        self, provisions: list[dict[str, Any]]
+    ) -> None:
+        """Reject a payload that ships a provision with no version.
+
+        A provision carries no content of its own: the title, the text, the
+        dates and the keyword counts all live on a version.  So a provision
+        with no version does not exist as far as every reading surface is
+        concerned, and drawing one produces a card with a blank where the text
+        goes rather than an error anybody can act on.
+
+        This is the check that lets everything downstream of the loader read
+        ``provision.versions`` and use the answer.  Refuse here, name the
+        provisions, and let the attribute access speak everywhere else.
+        """
+        missing = [
+            (prov_data["provision_id"], prov_data.get("division", ""))
+            for prov_data in provisions
+            if not prov_data.get("versions")
+        ]
+        if not missing:
+            return
+
+        named = ", ".join(
+            f"{pid!r} (division {division!r})" for pid, division in missing
+        )
+        raise CommandError(
+            f"{len(missing)} provision(s) carry no version: {named}. "
+            f"A provision holds no content of its own, so a versionless "
+            f"provision cannot be read. Fix the upstream payload."
+        )
 
     def _check_in_force_overlaps(
         self, versions: list[CodeEditionProvisionVersion]

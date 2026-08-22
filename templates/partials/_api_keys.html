@@ -1,0 +1,104 @@
+{% comment %} Direct-API credentials.  Drawn only for a subscriber (the
+   including page tests api_access), because a key issued to anybody else is a
+   key the API refuses — so the section is absent rather than present and
+   explaining itself.  The pricing page is where the feature is sold.
+
+   The plain token appears exactly once, in the banner below, on the render
+   that follows the POST which made it.  Nothing stores it; see
+   core.models.ApiKey. {% endcomment %}
+<div id="api" class="my-6 scroll-mt-24 bg-surface-2 border border-rule">
+    <div class="px-4 py-5 sm:p-6">
+        <h2 class="font-serif text-lg font-semibold text-ink mb-1">API keys</h2>
+        <p class="text-sm text-ink-2 mb-4">
+            Call CodeChronicle from your own tools. A key carries your Pro access, so treat it like a password.
+        </p>
+
+        {% if new_api_token %}
+        {% comment %} The one and only sight of the token.  It is selectable as
+           well as copyable: a reader whose browser refuses the clipboard must
+           still be able to keep the key. {% endcomment %}
+        <div x-data="{ copied: false }" class="mb-6 border border-secondary p-4">
+            <p class="font-mono text-xs uppercase tracking-[0.06em] text-secondary mb-2">Copy this now — it is not shown again</p>
+            <div class="flex items-start gap-3">
+                <code class="min-w-0 grow break-all font-mono text-xs text-ink select-all">{{ new_api_token }}</code>
+                <button type="button" class="ui-action shrink-0 font-mono text-[10px] uppercase tracking-[0.06em]" data-copy-text="{{ new_api_token }}" @click="navigator.clipboard.writeText($el.dataset.copyText); copied = true; setTimeout(() => copied = false, 1500)"><span x-show="!copied">Copy</span><span x-show="copied" x-cloak class="text-secondary">Copied</span></button>
+            </div>
+            <p class="mt-3 text-xs text-ink-3">
+                CodeChronicle stores only a hash of this key. If you lose it, revoke it and make another.
+            </p>
+        </div>
+        {% endif %}
+
+        {% if api_keys %}
+        <ul class="mb-6 divide-y divide-rule border-t border-b border-rule">
+            {% for key in api_keys %}
+            <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-ink">{{ key.name }}</p>
+                    <p class="font-mono text-xs text-ink-3">
+                        {{ key.lookup }}&hellip;
+                        &middot; made {{ key.created_at|date:"j M Y" }}
+                        &middot; {% if key.last_used_at %}last used {{ key.last_used_at|date:"j M Y" }}{% else %}never used{% endif %}
+                    </p>
+                </div>
+                <form method="POST" action="{% url 'core:revoke_api_key' key.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="border border-ink-2 px-3 py-1.5 font-mono text-xs uppercase tracking-[0.06em] text-ink-2 hover:bg-surface">
+                        Revoke
+                    </button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="mb-6 text-sm text-ink-3">You have no API keys.</p>
+        {% endif %}
+
+        {% comment %} The form is hidden, not merely refused, once the limit
+           binds — the view makes the same test, so a reader who posts anyway
+           meets the same answer. {% endcomment %}
+        {% if api_keys|length < api_key_limit %}
+        <form method="POST" action="{% url 'core:create_api_key' %}" class="flex flex-wrap items-end gap-3">
+            {% csrf_token %}
+            <div class="grow">
+                <label for="api-key-name" class="block font-mono text-xs uppercase tracking-[0.06em] text-ink-3 mb-1">What is it for?</label>
+                <input id="api-key-name" name="name" type="text" maxlength="100" placeholder="e.g. code-check script" class="w-full border border-rule bg-surface px-3 py-2 text-sm text-ink" />
+            </div>
+            <button type="submit" class="ui-btn py-2 px-4 text-sm uppercase tracking-[0.06em]">
+                Make a key
+            </button>
+        </form>
+        {% else %}
+        <p class="text-sm text-ink-3">
+            You have the maximum of {{ api_key_limit }} keys. Revoke one to make another.
+        </p>
+        {% endif %}
+
+        {% comment %} Two calls, because that is the shape of the API: a search
+           says where to look, and a fetch brings one provision back. Showing
+           only the first would leave a reader thinking the search answers with
+           the text. The generated reference cannot drift from the endpoints;
+           these examples can, so they are kept to the two lines that prove the
+           shape. {% endcomment %}
+        <div class="mt-6 border-t border-rule pt-4">
+            <p class="font-mono text-xs uppercase tracking-[0.06em] text-ink-3 mb-2">How to call it</p>
+            <p class="mb-2 text-sm text-ink-2">
+                First search &mdash; this answers with the provisions that match, their editions and their dates:
+            </p>
+            <pre class="overflow-x-auto border border-rule bg-surface p-3 font-mono text-xs text-ink-2">curl -X POST https://www.codechronicle.ca/api/search \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "guards and handrails", "date": "1999-06-01"}'</pre>
+            <p class="mt-4 mb-2 text-sm text-ink-2">
+                Then fetch the text of one, using the fields that result carries:
+            </p>
+            <pre class="overflow-x-auto border border-rule bg-surface p-3 font-mono text-xs text-ink-2">curl -G https://www.codechronicle.ca/api/provision \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -d edition=OBC_1997 -d division= -d id=9.8.7.1. \
+  -d on=1999-06-01</pre>
+            <p class="mt-3 text-sm text-ink-2">
+                Full endpoint reference: <a href="/api/docs" class="ui-link" target="_blank" rel="noopener">/api/docs</a>.
+            </p>
+        </div>
+    </div>
+</div>

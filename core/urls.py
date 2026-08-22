@@ -4,7 +4,7 @@ URL patterns for core app (frontend pages).
 
 from django.urls import path
 
-from . import views
+from core import views
 
 app_name = "core"
 
@@ -19,6 +19,10 @@ urlpatterns = [
     path("pricing/", views.pricing, name="pricing"),
     path("terms/", views.terms_of_service, name="terms_of_service"),
     path("privacy/", views.privacy_policy, name="privacy_policy"),
+    # The re-acceptance wall.  Reached by redirect from
+    # TermsReacceptanceMiddleware, not by a link, but it needs a name because
+    # the middleware exempts it by name rather than by literal path.
+    path("terms/accept/", views.accept_terms, name="accept_terms"),
     path("sources/", views.data_sources, name="data_sources"),
     path("verification-rail/", views.verification_guide, name="verification_guide"),
     path("list-punctuation/", views.list_punctuation, name="list_punctuation"),
@@ -29,6 +33,20 @@ urlpatterns = [
     # Staff-only traction dashboard.  Also disallowed in robots.txt.
     path("insights/", views.insights, name="insights"),
     path("settings/", views.user_settings, name="user_settings"),
+    # Direct-API credentials.  Both write, both POST-only, and both answer by
+    # sending the reader back to the settings page that lists the keys.
+    path("settings/api-keys/", views.create_api_key, name="create_api_key"),
+    path("settings/api-keys/<int:pk>/revoke/", views.revoke_api_key, name="revoke_api_key"),
+    # Seats.  The three write routes are POST-only and answer by sending an
+    # administrator back to the team section of the settings page, the same
+    # shape the API-key routes above use.
+    path("settings/team/<int:pk>/invite/", views.invite_to_team, name="invite_to_team"),
+    path("settings/team/invite/<int:pk>/revoke/", views.revoke_invite, name="revoke_invite"),
+    path("settings/team/member/<int:pk>/remove/", views.remove_from_team, name="remove_member"),
+    # Where an invited person takes the seat.  A page rather than an action on
+    # a GET: the reader sees what they are joining, and a mail scanner that
+    # opens every link cannot spend the seat.
+    path("team/join/<str:token>/", views.accept_invite_view, name="accept_invite"),
     path("search-results/", views.search_results, name="search_results"),
     # Demand capture — which code/edition a visitor came looking for.
     path("edition-request/", views.edition_request, name="edition_request"),
@@ -64,6 +82,24 @@ urlpatterns = [
         "provision/<str:code_edition>/<str:provision_id>/v<int:version>/",
         views.provision_permalink,
         name="provision_permalink_no_division",
+        kwargs={"division": ""},
+    ),
+    # One provision's body. The website's equivalent of ``/api/provision``: a
+    # permalink page hands a signed-in reader the headings of what is under it
+    # and fetches each body through here, so the reading ledger records one row
+    # per text delivered instead of up to forty per page render.
+    #
+    # The permalink with ``/text/`` on the end, the same way the print route
+    # below is the permalink with ``/print/``.
+    path(
+        "provision/<str:code_edition>/<str:division>/<str:provision_id>/v<int:version>/text/",
+        views.provision_text,
+        name="provision_text",
+    ),
+    path(
+        "provision/<str:code_edition>/<str:provision_id>/v<int:version>/text/",
+        views.provision_text,
+        name="provision_text_no_division",
         kwargs={"division": ""},
     ),
     # The exhibit: the same provision, laid out to print. A route rather than a

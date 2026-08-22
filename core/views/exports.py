@@ -33,25 +33,18 @@ from django.http import (
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
 
-from config.code_metadata import edition_display_name
+from config.exports import EXPORT_KIND_NAMES
 from core.access import edition_allowed
 from core.citations import LEGAL, REFERENCE, REPORT, build_citations
+from core.code_names import edition_display_name
 from core.compare import parse_version_ref, resolve_version_ref
 from core.events import record_event
 from core.models import EngagementEvent
 from core.permalinks import provision_permalink_url, provision_print_url
 from core.search_prefs import resolve_match_threshold
 from core.seo import site_origin
+from core.views.regulation import locked_edition_response, provenance_result
 from services.search_service import run_search
-
-from .regulation import _locked_edition_response, _provenance_result
-
-#: The export kinds, and what each one means.  ``citation`` also carries a
-#: ``format`` key, because a factum and a report body take different strings
-#: and the sixty-day review has to be able to retire one of them.
-EXPORT_KINDS = frozenset(
-    {"citation", "provision_pdf", "results_csv", "comparison_pdf"}
-)
 
 #: The citation formats.  ``reference`` is the structured provenance block the
 #: band's copy button has always produced; it predates this card and is folded
@@ -90,12 +83,12 @@ def citation_panel(request: HttpRequest) -> HttpResponse:
     provision = version.provision
     edition = provision.edition
     if not edition_allowed(request.user, edition.code_name):
-        return _locked_edition_response(request, edition, surface="citation")
+        return locked_edition_response(request, edition, surface="citation")
 
     # The amendment chain Reference prints.  It comes from the resolver the
     # reading surfaces already use, so the menu cannot state a chain the page
     # behind it does not.
-    provenance = _provenance_result(
+    provenance = provenance_result(
         provision,
         version,
         edition.code_name,
@@ -260,7 +253,7 @@ def record_export(request: HttpRequest) -> HttpResponse:
     than a missing one.
     """
     kind = request.POST.get("kind", "")
-    if kind not in EXPORT_KINDS:
+    if kind not in EXPORT_KIND_NAMES:
         return HttpResponseBadRequest("Unknown export kind.")
 
     context: dict[str, Any] = {"kind": kind}

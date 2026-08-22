@@ -1,0 +1,24 @@
+{% comment %} The Crown copyright acknowledgement, and the statement that this
+   is not an official version.
+
+   Two of the three conditions the King's Printer for Ontario attaches to the
+   permission to reproduce Ontario legal materials; the third is that the
+   reproduction is accurate, which is the product rather than a line of markup.
+   So this partial belongs at the foot of every surface that reproduces
+   legislative text, and nowhere else — a pricing page that carried it would be
+   acknowledging a reproduction it does not make.
+
+   `crown_years` comes from core.attribution.crown_years, or straight from an
+   edition on a single-edition page. It is omitted rather than guessed when the
+   surface cannot say: a wrong year names the wrong publication.
+
+   The e-Laws link survives printing as plain text, which is why the sentence
+   names e-Laws in words instead of hiding the destination behind "here".
+{% endcomment %}
+<p class="mt-6 border-t border-rule pt-3 text-xs text-ink-3">
+    The legislative text on this page is reproduced from the statutes and regulations of Ontario.
+    &copy;&nbsp;King&rsquo;s Printer for Ontario{% if crown_years %}, {{ crown_years }}{% endif %}.
+    Reproduced with permission. This is <strong class="text-ink">not an official version</strong> &mdash;
+    the official consolidated law is published on
+    <a href="https://www.ontario.ca/laws" target="_blank" rel="noopener" class="ui-link">e-Laws</a>.
+</p>

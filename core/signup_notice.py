@@ -35,20 +35,10 @@ from django.dispatch import receiver
 from django.http import HttpRequest
 from django.utils import timezone
 
-from core.ip_utils import extract_client_ip
+from core.ip_utils import client_ip
 from core.models import User
 
 logger = Logger(__name__)
-
-
-def _ip(request: HttpRequest | None) -> str:
-    """Best-effort client IP — never raises (a signup must not break on META)."""
-    if request is None:
-        return "unknown"
-    try:
-        return extract_client_ip(request.META) or "unknown"
-    except Exception:  # noqa: BLE001 — IP parsing is never fatal to a signup
-        return "unknown"
 
 
 def _body(user: Any, request: HttpRequest | None) -> str:
@@ -62,7 +52,7 @@ def _body(user: Any, request: HttpRequest | None) -> str:
         f"{user.email} created an account.",
         "",
         f"When:  {timezone.now().isoformat(timespec='seconds')}",
-        f"From:  {_ip(request)}",
+        f"From:  {client_ip(request) or 'unknown'}",
     ]
 
     # The count is nice to have, never worth failing over: this runs inside a

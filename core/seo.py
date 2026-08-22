@@ -40,7 +40,7 @@ from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.safestring import SafeString, mark_safe
 
-from config.code_metadata import get_code_display_name
+from core.code_names import get_code_display_name
 from core.models import (
     CodeEdition,
     CodeEditionProvision,
@@ -133,8 +133,12 @@ def site_origin(request: HttpRequest) -> str:
     return f"{request.scheme}://{request.get_host()}"
 
 
-def canonical_version_number(provision: CodeEditionProvision) -> int | None:
-    """The version this provision's pages should point at. See module docstring."""
+def canonical_version_number(provision: CodeEditionProvision) -> int:
+    """The version this provision's pages should point at. See module docstring.
+
+    Always a number: ``load_edition`` refuses a payload that ships a provision
+    with no version, so the aggregate always has a row to read.
+    """
     return CodeEditionProvisionVersion.objects.filter(provision=provision).aggregate(
         top=Max("version")
     )["top"]
@@ -226,16 +230,11 @@ def provision_page_meta(
         + ", with the amendment history and the regulation behind each change."
     )
 
-    canonical_version = canonical_version_number(provision)
-    canonical_path = (
-        provision_permalink_url(
-            edition.code_name,
-            provision.division,
-            provision.provision_id,
-            canonical_version,
-        )
-        if canonical_version is not None
-        else ""
+    canonical_path = provision_permalink_url(
+        edition.code_name,
+        provision.division,
+        provision.provision_id,
+        canonical_version_number(provision),
     )
 
     return {
@@ -554,9 +553,6 @@ def provision_jsonld(
     """
     edition = provision.edition
     canonical_version = canonical_version_number(provision)
-    if canonical_version is None:
-        return mark_safe("")
-
     base_reg = base_regulation(edition)
     start, end = effective_window(version, edition)
     heading = (version.title or "").strip()

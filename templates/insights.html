@@ -251,6 +251,88 @@ move" is asked of all of them at once.
     </table>
   </section>
 
+  {% comment %} ── Who is taking what, through the API ──
+     Volume cannot answer "is anybody recording the corpus", because the corpus
+     is small: a heavy working day and the whole of it are the same order of
+     magnitude. Novelty answers it. A recorder almost never asks twice, so
+     "new" sits near 100% and "of corpus" climbs in a straight line; a
+     consultant returns to the provisions their practice turns on, so "new"
+     falls away and "of corpus" flattens in the low single digits.
+     Read it, do not act on it automatically — the remedy is the Terms and the
+     revoke, and both are decisions a person makes. {% endcomment %}
+  <section class="mt-8 border border-rule bg-surface-2 p-5">
+    <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Provision text delivered</h2>
+    <p class="mt-1 text-sm text-ink-2">Which accounts were given provision text in the last {{ days }} days, on either surface. Read <em>of corpus</em> for the web column and <em>% new</em> for the API column: a signed-in reader's page now fetches each provision body separately, so the two are converging, but rows written before that landed still count a whole page render as one decision. <em>Sittings</em> counts the separate reading sessions those texts were acquired in, from the gaps between them &mdash; the whole corpus in one sitting and the same texts across a year are different facts. <em>Cold</em> counts page views that arrived with no referrer: a reader follows links, a script composes URLs. Nothing acts on any of these &mdash; the remedy is the Terms and the revoke.</p>
+    {% if reading_coverage %}
+    <table class="mt-4 w-full text-left">
+      <thead>
+        <tr class="border-b border-rule">
+          <th class="py-1.5 pr-4 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Account</th>
+          <th class="w-20 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Fetches</th>
+          <th class="w-20 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">New</th>
+          <th class="w-20 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">% new</th>
+          <th class="w-20 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Web</th>
+          <th class="w-20 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">API</th>
+          <th class="w-16 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Sittings</th>
+          <th class="w-16 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Cold</th>
+          <th class="w-24 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Held</th>
+          <th class="w-24 py-1.5 text-right font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Of corpus</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in reading_coverage %}
+        <tr class="border-t border-rule-2">
+          <td class="py-1.5 pr-4 font-mono text-[11px] text-ink">{{ row.email }}</td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-2">{{ row.fetches|intcomma }}</td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-2">{{ row.new_in_window|intcomma }}</td>
+          <td class="py-1.5 text-right font-mono text-[11px] {% if row.new_share >= 90 %}text-secondary{% else %}text-ink-3{% endif %}">{{ row.new_share }}%</td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-3">{{ row.web_held|intcomma }}</td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-3">{{ row.api_held|intcomma }}</td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-3">{{ row.sittings|intcomma }}</td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-3">{{ row.cold|intcomma }}</td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-3">{{ row.held|intcomma }}</td>
+          <td class="py-1.5 text-right font-mono text-[11px] text-ink-3">{{ row.coverage }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="mt-4 font-mono text-[11px] tracking-[0.04em] text-ink-3">No provision text delivered to a signed-in account in this window.</p>
+    {% endif %}
+  </section>
+
+  {% comment %} Is the ledger still recording?  It swallows every failure by
+     design, so a broken ledger and a quiet week look the same from inside it.
+     These two numbers come from EngagementEvent, which a different function
+     writes, so a fault in one cannot hide itself in the other. {% endcomment %}
+  <section class="mt-8 border border-rule bg-surface-2 p-5">
+    <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Is the ledger recording?</h2>
+    <p class="mt-1 text-sm text-ink-2">The ledger never raises, so it cannot report its own failure. This compares it against the provision-view events, which a different function writes. A day with signed-in views and no ledger write is the fault; both at zero only means nobody read anything.</p>
+    <p class="mt-2 text-sm text-ink-2">Days answer the total outage. <em>Partial failures</em> answer the other one: each bulk surface stamps how many texts it handed over beside how many reached the ledger, so a page that delivered forty and recorded three is caught on the request rather than hidden inside a day that also has writes. Any number here above zero is a bug.</p>
+    <dl class="mt-4 grid grid-cols-2 gap-x-8 gap-y-2 sm:grid-cols-4">
+      <div>
+        <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Days with views</dt>
+        <dd class="font-mono text-[13px] text-ink">{{ ledger_health.days_with_views }}</dd>
+      </div>
+      <div>
+        <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Days with writes</dt>
+        <dd class="font-mono text-[13px] text-ink">{{ ledger_health.days_with_ledger }}</dd>
+      </div>
+      <div>
+        <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Silent days</dt>
+        <dd class="font-mono text-[13px] {% if ledger_health.silent_days %}text-secondary{% else %}text-ink{% endif %}">{{ ledger_health.silent_days }}{% if ledger_health.last_silent_day %} <span class="text-ink-3">(last {{ ledger_health.last_silent_day|date:"Y-m-d" }})</span>{% endif %}</dd>
+      </div>
+      <div>
+        <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Partial failures</dt>
+        <dd class="font-mono text-[13px] {% if ledger_health.shortfall_requests %}text-secondary{% else %}text-ink{% endif %}">{{ ledger_health.shortfall_requests }}{% if ledger_health.last_shortfall %} <span class="text-ink-3">(last {{ ledger_health.last_shortfall|date:"Y-m-d H:i" }})</span>{% endif %}</dd>
+      </div>
+      <div class="sm:col-span-2">
+        <dt class="font-mono text-[10px] uppercase tracking-[0.06em] text-ink-3">Last write / last view</dt>
+        <dd class="font-mono text-[13px] text-ink">{{ ledger_health.last_write|date:"Y-m-d H:i"|default:"never" }} <span class="text-ink-3">/ {{ ledger_health.last_view|date:"Y-m-d H:i"|default:"never" }}</span></dd>
+      </div>
+    </dl>
+  </section>
+
   {# ── Free keyword research. What people actually typed. ── #}
   <section class="mt-8 border border-rule bg-surface-2 p-5">
     <h2 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">Most-repeated queries</h2>

@@ -2,7 +2,9 @@
 Core models for CodeChronicle.
 """
 
+import hashlib
 import re
+import secrets
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -69,6 +71,15 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Reverse relation — declared for Pyright (no plugin); the append-only log
     # of this user's Terms / Privacy Policy acceptances (see ``TermsAcceptance``).
     terms_acceptances: "models.Manager[TermsAcceptance]"
+    #: Reverse relation — the user's direct-API credentials (see ``ApiKey``).
+    api_keys: "models.Manager[ApiKey]"
+    #: Reverse relation — which provision texts this account has been given,
+    #: on either surface (see ``ProvisionFetch``).
+    provision_fetches: "models.Manager[ProvisionFetch]"
+    #: Reverse relation — this account's seats (see ``Membership``).
+    memberships: "models.Manager[Membership]"
+    #: Per-instance cache for :attr:`has_active_subscription`.  Not a field.
+    _has_active_subscription: "bool | None" = None
 
     email = models.EmailField(unique=True)
 
@@ -111,36 +122,51 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def has_active_subscription(self) -> bool:
+        """Whether this account may read every edition.
+
+        Two reasons, and no third:
+
+        1. The explicit courtesy flag on the user.
+        2. A seat: an organization this user belongs to, in a role that grants
+           access, holds a subscription that is ``active`` or ``trialing``.
+
+        Every subscription reaches a person through a ``Membership``, the
+        buyer's own included — somebody who buys for themselves gets an
+        organization of one.  So there is no separate branch for an individual
+        subscription, and no way for the two to answer differently.
+
+        The answer is cached on the instance.  This property runs on gated
+        page renders, and nearly all traffic here is crawlers, so a repeated
+        render must not pay for the join again.  The cache lives as long as
+        the instance does, which is one request.
         """
-        Check if user has an active Pro subscription.
-        Supports:
-        1. Explicit courtesy flag on user
-        2. Real Stripe subscription
-        """
-        # 1. Check explicit courtesy flag
         if self.pro_courtesy:
             return True
 
-        # 2. Check Stripe via dj-stripe
-        customer = Customer.objects.filter(subscriber=self).first()
-        if not customer and self.stripe_customer_id:
-            # Fall back to the raw Stripe id when dj-stripe hasn't linked the
-            # Customer.subscriber yet.  Read-only on purpose: a property getter
-            # must not write — the subscriber back-link is established in the
-            # checkout/webhook path (see core.views.billing), not here, so a
-            # plain GET render never triggers a DB write.
-            customer = Customer.objects.filter(id=self.stripe_customer_id).first()
-        if not customer:
-            return False
-        return Subscription.objects.filter(
-            customer=customer,
+        if self._has_active_subscription is not None:
+            return self._has_active_subscription
+
+        answer = Subscription.objects.filter(
+            customer__subscriber__memberships__user=self,
+            customer__subscriber__memberships__role__in=Membership.SEAT_ROLES,
             stripe_data__status__in=["active", "trialing"],
         ).exists()
+        self._has_active_subscription = answer
+        return answer
 
     @property
     def latest_terms_acceptance(self) -> "TermsAcceptance | None":
-        """The user's most recent Terms / Privacy Policy acceptance, or None."""
-        return self.terms_acceptances.order_by("-accepted_at").first()
+        """The user's most recent Terms / Privacy Policy acceptance, or None.
+
+        ``-id`` breaks the tie, and it is not decoration: ``accepted_at`` is
+        ``auto_now_add``, so two acceptances written in the same second sort
+        non-deterministically (Postgres heap order), and this property decides
+        whether a reader meets the re-acceptance wall.  Without the tiebreak a
+        double-submit could leave the newer row invisible and the reader walled
+        out of an agreement they had just accepted.  Same reasoning as
+        ``CodeEditionProvisionVersion.last_contributing_clause``.
+        """
+        return self.terms_acceptances.order_by("-accepted_at", "-id").first()
 
     def has_accepted_terms(self, version: str) -> bool:
         """Whether this user has a recorded acceptance of Terms ``version``."""
@@ -330,6 +356,19 @@ class SearchHistory(models.Model):
     top_results = models.JSONField(default=list)  # Store minimal metadata for quick links
     timestamp = models.DateTimeField(auto_now_add=True)
 
+    class Source(models.TextChoices):
+        WEB = "web", "Website"
+        API = "api", "Direct API"
+
+    # Which surface ran it.  Two jobs: the API's daily quota counts these rows
+    # and must not count somebody's reading on the website, and a run of
+    # automated searches is only visible as such if the rows say where they
+    # came from.  Defaults to the website, so every row written before this
+    # field existed reads as what it was.
+    source = models.CharField(
+        max_length=8, choices=Source.choices, default=Source.WEB, db_index=True
+    )
+
     class Meta:
         db_table = "search_history"
         verbose_name = "Search History"
@@ -339,6 +378,8 @@ class SearchHistory(models.Model):
             models.Index(fields=["user", "timestamp"]),
             models.Index(fields=["ip_address", "timestamp"]),
             models.Index(fields=["user", "query"]),
+            # Serves the API quota: today's API searches for one account.
+            models.Index(fields=["user", "source", "timestamp"]),
         ]
 
     def __str__(self):
@@ -402,6 +443,14 @@ class EngagementEvent(models.Model):
         # measurement, and an export nobody uses is removed rather than
         # defended (``tasks/b-provision-exports.md``).
         EXPORT = "export", "Export"
+        # An API account ran past its daily search allowance and was made
+        # to wait.  Nothing was refused — the allowance is a throttle, not
+        # a wall (api.auth) — so this is not a gate event and must not
+        # join RATE_LIMIT_BLOCK's conversion denominator, which counts
+        # value withheld.  It records that the line was crossed, and it is
+        # what makes the operator notice fire once a day rather than once
+        # a search.  ``context`` carries searches_today and delay_seconds.
+        API_THROTTLE = "api_throttle", "API throttle"
 
     user = models.ForeignKey(
         User,
@@ -684,6 +733,205 @@ class AuthEvent(models.Model):
     def __str__(self):
         who = self.email or (self.user.email if self.user else "?")
         return f"{who}: {self.event_type}"
+
+
+class ApiKey(models.Model):
+    """A credential for the direct API, belonging to one subscriber.
+
+    The paid endpoints take a key and nothing else.  A signed-in browser
+    session is not a credential there, for two reasons.  It is what makes
+    "direct API access" a thing to sell rather than a cookie somebody replays
+    out of their browser.  And the API is exempt from Django's CSRF check, so
+    an endpoint that trusted the cookie could be driven from another site's
+    page; a browser never sends a bearer token on its own.
+
+    **Only the hash is stored.**  :meth:`generate` returns the plain token
+    once and nothing keeps a copy, so a lost token is replaced rather than
+    recovered.  The hash is a plain SHA-256, not a password hasher: the token
+    is 32 random bytes, so there is no guessable input for a slow hash to
+    protect, and every request would pay that deliberate cost.
+
+    ``lookup`` holds the first characters of the token in clear.  It does two
+    jobs: it finds the row in one indexed query, and it is what the settings
+    page prints so the holder can tell two keys apart.  It is indexed but not
+    unique — two keys can share it, and the hash comparison still picks the
+    right one, which is better than a create that fails on a collision.
+    """
+
+    # Auto pk, plugin-only — declared for Pyright.
+    id: int
+
+    #: Every token starts with this.  A fixed prefix makes a leaked key
+    #: recognisable in a log or a paste, and is what a secret scanner matches.
+    TOKEN_PREFIX = "cc_"
+    #: How much of the token is kept in clear: the prefix and 8 characters.
+    LOOKUP_LENGTH = 11
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="api_keys",
+    )
+    # What the key is for, in the holder's own words.  A key nobody can name
+    # is a key nobody dares revoke.
+    name = models.CharField(max_length=100)
+    lookup = models.CharField(max_length=16, db_index=True)
+    hashed_key = models.CharField(max_length=64)
+    created_at = models.DateTimeField(default=timezone.now)
+    # Answers "is anything still calling with this?" before somebody revokes.
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    # Revoked, never deleted: the row is the record that the key existed, and
+    # a deleted row cannot explain a request in yesterday's log.
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "api_keys"
+        verbose_name = "API Key"
+        verbose_name_plural = "API Keys"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.user.email}: {self.name}"
+
+    @staticmethod
+    def hash_token(token: str) -> str:
+        """The stored form of a token.  See the class docstring for SHA-256."""
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def generate(cls, user: "User", name: str) -> tuple["ApiKey", str]:
+        """Create a key, and return it with the one copy of its token."""
+        token = cls.TOKEN_PREFIX + secrets.token_urlsafe(32)
+        key = cls.objects.create(
+            user=user,
+            name=name.strip()[:100] or "API key",
+            lookup=token[: cls.LOOKUP_LENGTH],
+            hashed_key=cls.hash_token(token),
+        )
+        return key, token
+
+    @property
+    def is_active(self) -> bool:
+        return self.revoked_at is None
+
+    def revoke(self) -> None:
+        """Stop the key working.
+
+        A key already revoked is left alone, so a double-submitted form does
+        not move the date that says when access ended.
+        """
+        if self.revoked_at is None:
+            self.revoked_at = timezone.now()
+            self.save(update_fields=["revoked_at"])
+
+
+class ProvisionFetch(models.Model):
+    """One row per (account, provision version) ever delivered to that account.
+
+    Both surfaces write here: ``/api/provision`` and every website page that
+    renders a body.  ``source`` says which one first delivered it.
+
+    A ledger of *coverage*, not of traffic.  Volume cannot tell a busy
+    subscriber from somebody copying the corpus — a heavy working day and the
+    whole corpus are the same order of magnitude.  What separates them is
+    novelty.  Somebody recording the corpus almost never fetches the same
+    provision twice, and their share of it climbs in a straight line.  A
+    consultant returns again and again to the provisions their practice turns
+    on, so most of their fetches are repeats and their coverage flattens out
+    at a few percent.
+
+    That signal only exists because the text leaves in countable pieces.  While
+    a search answered with a hundred texts at once, nothing here could say
+    which provisions an account had taken.
+
+    **The target is text, never a ForeignKey**, for the reason
+    ``ProvisionFeedback`` gives: ``load_edition`` replaces every provision and
+    version primary key on reload, and a ledger that reset on a data load would
+    report every returning reader as a new recorder.
+
+    This is a record to read, not an alarm and not a limit.  Nothing here
+    refuses a request.
+    """
+
+    # Auto pk + FK id-shadow, plugin-only — declared for Pyright.
+    id: int
+    user_id: int
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="provision_fetches")
+    #: Edition name in the permalink's own form, e.g. "OBC_2006".
+    code_edition = models.CharField(max_length=50)
+    #: Bare division letter, "" for a division-less code.
+    division = models.CharField(max_length=10, blank=True, default="")
+    provision_id = models.CharField(max_length=50)
+    version = models.IntegerField()
+
+    class Source(models.TextChoices):
+        WEB = "web", "Website"
+        API = "api", "Direct API"
+
+    # Which surface **first** delivered this text to this account.
+    #
+    # First, not latest, because the row's identity is the text and its date is
+    # ``first_fetched_at`` — the surface belongs with the moment the account
+    # acquired it.  Overwriting it on every repeat would make the field mean
+    # "where was this account last seen", which no reading here asks for.
+    #
+    # **No default, and the database enforces it** (see the check constraint
+    # below).  Every write site names the surface.  A default is how a website
+    # read gets filed as an API read and nobody notices; the two populations
+    # behave differently enough that a curve drawn across both is a curve over
+    # a population that does not exist.  Website rows arrive in bulk from one
+    # page render, so read *coverage* for them and never ``new_share``.
+    #
+    # Leaving the default off is **not** sufficient on its own.  Django gives a
+    # non-null CharField an implicit ``""``, so a caller that forgets this field
+    # writes an empty string and the row then counts as neither surface — the
+    # silent miscount the rule exists to prevent, arriving by another door.
+    # ``choices`` does not help either: it is checked by ``full_clean``, which
+    # ``save`` does not call.  The constraint is the part that holds.
+    source = models.CharField(max_length=8, choices=Source.choices, db_index=True)
+
+    #: How many times this account has been given this exact text.  A high
+    #: number is the ordinary shape of real use.
+    fetch_count = models.PositiveIntegerField(default=1)
+    #: When it first became new to this account.  Counting these per day is
+    #: what makes a straight line visible.
+    first_fetched_at = models.DateTimeField(default=timezone.now)
+    last_fetched_at = models.DateTimeField(default=timezone.now)
+
+
+    class Meta:
+        db_table = "provision_fetches"
+        verbose_name = "Provision Fetch"
+        verbose_name_plural = "Provision Fetches"
+        ordering = ["-last_fetched_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "code_edition", "division", "provision_id", "version"],
+                name="unique_provision_fetch_per_user",
+            ),
+            # A row must say which surface delivered it.  Without this the
+            # implicit empty string passes, and the row is counted by neither
+            # ``web_held`` nor ``api_held`` — a loss that shows up as an
+            # account reading less than it did.
+            models.CheckConstraint(
+                condition=models.Q(source__in=["web", "api"]),
+                name="provision_fetch_names_its_surface",
+            ),
+        ]
+        indexes = [
+            # Serves both readings: what an account has taken in total, and
+            # what became new to it in a period.
+            models.Index(fields=["user", "first_fetched_at"]),
+            models.Index(fields=["user", "last_fetched_at"]),
+            # The per-surface readings, which are the only correct ones now
+            # that both surfaces write here.
+            models.Index(fields=["user", "source", "first_fetched_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user.email}: {self.code_edition} {self.provision_id} v{self.version}"
 
 
 class BackupRun(models.Model):
@@ -2131,3 +2379,289 @@ class CorpusCurrency(models.Model):
             },
         )
         return obj
+
+
+class Organization(models.Model):
+    """The billing entity: a firm, or one person who bought for themselves.
+
+    This is dj-stripe's subscriber model (``DJSTRIPE_SUBSCRIBER_MODEL``), so
+    every subscription in the product hangs here and a person reaches it
+    through a :class:`Membership`.  There is one billing path, not two.  A
+    reader who buys for themselves gets an organization of one, named after
+    them, and never meets the word "organization" anywhere on screen.
+
+    Two fields are deliberately absent:
+
+    * **No ``stripe_customer_id``.**  dj-stripe's ``Customer.subscriber``
+      points here, and that is the one link.  A second copy can disagree with
+      the first.
+    * **No seat count.**  The seat count is the ``quantity`` on the mirrored
+      Stripe subscription, so a change made in Stripe needs no deploy and
+      cannot disagree with what was charged.
+
+    ``email`` is not decoration: dj-stripe refuses a subscriber model with no
+    ``email`` attribute, and the invoice needs an address in any case.
+    """
+
+    # Auto pk, plugin-only — declared for Pyright.
+    id: int
+    #: Reverse relation — the people here (see ``Membership``).
+    memberships: "models.Manager[Membership]"
+    #: Reverse relation — invitations sent, accepted or not (see ``Invite``).
+    invites: "models.Manager[Invite]"
+    #: Reverse relation — dj-stripe's own, from ``Customer.subscriber``.
+    djstripe_customers: "models.Manager[Customer]"
+
+    name = models.CharField(max_length=200)
+    # Where the invoice goes.  For an organization of one this is the buyer's
+    # own address, which is what Stripe already had.
+    email = models.EmailField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "organizations"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def active_subscription(self) -> "Subscription | None":
+        """The live subscription, or ``None``.
+
+        "Live" is the test the individual gate has always made: ``active`` or
+        ``trialing``.  Any other state buys nothing, ``past_due`` included —
+        Stripe moves a payer back to ``active`` by itself once money lands.
+        """
+        return Subscription.objects.filter(
+            customer__subscriber=self,
+            stripe_data__status__in=["active", "trialing"],
+        ).first()
+
+    @property
+    def has_active_subscription(self) -> bool:
+        return self.active_subscription is not None
+
+    @property
+    def seats_bought(self) -> int:
+        """How many seats this organization pays for, straight from Stripe.
+
+        Read from the mirrored subscription rather than stored, so the number
+        on screen is the number on the invoice.  Stripe writes the quantity on
+        the subscription item; older payloads also carry a top-level
+        ``quantity``.  Both shapes are read, so no upgrade of dj-stripe can
+        quietly make this answer zero.
+        """
+        subscription = self.active_subscription
+        if subscription is None:
+            return 0
+        data: dict[str, Any] = subscription.stripe_data or {}
+        quantity = data.get("quantity")
+        if quantity is None:
+            items = (data.get("items") or {}).get("data") or []
+            quantity = sum(int(item.get("quantity") or 0) for item in items)
+        return int(quantity or 0)
+
+    @property
+    def seats_used(self) -> int:
+        """Memberships that consume a seat.  See :class:`Membership`."""
+        return self.memberships.filter(role__in=Membership.SEAT_ROLES).count()
+
+    @property
+    def seats_free(self) -> int:
+        """Seats bought and not yet used.  Never negative.
+
+        The seat count can fall below the people already here — an admin lowers
+        the quantity in the Stripe portal, or a payment fails.  Nobody is
+        removed for that, because a gate that acts on an existing member locks
+        out somebody who did nothing wrong.  It only means that no new person
+        can join until the two numbers agree again.
+        """
+        return max(0, self.seats_bought - self.seats_used)
+
+    @property
+    def is_personal(self) -> bool:
+        """True when this organization is one person who bought for themselves.
+
+        What the interface asks before it says the word "organization" out
+        loud.  A reader who bought alone never meets the concept.
+
+        **The seat count is part of the test, not just the head count.**  A
+        firm that buys five seats has one member for as long as it takes to
+        send the first invitation, and judging by members alone would call
+        that firm personal — which hides the invitation form from the only
+        person who can use it, and leaves the four paid seats unreachable.
+        Buying more than one seat is the act that says this is a firm.
+        """
+        return (
+            self.seats_bought <= 1
+            and self.memberships.count() <= 1
+            and not self.invites.filter(
+                accepted_at__isnull=True, revoked_at__isnull=True
+            ).exists()
+        )
+
+
+class Membership(models.Model):
+    """One person in one organization.
+
+    A row in a seat-consuming role **is** the used seat.  There is no separate
+    seat object, because a seat that is nobody is only a number, and that
+    number is on the Stripe subscription already.
+
+    Three roles.  The split answers a hole in the obvious two-role design: if
+    an admin were simply exempt from consuming a seat, a firm could make all
+    six people admins and pay for nothing.  So the exemption comes with no
+    access.
+
+    * ``member`` — a seat, and Pro access.
+    * ``admin`` — a seat, Pro access, and may invite, remove and change seats.
+    * ``billing`` — **no** seat and **no** Pro access; may manage seats and
+      reach the invoice.  This is the office manager who buys for the firm and
+      never opens a provision.
+    """
+
+    # Auto pk and FK columns, plugin-only — declared for Pyright.
+    id: int
+    organization_id: int
+    user_id: int
+
+    class Role(models.TextChoices):
+        MEMBER = "member", "Member"
+        ADMIN = "admin", "Admin"
+        BILLING = "billing", "Billing only"
+
+    #: The roles that consume a seat.  Also the roles that grant Pro access:
+    #: one name for both on purpose, because a role that reads is a role that
+    #: is paid for, and two lists could drift into a free-access role.
+    SEAT_ROLES = (Role.MEMBER, Role.ADMIN)
+    #: The roles that may invite, remove, and change the seat count.
+    ADMIN_ROLES = (Role.ADMIN, Role.BILLING)
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="memberships"
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memberships")
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.MEMBER)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "organization_memberships"
+        unique_together = ("organization", "user")
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.user.email} in {self.organization.name} ({self.role})"
+
+    @property
+    def consumes_seat(self) -> bool:
+        return self.role in Membership.SEAT_ROLES
+
+    @property
+    def grants_access(self) -> bool:
+        """Whether this row is a reason to read every edition."""
+        return self.role in Membership.SEAT_ROLES
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role in Membership.ADMIN_ROLES
+
+
+class Invite(models.Model):
+    """An invitation to take a seat.
+
+    The invitation is where a person is added, so the invitation is where the
+    seat check runs — at acceptance, the moment a seat is really taken.  A
+    check at sign-in would lock out somebody who did nothing wrong.
+
+    Only the hash of the token is stored, exactly as :class:`ApiKey` does it.
+    The link is emailed once.  A lost link is replaced by a new invitation,
+    never recovered.
+    """
+
+    # Auto pk and FK column, plugin-only — declared for Pyright.
+    id: int
+    organization_id: int
+
+    #: How long a link works.  Long enough for somebody on holiday, short
+    #: enough that a mail forwarded a year later opens nothing.
+    LIFETIME = timedelta(days=14)
+    #: How much of the token stays in clear, to find the row in one query.
+    LOOKUP_LENGTH = 11
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="invites"
+    )
+    email = models.EmailField()
+    role = models.CharField(
+        max_length=16, choices=Membership.Role.choices, default=Membership.Role.MEMBER
+    )
+    lookup = models.CharField(max_length=16, db_index=True)
+    hashed_token = models.CharField(max_length=64)
+    invited_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="invites_sent"
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    # Withdrawn, never deleted: the row is the record that somebody was asked.
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "organization_invites"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["organization", "accepted_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.email} to {self.organization.name}"
+
+    @staticmethod
+    def hash_token(token: str) -> str:
+        """The stored form of a token.  SHA-256, for the reason in ``ApiKey``."""
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def generate(
+        cls,
+        organization: Organization,
+        email: str,
+        role: str,
+        invited_by: "User | None" = None,
+    ) -> tuple["Invite", str]:
+        """Create an invitation, and return it with the one copy of its token."""
+        token = secrets.token_urlsafe(32)
+        invite = cls.objects.create(
+            organization=organization,
+            email=email.strip().lower(),
+            role=role,
+            lookup=token[: cls.LOOKUP_LENGTH],
+            hashed_token=cls.hash_token(token),
+            invited_by=invited_by,
+            expires_at=timezone.now() + cls.LIFETIME,
+        )
+        return invite, token
+
+    @classmethod
+    def open_for_token(cls, token: str) -> "Invite | None":
+        """The live invitation this token opens, or ``None``.
+
+        One indexed query on the clear prefix, then a hash comparison — the
+        shape ``ApiKey.lookup`` uses.  A withdrawn link, a spent link and an
+        invented link all answer ``None``, so none of them tells the holder
+        that any of the others exists.
+        """
+        if not token:
+            return None
+        hashed = cls.hash_token(token)
+        for invite in cls.objects.filter(lookup=token[: cls.LOOKUP_LENGTH]):
+            if secrets.compare_digest(invite.hashed_token, hashed) and invite.is_open:
+                return invite
+        return None
+
+    @property
+    def is_open(self) -> bool:
+        return (
+            self.accepted_at is None
+            and self.revoked_at is None
+            and self.expires_at > timezone.now()
+        )

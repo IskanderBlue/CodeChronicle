@@ -7,9 +7,13 @@ from datetime import date
 from typing import Any
 
 from django.contrib.auth.views import redirect_to_login
-from django.db import connection
-from django.db.models import Count, prefetch_related_objects
-from django.http import Http404, HttpRequest, HttpResponse
+from django.db.models import prefetch_related_objects
+from django.http import (
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponseForbidden,
+)
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
@@ -19,7 +23,11 @@ from api.formatters import (
     select_commencement_record,
 )
 from config.part_applicability import part_of
-from core.access import edition_allowed
+from core.access import edition_allowed, edition_gate
+from core.attribution import (
+    crown_years_for_provisions,
+    crown_years_for_regulations,
+)
 from core.citations import in_force_phrase
 from core.compare import (
     annotate_chain_comparisons,
@@ -27,7 +35,7 @@ from core.compare import (
     prepared_pair,
 )
 from core.cross_refs import annotate_versions, cited_by
-from core.events import record_event
+from core.events import arrival_context, record_event
 from core.http_cache import corpus_conditional
 from core.models import (
     CodeEdition,
@@ -44,6 +52,7 @@ from core.permalinks import (
     edition_contents_url,
     provision_permalink_url,
     provision_print_url,
+    provision_text_url,
 )
 from core.print_options import apply_tables_mode, resolve_tables_mode, toggle_query
 from core.provision_lineage import (
@@ -51,6 +60,7 @@ from core.provision_lineage import (
     annotate_lineage_titles,
     resolve_lineage,
 )
+from core.reading_ledger import record_versions
 from core.seo import (
     TITLE_SUFFIX,
     amending_regulations,
@@ -62,9 +72,9 @@ from core.seo import (
     regulation_jsonld,
     site_origin,
 )
+from core.subtrees import contents_view, related_links, walk_subtree
 from core.verification import base_input, build_rail
-
-from .search import _active_versions
+from core.views.search import in_force_versions
 
 # ── Clause-target display + linking ──────────────────────────────────────
 # A clause can touch several provisions at once — it produced (contributed
@@ -257,186 +267,6 @@ def _clause_targets(clause: RegulationClause) -> list[dict[str, Any]]:
 _natural_key = natural_provision_key
 
 
-# ── Hierarchical permalink navigation ────────────────────────────────────
-# The permalink shows one provision pinned to one version.  A reader needs
-# to walk up to the parent and down to the children — but each related
-# provision has its own version timeline, so a single linked version can
-# overlap *several* versions of a neighbour.  Links are emitted per
-# overlapping version, not per provision.
-
-
-def _overlaps(
-    a: CodeEditionProvisionVersion, b: CodeEditionProvisionVersion
-) -> bool:
-    """Do two versions' in-force windows overlap?
-
-    Thin wrapper over ``CodeEditionProvisionVersion.overlaps`` (which owns the
-    zero-duration handling), kept as a local name because the nav helpers below
-    read as interval logic rather than model calls.
-    """
-    return a.overlaps(b)
-
-
-def _related_links(
-    provision: CodeEditionProvision,
-    ref: CodeEditionProvisionVersion,
-    code_name: str,
-) -> dict[str, Any]:
-    """A neighbour provision plus a link to each version overlapping ``ref``.
-
-    Uses the provision's prefetched ``versions`` cache; the versions whose
-    in-force window touches the pinned version's are the ones a reader on
-    this page could have been looking at, so each gets its own link.
-    """
-    versions = sorted(
-        (v for v in provision.versions.all() if _overlaps(v, ref)),
-        key=lambda v: v.version,
-    )
-    return {
-        "provision_id": provision.provision_id,
-        # The row names a *different* provision, so its label carries the
-        # title (tasks/c-lineage-anchor-text.md).  The last overlapping
-        # version's title is the provision's most recent reading inside the
-        # pinned window; where a title changed mid-window, each version's own
-        # title still shows on its own link below.
-        "title": versions[-1].title if versions else "",
-        "versions": [
-            {
-                "version": v.version,
-                "title": v.title,
-                "effective_date": v.effective_date,
-                # The last day this version governed.  The row's tooltip says
-                # "to", and the stored end is the first day the text did not
-                # apply, so the template must not print that date.
-                "last_day": last_governed_day(v.ineffective_date),
-                "never_in_force": v.never_in_force,
-                "url": provision_permalink_url(
-                    code_name, provision.division, provision.provision_id, v.version
-                ),
-            }
-            for v in versions
-        ],
-    }
-
-
-#: How many provisions a permalink may render as text before it renders a
-#: table of contents instead.
-#:
-#: A permalink shows the matched provision *and its whole subtree*, which is
-#: right at the leaf end — an article and its sentences read as one thing —
-#: and wrong at the top.  In OBC 2006, 95% of provisions have fewer than a
-#: dozen descendants, while ``B`` has 2,934 and ``Part 9`` has 1,338.  Nobody
-#: reads Part 9 on a screen from top to bottom; they want to know what is in
-#: it.  So the page changes character rather than paginating: page 3 of Part 9
-#: is not a thing a code consultant can ask for, and ``?page=`` would multiply
-#: the URL count when the point is to cut the work.
-#:
-#: The switch is by measured size, not by level name, because "section" runs
-#: from 0 to 201 descendants in this corpus — the name does not predict the
-#: cost.  Measuring also means a differently-shaped edition needs no new rule.
-#:
-#: This also removes a duplicate-text problem.  An article's text used to
-#: appear on its own page, its subsection's, its section's, its part's and its
-#: division's — five URLs for one text, with nothing to say which is the
-#: subject, because the canonical rule picks the highest *version* and says
-#: nothing about containment.
-CONTENTS_THRESHOLD = 40
-
-
-def _plural(noun: str, count: int) -> str:
-    """``"section"`` or ``"sections"``.  Empty noun stays empty."""
-    if not noun:
-        return ""
-    return noun if count == 1 else f"{noun}s"
-
-
-def _descendant_count(matched: CodeEditionProvision, division: str) -> int:
-    """How many provisions sit under ``matched``, at any depth.
-
-    The subtree walk stops early once it knows the answer is "too many", which
-    is the point of it — so the total is not a by-product and has to be asked
-    for.  One recursive query answers it server-side rather than dragging
-    every id back to say how many there were.
-
-    Worth the query only because the page states the number: a reader told
-    their text is not being shown is owed the size of what is being withheld.
-    """
-    table = CodeEditionProvision._meta.db_table
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"""
-            WITH RECURSIVE descendants AS (
-                SELECT id FROM {table} WHERE id = %s
-                UNION ALL
-                SELECT child.id
-                FROM {table} child
-                JOIN descendants ON child.parent_id = descendants.id
-                WHERE child.edition_id = %s AND child.division = %s
-            )
-            SELECT count(*) - 1 FROM descendants
-            """,
-            [matched.pk, matched.edition_id, division],
-        )
-        row = cursor.fetchone()
-    return int(row[0]) if row else 0
-
-
-def _contents_rows(
-    matched: CodeEditionProvision,
-    ref: CodeEditionProvisionVersion,
-    code_name: str,
-    division: str,
-) -> list[dict[str, Any]]:
-    """The direct children of ``matched``, as rows for a table of contents.
-
-    Each row is a :func:`_related_links` entry — so the number, the title and
-    one link per overlapping version, exactly as the navigation renders a
-    neighbour — plus a count of what sits under it.
-
-    The count's noun comes from the rows themselves rather than from an
-    assumed part/section/subsection/article ladder.  An edition that nests
-    differently then describes itself correctly instead of being mislabelled.
-    """
-    children = sorted(
-        CodeEditionProvision.objects
-        .filter(parent_id=matched.pk, edition=matched.edition, division=division)
-        .prefetch_related("versions"),
-        key=lambda p: _natural_key(p.provision_id),
-    )
-    if not children:
-        return []
-
-    # One grouped query for the whole generation below.  Grouping by level as
-    # well as by parent is what lets the row name what it is counting.
-    tallies: dict[int, dict[str, int]] = {}
-    grandchildren = (
-        CodeEditionProvision.objects
-        .filter(
-            parent_id__in=[c.pk for c in children],
-            edition=matched.edition,
-            division=division,
-        )
-        .values("parent_id", "level")
-        .annotate(n=Count("pk"))
-    )
-    for row in grandchildren:
-        tallies.setdefault(row["parent_id"], {})[row["level"]] = row["n"]
-
-    rows = []
-    for child in children:
-        by_level = tallies.get(child.pk, {})
-        total = sum(by_level.values())
-        # The commonest level present, so a generation that mixes levels is
-        # named by what most of it is rather than by whichever sorted first.
-        noun = max(by_level, key=lambda k: by_level[k]) if by_level else ""
-        row = _related_links(child, ref, code_name)
-        row["level"] = child.level
-        row["child_count"] = total
-        row["child_noun"] = _plural(noun, total)
-        rows.append(row)
-    return rows
-
-
 def _edition_roots(edition: CodeEdition) -> list[CodeEditionProvision]:
     """The top of one edition's structure, in reading order.
 
@@ -483,23 +313,20 @@ def _sibling_editions(edition: CodeEdition) -> list[CodeEdition]:
 
 def _sibling_link(
     provision: CodeEditionProvision, day: date, code_name: str
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """Link to a sibling provision as it reads on ``day`` (the pinned date).
 
     A pager (prev/next) points at one version, not many, so pick the
     sibling version in force on the pinned version's effective date; fall
     back to the earliest version when nothing is in force then (e.g. the
-    sibling didn't exist yet).  Returns ``None`` for a sibling with no
-    versions at all.
+    sibling didn't exist yet).
 
-    Shaped exactly like :func:`_related_links` — a ``versions`` list holding
+    Shaped exactly like :func:`core.subtrees.related_links` — a ``versions`` list holding
     one entry — so all four nav groups (pager, parent, children) render
     through one partial and align on one grid.  A pager row that built its
     own markup was how the ids stopped lining up.
     """
     versions = sorted(provision.versions.all(), key=lambda v: v.version)
-    if not versions:
-        return None
     chosen = next((v for v in versions if v.in_force_on(day)), versions[0])
     return {
         "provision_id": provision.provision_id,
@@ -519,7 +346,7 @@ def _sibling_link(
     }
 
 
-def _provenance_result(
+def provenance_result(
     matched: CodeEditionProvision,
     target_version: CodeEditionProvisionVersion,
     code_name: str,
@@ -557,7 +384,7 @@ def _provenance_result(
     )
     next_clause = next_version.last_contributing_clause if next_version else None
     lineage = resolve_lineage([matched])[matched.pk]
-    annotate_lineage_locks([lineage], user)
+    annotate_lineage_locks([lineage], edition_gate(user))
     annotate_lineage_titles([lineage])
     # Commencement proof for both band edges, mirroring
     # api.formatters._format_single_result: a base version's From falls back
@@ -823,13 +650,10 @@ def _group_provisions(
 
 def _dated_provision_url(
     provision: CodeEditionProvision, day: date | None, code_name: str
-) -> str | None:
+) -> str:
     """Permalink for ``provision`` as it reads on ``day`` — the version in
-    force then, falling back to the earliest.  ``None`` when it has no
-    versions (renders as plain text rather than a dead link)."""
+    force then, falling back to the earliest."""
     versions = sorted(provision.versions.all(), key=lambda v: v.version)
-    if not versions:
-        return None
     chosen = next(
         (v for v in versions if day and v.in_force_on(day)), versions[0]
     )
@@ -909,7 +733,7 @@ def _parse_iso_date(value: str | None) -> date | None:
         return None
 
 
-def _locked_edition_response(
+def locked_edition_response(
     request: HttpRequest, edition: CodeEdition, *, surface: str
 ) -> HttpResponse:
     """A 403 teaser page for content outside the user's free-tier scope.
@@ -970,7 +794,7 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
         pk=pk,
     )
     if not edition_allowed(request.user, regulation.edition.code_name):
-        return _locked_edition_response(
+        return locked_edition_response(
             request, regulation.edition, surface="regulation_detail"
         )
     # ``clause_id`` is a CharField, so a DB ``order_by`` is lexicographic
@@ -1008,6 +832,9 @@ def regulation_detail(request: HttpRequest, pk: int) -> HttpResponse:
     )
     return render(request, "regulation/detail.html", {
         "regulation": regulation,
+        # This page reproduces one regulation's own clause text, so it
+        # names itself rather than looking through to versions.
+        "crown_years": crown_years_for_regulations([regulation]),
         "clauses": clauses,
         "commencement": commencement,
         "has_staggered_commencement": has_staggered_commencement,
@@ -1028,9 +855,7 @@ def _print_response(
     division: str,
     provision_id: str,
     version: int,
-    contents: list[dict[str, Any]],
-    contents_total: int,
-    contents_noun: str,
+    contents_ctx: dict[str, Any],
 ) -> HttpResponse:
     """Render the subtree as an exhibit.
 
@@ -1087,13 +912,16 @@ def _print_response(
             code_name, division, provision_id, version
         ),
         "sections": sections,
+        # The regulations that enacted the text on this sheet, not the
+        # edition's base year -- an amendment is its own instrument.
+        "crown_years": crown_years_for_provisions(
+            {row.provision for row in version_rows}
+        ),
         # An exhibit of an oversized provision is its own text plus what it
         # contains, for the same reason the page is: the printed alternative
         # is 1,339 provisions, and the guarantee this export makes is that
         # paper shows what the page shows.
-        "contents": contents,
-        "contents_total": contents_total,
-        "contents_noun": contents_noun,
+        **contents_ctx,
         "active_node_id": provision_id,
         "active_provision_id": provision_id,
         "transition_active": False,
@@ -1107,6 +935,158 @@ def _print_response(
             date.today(),
         ),
     })
+
+
+def _defers_text(request: HttpRequest, for_print: bool) -> bool:
+    """Whether this response hands over headings and fetches the bodies later.
+
+    Two conditions, and both are about the record rather than about reading
+    comfort:
+
+    * **Signed in.** An anonymous response is stored at the edge and never
+      reaches Django, so deferring for an anonymous reader would multiply the
+      requests without recording one of them.  Anonymous rendering is also
+      what crawlers see, and the cost work in ``CONTENTS_THRESHOLD`` was
+      measured against it.
+    * **Not the exhibit.** A printed page has no later.
+    """
+    return request.user.is_authenticated and not for_print
+
+
+def _section_row(
+    prov: CodeEditionProvision,
+    prov_versions: list[CodeEditionProvisionVersion],
+    *,
+    code_name: str,
+    is_active: bool,
+    is_container: bool,
+    defer_text: bool,
+) -> dict[str, Any]:
+    """One row of the ``sections`` list the viewer partials render.
+
+    Shared by the permalink page, its print branch and ``provision_text``.
+    The fragment must describe a provision exactly as the whole-subtree render
+    would, or a lazily-loaded body differs from the printed one — which is the
+    same guarantee ``for_print`` makes, now with a second code path to hold it
+    against.
+    """
+    return {
+        "provision_id": prov.provision_id,
+        "node_id": prov.provision_id,
+        # No fallback to the provision id.  The id is printed beside the
+        # title, so falling back rendered "Part 2 — Part 2".  An untitled
+        # provision has no title; the template omits the dash.
+        "title": prov_versions[-1].title if prov_versions else "",
+        # Whether anything sits under this provision.  A container has no
+        # text of its own — every part, section and division in this
+        # corpus has an empty body — so it must not be reported as text we
+        # failed to supply.
+        "is_container": is_container,
+        # Its own permalink.  Nothing above article level carries text, so
+        # a container page *is* its links — and the rail's "Subprovisions"
+        # names only the direct children, which left every deeper
+        # provision on the page unreachable without going back up.  The
+        # matched provision links nowhere: it is already here.
+        "url": (
+            ""
+            if is_active or not prov_versions
+            else provision_permalink_url(
+                code_name, prov.division, prov.provision_id,
+                prov_versions[-1].version,
+            )
+        ),
+        "division": prov.division,
+        "active_versions": prov_versions,
+        "is_active": is_active,
+        # Only a row that has a version can be deferred; a row with nothing in
+        # force renders its one line here and costs no request.
+        "defer_text": defer_text and bool(prov_versions),
+        # Where the body comes from when it is deferred.  Empty when there is
+        # no version to name, which is exactly when nothing is deferred.
+        "text_url": (
+            provision_text_url(
+                code_name, prov.division, prov.provision_id,
+                prov_versions[-1].version,
+            )
+            if prov_versions else ""
+        ),
+    }
+
+
+def provision_text(
+    request: HttpRequest,
+    code_edition: str,
+    division: str,
+    provision_id: str,
+    version: int,
+) -> HttpResponse:
+    """One provision version's body.  HTMX fragment.
+
+    The website's ``/api/provision``.  It exists so that text leaves this
+    product one provision at a time and every departure is countable; see item
+    3 of ``tasks/b-reading-ledger-for-the-website.md``.
+
+    Signed-in readers only.  Nothing anonymous links here — an anonymous
+    permalink renders its whole subtree inline — so answering an anonymous
+    request would open a second, unrecorded way to sweep the corpus for no
+    feature at all.  It answers **403** rather than redirecting to the login
+    page, because htmx swaps nothing on a non-2xx: an expired session leaves
+    the heading in place instead of pasting a sign-in form into the body slot.
+
+    Cross-references resolve at this version's own effective date, which is
+    also what ``provision_permalink`` does for the version its URL names.  On
+    a permalink the *descendants* instead inherit the matched version's date,
+    so the two differ wherever a descendant came into force earlier — 28 of
+    9,822 descendant rows, measured 21 August 2026.  It changes which version
+    a citation links to, never the text.
+    """
+    if not request.user.is_authenticated:
+        return HttpResponseForbidden("Sign in to read this provision.")
+
+    code, _, edition_id = code_edition.partition("_")
+    target = get_object_or_404(
+        CodeEditionProvisionVersion.objects
+        .select_related("provision__edition__code")
+        .prefetch_related("tables"),
+        provision__edition__code__code=code,
+        provision__edition__edition_id=edition_id,
+        provision__division=division,
+        provision__provision_id=provision_id,
+        version=version,
+    )
+    prov = target.provision
+    # The gate, before any text is read.  A key changes how an account asks,
+    # never what it may read — and the same holds for a fragment URL.
+    if not edition_allowed(request.user, prov.edition.code_name):
+        return HttpResponseForbidden("This edition is not in your plan.")
+
+    code_name = prov.edition.code_name
+    # Within-edition citations, linked inline.  Without this the deferred body
+    # renders its cross-references as plain text while the inline one links
+    # them, so the same provision reads differently depending on how it
+    # arrived.
+    annotate_versions(
+        [target], code_name, on_date=target.effective_date, fan_out=True,
+    )
+
+    section = _section_row(
+        prov,
+        [target],
+        code_name=code_name,
+        is_active=False,
+        is_container=CodeEditionProvision.objects.filter(
+            parent_id=prov.pk, edition=prov.edition, division=division
+        ).exists(),
+        defer_text=False,
+    )
+
+    # The ledger, after the gate and before the response is built.  This is the
+    # row the page render no longer writes.
+    record_versions(request, [target])
+
+    return render(
+        request, "partials/_viewer_section_body.html", {"section": section}
+    )
 
 
 @corpus_conditional
@@ -1142,7 +1122,7 @@ def provision_permalink(
         provision_id=provision_id,
     )
     if not edition_allowed(request.user, matched.edition.code_name):
-        return _locked_edition_response(request, matched.edition, surface="permalink")
+        return locked_edition_response(request, matched.edition, surface="permalink")
     target_version = get_object_or_404(
         CodeEditionProvisionVersion, provision=matched, version=version,
     )
@@ -1154,40 +1134,6 @@ def provision_permalink(
         # somebody else's document, which is the point of it.  The exhibit is
         # work product, and it is the natural moment to ask for an account.
         return redirect_to_login(request.get_full_path())
-
-    # Engagement.  A print request is an *export*, not a view: recording both
-    # would double-count the same reader in the view totals and make the export
-    # counts unreadable against them.
-    if for_print:
-        record_event(
-            request,
-            event_type=EngagementEvent.EventType.EXPORT,
-            object_type="CodeEditionProvisionVersion",
-            object_id=target_version.pk,
-            search_id=request.GET.get("search_id"),
-            context={
-                "kind": "provision_pdf",
-                "division": division,
-                "provision_id": provision_id,
-                "code_edition": code_name,
-            },
-        )
-    else:
-        record_event(
-            request,
-            event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
-            object_type="CodeEditionProvisionVersion",
-            object_id=target_version.pk,
-            search_id=request.GET.get("search_id"),
-            context={
-                "code": matched.edition.code.code,
-                "edition_id": matched.edition.edition_id,
-                "division": division,
-                "provision_id": provision_id,
-                "version": version,
-                "surface": "permalink",
-            },
-        )
 
     # Hierarchical navigation: up to the parent, down to the direct children.
     # Each neighbour links to every version whose in-force window overlaps the
@@ -1202,7 +1148,7 @@ def provision_permalink(
             .prefetch_related("versions")
             .get(pk=matched.parent_id)
         )
-        nav_up.append(_related_links(parent, target_version, code_name))
+        nav_up.append(related_links(parent, target_version, code_name))
     nav_down: list[dict[str, Any]] = []
     if not for_print:
         child_provisions = (
@@ -1211,7 +1157,7 @@ def provision_permalink(
             .prefetch_related("versions")
         )
         nav_down = [
-            _related_links(child, target_version, code_name)
+            related_links(child, target_version, code_name)
             for child in sorted(
                 child_provisions, key=lambda p: _natural_key(p.provision_id)
             )
@@ -1251,45 +1197,23 @@ def provision_permalink(
 
     # Subtree: matched provision + all descendants (same edition/division),
     # unless that is more than a reader would ever scroll — see
-    # CONTENTS_THRESHOLD.  The walk already ran a generation at a time, so the
-    # limit is a stopping condition rather than a different query.
-    #
-    # It stops on the generation that would breach the limit, so at worst it
-    # loads one generation too many.  Those are bare provision rows; the cost
-    # this avoids is their versions, tables, assets and rendering.
-    all_provisions: list[CodeEditionProvision] = [matched]
-    frontier = [matched.pk]
-    oversized = False
-    while frontier:
-        children = list(
-            CodeEditionProvision.objects
-            .filter(parent_id__in=frontier, edition=matched.edition, division=division)
-        )
-        if not children:
-            break
-        if len(all_provisions) + len(children) > CONTENTS_THRESHOLD:
-            oversized = True
-            break
-        all_provisions.extend(children)
-        frontier = [c.pk for c in children]
+    # ``core.subtrees.CONTENTS_THRESHOLD``.  The search overlay walks the same
+    # way from a different root, which is why the walk is not written here.
+    all_provisions, oversized = walk_subtree(
+        matched, edition=matched.edition, division=division
+    )
 
     # Too big to read: the page shows this provision's own text and a table of
     # contents for what is under it.  Nothing becomes unreachable — every
-    # child is still linked, one hop further on.
-    contents: list[dict[str, Any]] = []
-    contents_total = 0
-    contents_noun = ""
+    # child is still linked, one hop further on.  The search overlay shows the
+    # same block from the same builder, so a reader who meets the contents of
+    # Part 9 there and again here meets one list.
+    contents_ctx: dict[str, Any] = {
+        "contents": [], "contents_total": 0, "contents_noun": "",
+    }
     if oversized:
         all_provisions = [matched]
-        contents = _contents_rows(matched, target_version, code_name, division)
-        # The page states the size of what it is not showing.  A reader told
-        # their text is being withheld is owed the number, and "more than one
-        # page can carry" is a judgement they cannot check.
-        contents_total = _descendant_count(matched, division)
-        levels = [row["level"] for row in contents if row["level"]]
-        contents_noun = _plural(
-            max(set(levels), key=levels.count) if levels else "", len(contents)
-        )
+        contents_ctx = contents_view(matched, target_version, code_name, division)
         # The "Subprovisions" nav lists the same children as links.  Two lists
         # of one thing on one page is worse than either alone, and the
         # contents rows say more.
@@ -1299,7 +1223,7 @@ def provision_permalink(
     # date.  The matched provision itself is pinned to exactly the linked
     # version (so a zero-duration base v0 still shows, which the date-based
     # in-force filter would otherwise drop).
-    active = _active_versions(all_provisions, anchor_date)
+    active = in_force_versions(all_provisions, anchor_date)
     by_provision: dict[int, list[CodeEditionProvisionVersion]] = {}
     for v in active:
         by_provision.setdefault(v.provision_id, []).append(v)
@@ -1327,39 +1251,104 @@ def provision_permalink(
     # told apart from a missing one.
     parent_pks = {p.parent_id for p in all_provisions if p.parent_id}
 
+    # Deferred bodies.  A signed-in reader gets the matched provision's text
+    # and the *headings* of everything under it; each body arrives through
+    # ``provision_text`` as it is scrolled to.  See ``_defers_text``.
+    defer_text = _defers_text(request, for_print)
+
     sections: list[dict[str, Any]] = []
     for prov in sorted(all_provisions, key=lambda p: _natural_key(p.provision_id)):
-        prov_versions = by_provision.get(prov.pk, [])
-        sections.append({
-            "provision_id": prov.provision_id,
-            "node_id": prov.provision_id,
-            # No fallback to the provision id.  The id is printed beside the
-            # title, so falling back rendered "Part 2 — Part 2".  An untitled
-            # provision has no title; the template omits the dash.
-            "title": prov_versions[-1].title if prov_versions else "",
-            # Whether anything sits under this provision.  A container has no
-            # text of its own — every part, section and division in this
-            # corpus has an empty body — so it must not be reported as text we
-            # failed to supply.  ``contents`` is the oversized case, where the
-            # children are listed rather than rendered.
-            "is_container": prov.pk in parent_pks or (bool(contents) and prov.pk == matched.pk),
-            # Its own permalink.  Nothing above article level carries text, so
-            # a container page *is* its links — and the rail's "Subprovisions"
-            # names only the direct children, which left every deeper
-            # provision on the page unreachable without going back up.  The
-            # matched provision links nowhere: it is already here.
-            "url": (
-                ""
-                if prov.pk == matched.pk or not prov_versions
-                else provision_permalink_url(
-                    code_name, prov.division, prov.provision_id,
-                    prov_versions[-1].version,
-                )
+        sections.append(_section_row(
+            prov,
+            by_provision.get(prov.pk, []),
+            code_name=code_name,
+            is_active=prov.pk == matched.pk,
+            is_container=(
+                prov.pk in parent_pks
+                or (bool(contents_ctx["contents"]) and prov.pk == matched.pk)
             ),
-            "division": prov.division,
-            "active_versions": prov_versions,
-            "is_active": prov.pk == matched.pk,
-        })
+            # The provision the URL names is never deferred.  It is what the
+            # reader asked for, and a page that answers a request for one
+            # provision with a spinner is not a page.
+            defer_text=defer_text and prov.pk != matched.pk,
+        ))
+
+    # The reading ledger.  Written from the versions this page actually
+    # rendered, not from ``matched`` — the request names one provision and the
+    # response can carry forty, and recording the name would report an account
+    # served the whole corpus as holding about 2% of it.
+    #
+    # A deferred section delivered no text, so it records none; ``provision_text``
+    # records its own when it answers.  That split is the point of item 3 of
+    # ``tasks/b-reading-ledger-for-the-website.md``: the ledger can only be as
+    # granular as delivery is.
+    #
+    # The print branch never defers — it renders the whole subtree in one pass
+    # with no ``CONTENTS_THRESHOLD``, and is the cheapest way to take text out
+    # of the product.  A ledger with a hole where bulk delivery is easiest is
+    # worse than none: it reads as a clean account.
+    delivered, recorded = record_versions(
+        request,
+        [v for section in sections if not section["defer_text"]
+         for v in section["active_versions"]],
+    )
+
+    # Engagement.  A print request is an *export*, not a view: recording both
+    # would double-count the same reader in the view totals and make the export
+    # counts unreadable against them.
+    #
+    # Written *after* the ledger, not before, because of ``delivered`` and
+    # ``recorded`` below — and the page has to be assembled before either
+    # number exists.  Nothing between the gate above and here returns, so the
+    # move costs no event; a request that raises on the way now records
+    # nothing, which is right, since a 500 delivered no reading.
+    ledger_counts = {
+        # What this response handed over, and what reached the ledger.  A page
+        # that delivers forty texts and records three is not a silent day, so
+        # ``ledger_health``'s day-level test passes it.  These two numbers make
+        # a partial failure visible per request; ``record_versions`` explains
+        # why they come from two different functions.
+        "delivered": delivered,
+        "recorded": recorded,
+    }
+    if for_print:
+        record_event(
+            request,
+            event_type=EngagementEvent.EventType.EXPORT,
+            object_type="CodeEditionProvisionVersion",
+            object_id=target_version.pk,
+            search_id=request.GET.get("search_id"),
+            context={
+                "kind": "provision_pdf",
+                "division": division,
+                "provision_id": provision_id,
+                "code_edition": code_name,
+                # The exhibit is the cheapest bulk delivery in the product: it
+                # never defers and ignores CONTENTS_THRESHOLD.  It is the last
+                # surface that should be missing from the watch.
+                **ledger_counts,
+            },
+        )
+    else:
+        record_event(
+            request,
+            event_type=EngagementEvent.EventType.PROVISION_VERSION_VIEW,
+            object_type="CodeEditionProvisionVersion",
+            object_id=target_version.pk,
+            search_id=request.GET.get("search_id"),
+            context={
+                "code": matched.edition.code.code,
+                "edition_id": matched.edition.edition_id,
+                "division": division,
+                "provision_id": provision_id,
+                "version": version,
+                "surface": "permalink",
+                # Followed to, or arrived at cold.  A reader follows links; a
+                # script composes URLs.  See ``core.events.arrival_context``.
+                **arrival_context(request),
+                **ledger_counts,
+            },
+        )
 
     if for_print:
         return _print_response(
@@ -1371,9 +1360,7 @@ def provision_permalink(
             division=division,
             provision_id=provision_id,
             version=version,
-            contents=contents,
-            contents_total=contents_total,
-            contents_noun=contents_noun,
+            contents_ctx=contents_ctx,
         )
 
     return render(request, "regulation/provision_permalink.html", {
@@ -1388,9 +1375,7 @@ def provision_permalink(
         "never_in_force": target_version.never_in_force,
         "nav_up": nav_up,
         "nav_down": nav_down,
-        "contents": contents,
-        "contents_total": contents_total,
-        "contents_noun": contents_noun,
+        **contents_ctx,
         "nav_prev": nav_prev,
         "nav_next": nav_next,
         # The top of the ladder, reachable from any depth. "Within" climbs one
@@ -1401,10 +1386,15 @@ def provision_permalink(
             "label": f"{matched.edition.code.code} {matched.edition.edition_id}".strip(),
             "url": edition_contents_url(code_name),
         },
-        "provenance": _provenance_result(
+        "provenance": provenance_result(
             matched, target_version, code_name, division, provision_id, request.user
         ),
         "sections": sections,
+        # Every regulation that enacted text shown here, base and amending
+        # alike.  A consolidated provision is not the work of one instrument.
+        "crown_years": crown_years_for_provisions(
+            {v.provision for section in sections for v in section["active_versions"]}
+        ),
         "active_node_id": provision_id,
         "active_provision_id": provision_id,
         "transition_active": False,
@@ -1461,7 +1451,7 @@ def edition_contents(request: HttpRequest, code_edition: str) -> HttpResponse:
     # The gate, before anything is read. An edition's contents is the shape of
     # the edition, which is content.
     if not edition_allowed(request.user, edition.code_name):
-        return _locked_edition_response(request, edition, surface="edition_contents")
+        return locked_edition_response(request, edition, surface="edition_contents")
 
     roots = _edition_roots(edition)
     # Each root as it last read. A contents page is not pinned to a date — the
@@ -1470,8 +1460,6 @@ def edition_contents(request: HttpRequest, code_edition: str) -> HttpResponse:
     entries = []
     for root in roots:
         versions = sorted(root.versions.all(), key=lambda v: v.version)
-        if not versions:
-            continue
         newest = versions[-1]
         entries.append({
             "provision_id": root.provision_id,
@@ -1491,6 +1479,7 @@ def edition_contents(request: HttpRequest, code_edition: str) -> HttpResponse:
         # first day it did not.  core.seo owns the conversion for the product.
         "last_day": last_governed_day(edition.ineffective_date),
         "entries": entries,
+        "crown_years": crown_years_for_provisions(roots),
         "editions": [
             {
                 "label": f"{e.code.code} {e.edition_id}".strip(),
@@ -1513,7 +1502,7 @@ def edition_chain(request: HttpRequest, pk: int) -> HttpResponse:
         pk=pk,
     )
     if not edition_allowed(request.user, edition.code_name):
-        return _locked_edition_response(request, edition, surface="edition_chain")
+        return locked_edition_response(request, edition, surface="edition_chain")
     regulations = (
         edition.regulations
         .select_related("amends")
@@ -1523,4 +1512,5 @@ def edition_chain(request: HttpRequest, pk: int) -> HttpResponse:
     return render(request, "regulation/chain.html", {
         "edition": edition,
         "regulations": regulations,
+        "crown_years": crown_years_for_regulations(regulations),
     })

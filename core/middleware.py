@@ -1,15 +1,18 @@
 """
-Rate limiting middleware for search API.
+Rate limiting middleware for search API, and the re-acceptance wall.
 """
 
 from django.conf import settings
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import urlencode
 
 from core.events import record_event
 from core.ip_utils import extract_client_ip
 from core.models import EngagementEvent, SearchHistory, question_keys
+from core.reacceptance import needs_reacceptance
 
 
 class RateLimitMiddleware:
@@ -183,3 +186,58 @@ class RateLimitMiddleware:
     def get_client_ip(self, request):
         """Extract client IP from request, handling proxies."""
         return extract_client_ip(request.META)
+
+
+class TermsReacceptanceMiddleware:
+    """Send a signed-in reader to the wall when a document has moved past its
+    re-acceptance floor.
+
+    The Terms promise notice before a material change and re-acceptance at the
+    next sign-in. Middleware rather than a decorator, because the promise is
+    about the account and not about one page: a reader who bookmarked the
+    comparison page must meet it too.
+
+    Four paths stay open, and each for its own reason:
+
+    * **The wall itself**, or a reader can never accept.
+    * **Sign-out and the auth flow**, because refusing is allowed and a wall
+      with no exit takes an account hostage.
+    * **The two documents**, so a reader can read what they are accepting.
+    * **``/api/``**, which authenticates with a bearer key rather than a
+      session. An HTML wall is not an answer a script can act on, so a key
+      holder meets the prompt the next time they use the website instead.
+
+    Static files are not listed: they are served before this runs in
+    production, and in development an unstyled wall would be worse than a
+    stale stylesheet.
+    """
+
+    #: URL names whose paths are resolved once at first use.  Names rather than
+    #: literal paths, so a route that moves does not silently close the wall's
+    #: own door.
+    EXEMPT_URL_NAMES = (
+        "core:accept_terms",
+        "core:terms_of_service",
+        "core:privacy_policy",
+    )
+
+    #: Prefixes that stay open.  ``/accounts/`` is allauth's whole flow, which
+    #: includes sign-out, and ``/api/`` is credentialed separately.
+    EXEMPT_PREFIXES = ("/accounts/", "/api/")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self._exempt_paths: set[str] | None = None
+
+    def __call__(self, request):
+        if needs_reacceptance(request) and not self._is_exempt(request.path):
+            target = reverse("core:accept_terms")
+            return redirect(f"{target}?{urlencode({'next': request.get_full_path()})}")
+        return self.get_response(request)
+
+    def _is_exempt(self, path: str) -> bool:
+        if path.startswith(self.EXEMPT_PREFIXES):
+            return True
+        if self._exempt_paths is None:
+            self._exempt_paths = {reverse(name) for name in self.EXEMPT_URL_NAMES}
+        return path in self._exempt_paths

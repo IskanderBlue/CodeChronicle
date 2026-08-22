@@ -6,7 +6,7 @@ import pytest
 from django.test import Client, RequestFactory
 
 from api.views import _extract_search_params_from_request
-from core.models import Code, CodeEdition, User
+from core.models import ApiKey, Code, CodeEdition, User
 
 
 @pytest.mark.django_db
@@ -22,6 +22,15 @@ class TestApiEndpoints:
             password="testpassword",
             pro_courtesy=True,
         )
+        # The API takes a key and nothing else, so every "allowed" case here
+        # carries a header rather than a login.  The free account holds a key
+        # too, which is the only way to test that the *subscription* is what
+        # the gate reads.
+        _, paid_token = ApiKey.generate(self.paid_user, "tests")
+        _, free_token = ApiKey.generate(self.free_user, "tests")
+        self.paid_headers = {"authorization": f"Bearer {paid_token}"}
+        self.free_headers = {"authorization": f"Bearer {free_token}"}
+
         nbc = Code.objects.create(
             code="NBC",
             display_name="National Building Code",
@@ -34,61 +43,62 @@ class TestApiEndpoints:
             effective_date=date(2025, 1, 1),
         )
 
-    def test_list_codes_requires_authentication(self):
-        """Anonymous users cannot call direct APIs."""
+    def test_list_codes_requires_a_key(self):
+        """A call with no key is refused, and told what to send."""
         response = self.client.get('/api/codes')
         assert response.status_code == 401
         data = response.json()
         assert data['success'] is False
-        assert "Authentication required" in data['error']
+        assert "API key" in data['error']
 
-    def test_list_codes_blocks_free_user(self):
-        """Logged-in free users are blocked from direct APIs."""
-        self.client.force_login(self.free_user)
-        response = self.client.get('/api/codes')
+    def test_list_codes_blocks_a_free_account(self):
+        """A real key on an account without Pro is refused, differently.
+
+        401 and 403 answer different questions, and the caller acts on them
+        differently: one needs a key, the other needs a subscription.
+        """
+        response = self.client.get('/api/codes', headers=self.free_headers)
         assert response.status_code == 403
         data = response.json()
         assert data['success'] is False
-        assert "paid feature" in data['error']
+        assert "Pro subscription" in data['error']
 
-    def test_list_codes_allows_paid_user(self):
+    def test_list_codes_allows_a_paid_key(self):
         """Paid users can call direct APIs."""
-        self.client.force_login(self.paid_user)
-        response = self.client.get('/api/codes')
+        response = self.client.get('/api/codes', headers=self.paid_headers)
         assert response.status_code == 200
         data = response.json()
         assert data['success'] is True
         assert len(data['results']) > 0
         assert 'NBC 2025' in [c['name'] for c in data['results']]
 
-    def test_search_history_requires_authentication(self):
-        """History API rejects anonymous users."""
+    def test_search_history_requires_a_key(self):
+        """History API rejects a call with no key."""
         response = self.client.get('/api/history')
         assert response.status_code == 401
 
-    def test_search_history_blocks_free_user(self):
+    def test_search_history_blocks_a_free_account(self):
         """History API is paid-only for direct API access."""
-        self.client.force_login(self.free_user)
-        response = self.client.get('/api/history')
+        response = self.client.get('/api/history', headers=self.free_headers)
         assert response.status_code == 403
 
     def test_search_history_paid_user(self):
         """Paid users can retrieve API history."""
-        self.client.force_login(self.paid_user)
-        response = self.client.get('/api/history')
+        response = self.client.get('/api/history', headers=self.paid_headers)
         assert response.status_code == 200
         data = response.json()
         assert data['success'] is True
         assert isinstance(data['results'], list)
 
-    def test_search_blocks_free_user(self):
-        """Search API rejects free users."""
-        self.client.force_login(self.free_user)
-        response = self.client.post('/api/search', {"query": "fire separation in ontario"})
+    def test_search_blocks_a_free_account(self):
+        """Search API rejects a key held by an account without Pro."""
+        response = self.client.post(
+            '/api/search', {"query": "fire separation in ontario"}, headers=self.free_headers
+        )
         assert response.status_code == 403
         data = response.json()
         assert data["success"] is False
-        assert "paid feature" in data["error"]
+        assert "Pro subscription" in data["error"]
 
     def test_health_is_public(self):
         """Health endpoint remains public for infra monitoring."""
@@ -115,7 +125,6 @@ class TestApiEndpoints:
     @patch("services.search_service.format_search_results", autospec=False)
     def test_search_allows_paid_user(self, mock_format, mock_execute, mock_parse):
         """Paid users can call search API."""
-        self.client.force_login(self.paid_user)
         mock_parse.return_value = {
             "query": "fire separation",
             "province": "ON",
@@ -128,7 +137,9 @@ class TestApiEndpoints:
         }
         mock_format.return_value = []
 
-        response = self.client.post('/api/search', {"query": "fire separation in ontario"})
+        response = self.client.post(
+            '/api/search', {"query": "fire separation in ontario"}, headers=self.paid_headers
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
@@ -138,7 +149,6 @@ class TestApiEndpoints:
     @patch("services.search_service.format_search_results", autospec=False)
     def test_search_date_province_overrides(self, mock_format, mock_execute, mock_parse):
         """date and province fields override LLM-parsed values in API search."""
-        self.client.force_login(self.paid_user)
         mock_parse.return_value = {"query": "fire separation", "province": "BC", "date": "2020-01-01"}
         mock_execute.return_value = {
             "results": [],
@@ -152,13 +162,18 @@ class TestApiEndpoints:
             '/api/search',
             data=payload,
             content_type="application/json",
+            headers=self.paid_headers,
         )
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
 
-        # Overrides must be surfaced in meta so callers can confirm what was applied
-        assert data["meta"]["overrides"] == {"date": "1995-06-01", "province": "ON"}
+        # meta reports what the search RAN at, not a separate list of what was
+        # overridden.  One place to read the date and the province means a
+        # caller cannot check the wrong one, and the answer is the same shape
+        # whether or not the request overrode anything.
+        assert data["meta"]["date"] == "1995-06-01"
+        assert data["meta"]["province"] == "ON"
 
         # Confirm the overrides were actually passed into parse → execute pipeline
         call_kwargs = mock_parse.call_args

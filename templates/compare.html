@@ -23,5 +23,10 @@
     <p class="mt-6 border-t border-rule pt-3 font-mono text-[11px] tracking-[0.04em] text-ink-3">
         <a href="{% url 'core:compare_print' %}?a={{ side_a.ref }}&amp;b={{ side_b.ref }}{% if redline_forced %}&amp;redline=on{% endif %}" target="_blank" rel="noopener" class="ui-link">Print this comparison <span aria-hidden="true">&nearr;</span></a>{% if not user.is_authenticated %} <span>&mdash; free account required</span>{% endif %}
     </p>
+
+    {% comment %} Two versions, and a cross-edition comparison reproduces two
+       publications, so the years come from the view rather than from one
+       edition on the page. {% endcomment %}
+    {% include "partials/_crown_attribution.html" %}
 </div>
 {% endblock %}

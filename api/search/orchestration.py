@@ -9,6 +9,12 @@ from typing import Any
 from django.db import models
 from django.db.models import Prefetch, Q
 
+from api.search.engine import (
+    SEARCH_CANDIDATE_LIMIT,
+    SEARCH_RESULT_CAP,
+    compute_corpus_stats,
+    score_versions,
+)
 from config.part_applicability import (
     PART_BOOST,
     PART_DEMOTE,
@@ -28,13 +34,6 @@ from core.models import (
     ProvinceCode,
     ProvisionMapping,
     RegulationClause,
-)
-
-from .engine import (
-    SEARCH_CANDIDATE_LIMIT,
-    SEARCH_RESULT_CAP,
-    compute_corpus_stats,
-    score_versions,
 )
 
 

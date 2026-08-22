@@ -402,6 +402,14 @@ lineage rows and edition-nav teasers already show, no body text.
 {% endif %}{# date_out_of_range #}
 {% endif %}{# teaser_only #}
 
+{% comment %} Inside `success` and outside the teaser split, so both branches
+   carry it: a teaser withholds the body but still prints provision titles, and
+   a title is legislative text like any other. Guarded, because a search that
+   matched nothing has reproduced nothing to acknowledge. {% endcomment %}
+{% if results or teaser_rows or locked_edition_counts %}
+{% include "partials/_crown_attribution.html" %}
+{% endif %}
+
 {% else %}
 {% if rate_limited %}
 {# -- Rate-limit notification -- #}

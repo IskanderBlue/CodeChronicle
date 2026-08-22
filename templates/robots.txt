@@ -9,6 +9,11 @@ Disallow: /history/
 Disallow: /settings/
 Disallow: /insights/
 Disallow: /stripe/
+# The API.  Every endpoint that carries corpus content refuses a caller with
+# no key, so a crawler indexes the refusal and nothing else.  /api/docs is
+# drawn by JavaScript and reads as an empty page to a crawler, and the reader
+# who needs it arrives from their own settings page.
+Disallow: /api/
 
 # HTMX partial endpoints.  They return page fragments with no <head> and no
 # navigation, so an indexed one is a dead end for a visitor.

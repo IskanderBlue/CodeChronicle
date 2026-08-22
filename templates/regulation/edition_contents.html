@@ -89,5 +89,10 @@ the two must not be confused for each other.
     <p class="mt-6 border-t border-rule pt-3 font-mono text-[11px] tracking-[0.04em] text-ink-3">
         <a href="{% url 'core:edition_chain' edition.pk %}" class="ui-link">Amendment chain for this edition</a>
     </p>
+
+    {% comment %} A contents page carries no bodies, but every entry is a
+       provision title taken from the law, so it is a reproduction.
+    {% endcomment %}
+    {% include "partials/_crown_attribution.html" %}
 </div>
 {% endblock %}

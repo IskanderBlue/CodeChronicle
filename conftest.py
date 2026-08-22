@@ -21,3 +21,20 @@ def _free_scope_covers_fixture_editions(settings):
         "NBC_2025",
         "BCBC_2018",
     ]
+
+
+@pytest.fixture(autouse=True)
+def _team_memberships_are_honoured(settings):
+    """Pin ``TEAM_MEMBERSHIPS_ENABLED`` on, whatever the developer's ``.env`` says.
+
+    It is a development switch: it sets the signed-in reader's team membership
+    aside so both the "buy seats" and the "manage seats" states are reachable
+    without making and destroying an organization.  ``base.py`` calls
+    ``load_dotenv``, so a developer who turns it off in ``.env`` would
+    otherwise turn three tests red — a convenience toggle that can fail the
+    suite is worse than no toggle.
+
+    ``TestTheTeamMembershipSwitch`` sets it to ``False`` explicitly, which
+    overrides this.
+    """
+    settings.TEAM_MEMBERSHIPS_ENABLED = True

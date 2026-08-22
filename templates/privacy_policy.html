@@ -9,7 +9,7 @@
             Privacy Policy
         </h1>
         <p class="mt-4 text-sm text-ink-3">
-            Last updated: August 1, 2026
+            Last updated: August 19, 2026
         </p>
     </div>
 
@@ -33,7 +33,7 @@
             <h3 class="font-serif text-lg font-semibold text-ink mt-4 mb-2">Usage Data</h3>
             <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2">
                 <li>Search queries</li>
-                <li>Pages and code sections viewed</li>
+                <li>Pages and provisions viewed</li>
                 <li>Timestamps and frequency of use</li>
                 <li>Basic technical information (IP address, browser type)</li>
             </ul>
@@ -42,6 +42,33 @@
                 Search queries are sent to Anthropic's Claude API to interpret them into structured
                 search parameters; under our agreement with Anthropic, they are not used to train
                 AI models.
+            </p>
+
+            {% comment %} New with the reading record. The Terms' "Records and
+               Review" section reserves the compliance purpose, and PIPEDA
+               requires the purpose to be identified before we collect for it —
+               so the two documents change together, and the retention period
+               below is a promise the code has to keep. {% endcomment %}
+            <h3 class="font-serif text-lg font-semibold text-ink mt-4 mb-2">Which Provisions You Open</h3>
+            <p class="text-ink-2">
+                If you are signed in, we keep a record of the provisions your account opens &mdash;
+                the edition, the provision number, the version, and when you first and last opened
+                it. If you use the API, the same record is kept for the provisions your key fetches.
+            </p>
+            <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2 mt-2">
+                <li>We use it to see which parts of the corpus are used, and to decide what to
+                    verify and expand next</li>
+                <li>We use it to check compliance with the Acceptable Use rules in our
+                    <a href="{% url 'core:terms_of_service' %}" class="ui-link">Terms of Service</a>
+                    &mdash; those rules forbid systematic or bulk retrieval, and this record is how
+                    we can tell</li>
+                <li>We do not use it to advertise to you, and we do not sell or share it</li>
+                <li>If your employer pays for your account, we do not report your individual reading
+                    to them</li>
+            </ul>
+            <p class="text-ink-2 mt-2">
+                We keep this record for up to two years, and then delete it. We do not keep a
+                reading record for visitors who are not signed in.
             </p>
 
             {% comment %}
@@ -93,6 +120,7 @@
                 <li>Improve search results and coverage</li>
                 <li>Understand how the Service is used</li>
                 <li>Communicate about access, updates, or support requests</li>
+                <li>Check compliance with the Acceptable Use rules in our Terms of Service</li>
             </ul>
             <p class="text-ink-2 mt-3">
                 We do not sell personal data.
@@ -142,6 +170,10 @@
                 Requests and corrections you send us, and any email address you attach
                 to one, are kept for up to two years and then deleted. You may ask us to
                 remove the address sooner.
+            </p>
+            <p class="text-ink-2 mt-3">
+                The record of which provisions your account opens is kept for up to two years and
+                then deleted.
             </p>
             <p class="text-ink-2 mt-3">
                 One exception: records of your acceptance of our Terms of Service and Privacy Policy

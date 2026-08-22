@@ -19,8 +19,9 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
 
-from api.formatters import _diff_html_content, diff_is_empty, diff_similarity
-from core.access import edition_allowed
+from api.formatters import diff_html_content, diff_is_empty, diff_similarity
+from core.access import edition_allowed, edition_gate
+from core.attribution import crown_years_for_provisions
 from core.compare import (
     REDLINE_FLOOR,
     pairing_basis,
@@ -36,12 +37,12 @@ from core.models import CodeEditionProvisionVersion, EngagementEvent
 from core.page_crops import build_crops
 from core.permalinks import provision_permalink_url
 from core.print_options import apply_tables_mode, resolve_tables_mode, toggle_query
+from core.reading_ledger import record_versions
 from core.seo import TITLE_SUFFIX, exhibit_title, site_origin
+from core.views.regulation import locked_edition_response
 
-from .regulation import _locked_edition_response
 
-
-def _side(version: CodeEditionProvisionVersion, label: str) -> dict[str, Any]:
+def comparison_side(version: CodeEditionProvisionVersion, label: str) -> dict[str, Any]:
     """One side of the comparison, with everything the twin header states."""
     provision = version.provision
     edition = provision.edition
@@ -144,7 +145,7 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
     for version in (version_a, version_b):
         edition = version.provision.edition
         if not edition_allowed(request.user, edition.code_name):
-            return _locked_edition_response(request, edition, surface="compare")
+            return locked_edition_response(request, edition, surface="compare")
 
     # A comparison reads earlier-to-later whichever way round the reader named
     # it.  A version that was never in force has no effective date; it sorts
@@ -189,6 +190,10 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
         },
     )
 
+    # The reading ledger: a comparison delivers both texts in full, so both go
+    # in.  The print branch too — an exhibit is the same two texts on paper.
+    record_versions(request, (earlier, later))
+
     # Turn each side's citations into permalinks, one query per side.  A
     # citation is a link on every other provision surface, and a reader who
     # follows one out of a comparison is doing exactly what a comparison
@@ -211,13 +216,13 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
         # Diff the linked bodies, so the citations survive into the redline.
         # The differ passes tags through untouched and compares words only, so
         # the anchors change neither what is marked nor where.
-        old_diff, new_diff = _diff_html_content(
+        old_diff, new_diff = diff_html_content(
             earlier.linked_html or earlier.html,
             later.linked_html or later.html,
         )
 
-    side_a = _side(earlier, "A")
-    side_b = _side(later, "B")
+    side_a = comparison_side(earlier, "A")
+    side_b = comparison_side(later, "B")
     # The mapping's own direction, which is edition order and not always the
     # order the two sides are drawn in.  The sentence on the page reads
     # "maps X to Y", so it names these rather than A and B.
@@ -260,6 +265,11 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
             ),
             "side_a": side_a,
             "side_b": side_b,
+            # Both sides: a cross-edition pair is two provisions first
+            # enacted by two different instruments, in two different years.
+            "crown_years": crown_years_for_provisions(
+                [earlier.provision, later.provision]
+            ),
             # The same two dicts as a list, because the twin header loops over
             # them and a Django `for` cannot take a tuple literal.
             "sides": [side_a, side_b],
@@ -278,7 +288,7 @@ def compare_versions(request: HttpRequest, for_print: bool = False) -> HttpRespo
             "basis": basis,
             "basis_source": basis_source,
             "basis_target": basis_target,
-            "timeline": version_timeline(earlier, later, request.user),
+            "timeline": version_timeline(earlier, later, edition_gate(request.user)),
             "cross_edition": cross_edition,
             "force_redline_url": (
                 f"?a={side_a['ref']}&b={side_b['ref']}&redline=on"

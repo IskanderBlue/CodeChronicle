@@ -4,7 +4,11 @@
    `division`, `active_versions`, `is_active`; `active_node_id` /
    `active_provision_id` for highlighting; `transition_active` flag.
    `locked_edition_name` set = the edition is outside the user's free-tier
-   scope; render the upsell teaser instead of content. {% endcomment %}
+   scope; render the upsell teaser instead of content.
+   `contents` / `contents_total` / `contents_noun`: set when the match's own
+   subtree is over core.subtrees.CONTENTS_THRESHOLD, from
+   core.subtrees.contents_view. The panel then lists what is inside instead of
+   rendering it. {% endcomment %}
 {% if locked_edition_name %}
 <div class="border-l-[3px] border-secondary bg-surface-2 p-4 m-4">
     <h3 class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{{ locked_edition_name }} is Pro content</h3>
@@ -42,20 +46,39 @@
            the permalink's in-place ``?compare=`` diff. That comparison now
            lives at /compare/ — one comparison, one URL. Two active versions
            still mean a genuine date-overlap transition, which is a different
-           thing and keeps its own view. {% endcomment %}
-        {% if section.active_versions|length > 1 %}
-            {% include "provenance/_transition_view.html" with versions=section.active_versions %}
-        {% elif section.active_versions %}
-            {% with version=section.active_versions.0 %}
-                {% include "provenance/_provision_content.html" with version=version is_container=section.is_container %}
-            {% endwith %}
+           thing and keeps its own view.
+
+           `section.defer_text`: the heading is here, the body arrives from
+           `provision_text` as the reader scrolls to it. One text, one request,
+           one ledger row — see item 3 of the reading-ledger card. `revealed`
+           rather than `load` is what separates delivered from consumed: a
+           reader who opens forty provisions and reads two takes two.
+           `outerHTML` replaces this placeholder, so nothing re-fires.
+        {% endcomment %}
+        {% if section.defer_text %}
+        <div hx-get="{{ section.text_url }}"
+            hx-trigger="revealed"
+            hx-swap="outerHTML"
+            class="font-serif text-sm italic text-ink-3">
+            <span class="htmx-indicator">Loading…</span>
+            <noscript>
+                {% comment %} No htmx, no fetch. The provision's own permalink
+                   renders the same text, so the reader is never stranded.
+                {% endcomment %}
+                <a href="{{ section.url }}" class="ui-link">Open this provision</a>
+            </noscript>
+        </div>
         {% else %}
-        <p class="font-serif text-sm italic text-ink-3">
-            Not in force at this date.
-        </p>
+        {% include "partials/_viewer_section_body.html" %}
         {% endif %}
     </div>
     {% endfor %}
+    {% comment %} Over CONTENTS_THRESHOLD the panel lists what is inside
+       instead — the same block the permalink and the exhibit show, from the
+       same builder. A reader who meets the contents of Part 9 here and again
+       on its own page must meet one list, not two that drift.
+    {% endcomment %}
+    {% if contents %}{% include "partials/_provision_contents.html" %}{% endif %}
 </div>
 {% else %}
 <p class="p-4 font-serif text-sm text-ink-3">

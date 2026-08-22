@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% comment %} The re-acceptance wall. Reached only by the middleware, and only
+   when a document has moved past its re-acceptance floor.
+
+   It names which document changed rather than saying "our terms have been
+   updated", because a reader who is told what moved can decide whether to read
+   it, and a reader who is told nothing has to read both or click blind.
+
+   The sign-out link is not a courtesy. A reader is entitled to refuse a new
+   document, and a wall with no exit holds an account hostage over that refusal.
+{% endcomment %}
+
+{% block title %}Updated Terms - CodeChronicle{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-12">
+    <h1 class="font-serif text-3xl font-bold text-ink">We have updated our terms</h1>
+
+    <p class="mt-4 text-ink-2">
+        {% if terms_stale and privacy_stale %}
+        Our Terms of Service and Privacy Policy have both changed. Please read them and accept to carry on.
+        {% elif terms_stale %}
+        Our Terms of Service have changed. Please read them and accept to carry on.
+        {% else %}
+        Our Privacy Policy has changed. Please read it and accept to carry on.
+        {% endif %}
+    </p>
+
+    <ul class="mt-6 divide-y divide-rule border-t border-b border-rule">
+        {% if terms_stale %}
+        <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+            <span class="text-sm text-ink">Terms of Service</span>
+            <a href="{% url 'core:terms_of_service' %}" target="_blank" rel="noopener" class="ui-link font-mono text-xs uppercase tracking-[0.06em]">Read &mdash; version {{ terms_version }}</a>
+        </li>
+        {% endif %}
+        {% if privacy_stale %}
+        <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+            <span class="text-sm text-ink">Privacy Policy</span>
+            <a href="{% url 'core:privacy_policy' %}" target="_blank" rel="noopener" class="ui-link font-mono text-xs uppercase tracking-[0.06em]">Read &mdash; version {{ privacy_version }}</a>
+        </li>
+        {% endif %}
+    </ul>
+
+    {% if unchecked %}
+    <p class="mt-6 border-l-[3px] border-strike bg-surface-2 p-3 text-sm text-strike">
+        Tick the box to accept, or sign out.
+    </p>
+    {% endif %}
+
+    <form method="POST" class="mt-6">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}" />
+        <label class="flex items-start gap-3 text-sm text-ink-2">
+            <input type="checkbox" name="accepted" value="1" class="mt-1" />
+            <span>
+                I accept the
+                {% if terms_stale %}<a href="{% url 'core:terms_of_service' %}" target="_blank" rel="noopener" class="ui-link">Terms of Service</a>{% endif %}{% if terms_stale and privacy_stale %} and the {% endif %}{% if privacy_stale %}<a href="{% url 'core:privacy_policy' %}" target="_blank" rel="noopener" class="ui-link">Privacy Policy</a>{% endif %}.
+            </span>
+        </label>
+        <div class="mt-6 flex flex-wrap items-center gap-4">
+            <button type="submit" class="ui-btn px-5 py-2 text-sm uppercase tracking-[0.06em]">Accept and continue</button>
+            <a href="{% url 'account_logout' %}" class="ui-link text-sm">Sign out instead</a>
+        </div>
+    </form>
+
+    <p class="mt-8 text-xs text-ink-3">
+        We record the version you accept, the date and time, and the IP address and browser used, as
+        proof of the agreement. Nothing is recorded until you submit this form.
+    </p>
+</div>
+{% endblock %}
