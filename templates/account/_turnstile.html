@@ -3,8 +3,11 @@ The Cloudflare Turnstile widget (accounts.turnstile).  Renders nothing when
 the check is off, so a developer checkout without a secret shows no widget.
 The action comes from the form, so the widget and the server check cannot
 name two different actions.
+
+data-size="flexible" makes the widget fill the form's width, like the inputs
+and the submit button.  The default size is a fixed 300 px box at the left.
 {% endcomment %}
 {% if form.turnstile_site_key %}
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-<div class="cf-turnstile" data-sitekey="{{ form.turnstile_site_key }}" data-action="{{ form.turnstile_action }}" data-theme="auto"></div>
+<div class="cf-turnstile" data-sitekey="{{ form.turnstile_site_key }}" data-action="{{ form.turnstile_action }}" data-theme="auto" data-size="flexible"></div>
 {% endif %}
