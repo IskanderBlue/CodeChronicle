@@ -75,6 +75,20 @@ def corpus_last_modified(
 #: expired entry costs one conditional request rather than a re-render.
 EDGE_MAX_AGE = 3600
 
+#: How long nginx on the VM may keep an anonymous page.  Long, because the
+#: bots come back to the same URL days later: over 7 days to 24 September 2026,
+#: 76% of the read-page requests were for a URL already fetched that week, and
+#: the one-hour edge copy had gone.  A cache hit in nginx runs no Django and
+#: reads no Neon row, so it lets the compute sleep; a 304 from Django does not,
+#: because the check reads ``CorpusCurrency``.
+#:
+#: nginx obeys ``X-Accel-Expires`` and removes it, so the edge and the browser
+#: still see only ``Cache-Control``.  Nothing checks the stamp on a hit, so the
+#: copy must be cleared when the pages change: ``deploy-web.sh`` clears it on
+#: every deploy, and a corpus load needs the clear by hand (``CLAUDE.md``).
+#: This value is the limit when somebody forgets.
+ORIGIN_CACHE_SECONDS = 7 * 24 * 3600
+
 
 def corpus_conditional(
     view: Callable[..., HttpResponse],
@@ -112,6 +126,11 @@ def corpus_conditional(
             response["Cache-Control"] = (
                 f"public, max-age=0, must-revalidate, s-maxage={EDGE_MAX_AGE}"
             )
+            # Only a full body.  nginx strips the conditional headers when it
+            # fills its cache, so a 304 here is a reader's own revalidation,
+            # which has no body to keep.
+            if response.status_code == 200:
+                response["X-Accel-Expires"] = str(ORIGIN_CACHE_SECONDS)
         else:
             # A redirect to the login page is about the reader, not the
             # corpus.  Stored publicly it would be served to everybody.

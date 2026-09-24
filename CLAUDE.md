@@ -48,6 +48,13 @@ python manage.py load_edition --source ../CodeChronicleMapping/data/outputs
 # else restores them.  Pass --skip-consolidations to stop that.
 python manage.py load_edition --source ../CodeChronicleMapping/data/outputs --all
 
+# After a load to production, clear the nginx page cache.  A load does not
+# deploy, and nothing else tells nginx that the pages changed.  Without this,
+# anonymous readers see the old pages for up to 7 days.
+gcloud compute ssh codechroniclenet-vm --zone=us-central1-a --project=codechronicle-487104 \
+    --tunnel-through-iap --command "sudo docker exec codechroniclenet-nginx \
+    find /var/cache/nginx/pages -mindepth 1 -delete && sudo docker restart codechroniclenet-nginx"
+
 # Tell the people who asked for an edition that it has landed. Run by hand,
 # when an edition ships. Prints a report and sends nothing without --send;
 # read the message yourself before you add that flag. A human picks the
@@ -766,6 +773,26 @@ Nothing purges the edge on deploy, so a template change can stay invisible for
 up to `EDGE_MAX_AGE`. Going stale is cheap — Cloudflare revalidates with
 `If-Modified-Since` and the origin answers 304 — so this is a staleness
 window, not a cost.
+
+**nginx on the VM keeps the anonymous copy for 7 days.** A 304 from Django
+still reads `CorpusCurrency`, so it wakes the Neon compute. The bots come back
+to a URL days later, after the edge copy has gone: over 7 days to 24 September
+2026, 76% of the read-page requests were repeats. The nginx config is in the
+Terraform repo (`modules/compute/startup.sh`). Four rules:
+
+- **The app decides what nginx keeps.** `corpus_conditional` sends
+  `X-Accel-Expires` (`ORIGIN_CACHE_SECONDS`) only on an anonymous 200. nginx
+  ignores `Cache-Control` and `Expires`, so no other response is kept. nginx
+  removes the header, so the edge and the browser never see it.
+- **A session cookie bypasses the cache**, in both directions: nginx does not
+  answer from the cache, and nginx does not keep the answer.
+- **Nothing checks a cached page against the corpus.** `deploy-web.sh` clears
+  the cache on every deploy. A corpus load does not deploy, so clear the cache
+  by hand after a load (see "Commands"). If nobody clears it, the old pages
+  stay for up to 7 days.
+- **A cache hit records no `EngagementEvent`**, as a 304 does not.
+
+`X-Page-Cache` on a response shows `HIT`, `MISS` or `BYPASS`.
 
 **`templates/robots.txt` refuses what costs and returns nothing**: the print
 routes (every provision links its own, and an anonymous request is a login

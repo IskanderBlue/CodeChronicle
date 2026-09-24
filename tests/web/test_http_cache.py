@@ -24,7 +24,7 @@ from core.models import (
     Regulation,
     User,
 )
-from web.http_cache import EDGE_MAX_AGE
+from web.http_cache import EDGE_MAX_AGE, ORIGIN_CACHE_SECONDS
 
 PERMALINK = reverse(
     "web:provision_permalink_no_division",
@@ -81,6 +81,10 @@ class TestAnonymousGetsAValidator:
         response = client.get(PERMALINK)
         assert f"s-maxage={EDGE_MAX_AGE}" in response["Cache-Control"]
         assert "public" in response["Cache-Control"]
+
+    def test_nginx_may_keep_it(self, client: Client, corpus):
+        response = client.get(PERMALINK)
+        assert response["X-Accel-Expires"] == str(ORIGIN_CACHE_SECONDS)
 
     def test_the_reader_own_browser_still_revalidates(self, client: Client, corpus):
         # A reader should see a new edition the moment it lands, so their own
@@ -175,6 +179,7 @@ class TestSignedInReadersAreNeverCached:
         response = client.get(PERMALINK)
         assert "no-store" in response["Cache-Control"]
         assert "private" in response["Cache-Control"]
+        assert "X-Accel-Expires" not in response
 
     def test_an_anonymous_stamp_cannot_freeze_a_subscriber(
         self, client: Client, corpus
@@ -203,6 +208,7 @@ class TestTheExhibitIsNeverValidated:
         # answered from a validator the reading page handed out.
         assert response.status_code in (302, 200)
         assert response.get("Last-Modified") is None
+        assert "X-Accel-Expires" not in response
 
 
 @pytest.mark.django_db
@@ -225,6 +231,8 @@ class TestOnlyAServableBodyIsStamped:
         response = client.get(url)
         assert response.status_code == 404
         assert response.get("Last-Modified") is None
+        # A miss kept for a week would hide a provision that a load adds.
+        assert "X-Accel-Expires" not in response
 
     def test_a_missing_comparison_carries_no_validator(self, client: Client, corpus):
         response = client.get("/compare/", {"a": "nonsense", "b": "nonsense"})
@@ -237,6 +245,7 @@ class TestOnlyAServableBodyIsStamped:
         second = client.get(PERMALINK, HTTP_IF_MODIFIED_SINCE=first["Last-Modified"])
         assert second.status_code == 304
         assert second["Last-Modified"] == first["Last-Modified"]
+        assert "X-Accel-Expires" not in second
 
 
 @pytest.mark.django_db
