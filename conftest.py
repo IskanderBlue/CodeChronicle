@@ -24,6 +24,18 @@ def _free_scope_covers_fixture_editions(settings):
 
 
 @pytest.fixture(autouse=True)
+def _turnstile_is_off(settings):
+    """Pin the Turnstile check off, whatever the developer's ``.env`` says.
+
+    A developer can set ``TURNSTILE_SECRET_KEY`` in ``.env`` to run the real
+    widget on localhost.  ``base.py`` calls ``load_dotenv``, so without this
+    pin every signup test would call Cloudflare and fail.  The Turnstile tests
+    set a secret explicitly, which overrides this.
+    """
+    settings.TURNSTILE_SECRET_KEY = ""
+
+
+@pytest.fixture(autouse=True)
 def _team_memberships_are_honoured(settings):
     """Pin ``TEAM_MEMBERSHIPS_ENABLED`` on, whatever the developer's ``.env`` says.
 

@@ -75,6 +75,9 @@ jobs:
           # Cloudflare Worker verifies, so the value only has to be non-empty.
           # The deployed value lives in the bundle and must match the Worker's.
           ASSET_SIGNING_KEY: ci-for-check-only-asset-signing-key
+          # The same kind of placeholder. `accounts.E001` refuses an empty
+          # Turnstile secret. Nothing in the check calls Cloudflare.
+          TURNSTILE_SECRET_KEY: ci-for-check-only-turnstile-secret
         run: |
           python manage.py check
           python manage.py check --deploy --fail-level WARNING

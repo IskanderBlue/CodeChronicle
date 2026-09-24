@@ -185,6 +185,24 @@ class TestTheAssetSigningKey:
         assert settings.ASSET_SIGNING_KEY == ""
 
 
+class TestTheTurnstileSettings:
+    """The Turnstile secret has the same failure shape as the asset key: the
+    forms work without it, and the bots get through."""
+
+    def test_the_secret_is_read_from_the_bundle(self):
+        settings = _reload_production(
+            {"APP_RUNTIME_SECRETS": json.dumps({"TURNSTILE_SECRET_KEY": "the-secret"})}
+        )
+        assert settings.TURNSTILE_SECRET_KEY == "the-secret"
+
+    def test_a_token_solved_on_localhost_does_not_pass_in_production(self):
+        settings = _reload_production({})
+        assert "localhost" not in settings.TURNSTILE_HOSTNAMES
+        assert "127.0.0.1" not in settings.TURNSTILE_HOSTNAMES
+        assert "www.codechronicle.ca" in settings.TURNSTILE_HOSTNAMES
+        assert "app.codechronicle.ca" in settings.TURNSTILE_HOSTNAMES
+
+
 class TestTheDeployRefusesAnUnsignableInstance:
     """``check_asset_signing_key`` — the app half of a gate that must agree.
 

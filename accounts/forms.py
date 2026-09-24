@@ -4,11 +4,12 @@ from django import forms
 from django.conf import settings
 from django.http import HttpRequest
 
+from accounts.turnstile import TurnstileMixin
 from core.models import TermsAcceptance, User
 from shared.ip import extract_client_ip
 
 
-class CustomSignupForm(forms.Form):
+class CustomSignupForm(TurnstileMixin):
     """Extra fields mixed into allauth's signup form via ``ACCOUNT_SIGNUP_FORM_CLASS``.
 
     Adds a required Terms of Service / Privacy Policy acceptance checkbox so
@@ -20,7 +21,12 @@ class CustomSignupForm(forms.Form):
     One checkbox, two recorded versions: the user assents to both documents in
     one act, but the documents are versioned separately so the record names
     the exact text each of them read.
+
+    ``TurnstileMixin`` refuses a POST from a bot before allauth creates the
+    user, so a refused signup sends no confirmation email.
     """
+
+    turnstile_action = "signup"
 
     terms_accepted = forms.BooleanField(
         required=True,

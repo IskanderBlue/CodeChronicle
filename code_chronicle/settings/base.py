@@ -222,7 +222,7 @@ ACCOUNT_ADAPTER = "accounts.adapters.AccountAdapter"
 # new agreement.
 ACCOUNT_SIGNUP_FORM_CLASS = "accounts.forms.CustomSignupForm"
 TERMS_VERSION = "2026-08-21"
-PRIVACY_VERSION = "2026-08-19"
+PRIVACY_VERSION = "2026-09-24"
 
 # The earliest version that still counts as accepted.  A reader whose latest
 # TermsAcceptance is older than one of these meets the re-acceptance wall; see
@@ -242,8 +242,28 @@ PRIVACY_VERSION = "2026-08-19"
 # went in force.  That edit defined "the Service" for the first time, so every
 # restriction in the agreement changed scope — which is material by any
 # reading, even though most of the same edit only removed duplicated rules.
+#
+# The Privacy Policy of 24 September 2026 did NOT move the floor.  It names
+# Cloudflare, which already carried every request, and the Turnstile check on
+# signup and reset.  That protects the reader and changes nothing the reader
+# agreed to, so a new signup records the new text and nobody is asked again.
 TERMS_REACCEPT_FROM = "2026-08-21"
 PRIVACY_REACCEPT_FROM = "2026-08-19"
+
+# Cloudflare Turnstile on the two forms that send an email to a typed address
+# (accounts.turnstile).  The signup form gets the check through
+# ACCOUNT_SIGNUP_FORM_CLASS; the reset form needs its own entry here.
+ACCOUNT_FORMS = {"reset_password": "accounts.reset_forms.TurnstileResetPasswordForm"}
+# The site key is public: the widget prints it into the page.  The one widget
+# is registered for codechronicle.ca, localhost and 127.0.0.1, so a developer
+# can run the real check by setting only the secret.
+TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "0x4AAAAAAFB0o3jmJMqubOgU")
+# Empty switches the check off.  production.py reads it from the bundle, and
+# accounts.E001 refuses a deployed instance without it.
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+# The page hostnames a token may come from.  production.py replaces this list,
+# because a production token solved on localhost must not pass.
+TURNSTILE_HOSTNAMES: tuple[str, ...] = ("localhost", "127.0.0.1")
 
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"

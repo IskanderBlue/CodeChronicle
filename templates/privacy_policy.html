@@ -9,7 +9,7 @@
             Privacy Policy
         </h1>
         <p class="mt-4 text-sm text-ink-3">
-            Last updated: August 19, 2026
+            Last updated: September 24, 2026
         </p>
     </div>
 
@@ -29,6 +29,17 @@
                     version accepted, the date and time, and the IP address and browser used — kept
                     as proof of agreement</li>
             </ul>
+            {% comment %} Added 2026-09-24 with the Turnstile check (accounts.turnstile).
+               "We receive only the result" is a promise the code keeps: siteverify
+               answers success, action and hostname, none of it is stored, and the
+               reader's IP address is not sent to Cloudflare (no remoteip). {% endcomment %}
+            <p class="text-ink-2 mt-2">
+                When you create an account or ask for a password reset, the form runs Cloudflare
+                Turnstile, a check that a person and not an automated program is sending it.
+                Cloudflare's script collects technical information from your browser and device to
+                make that decision, and we receive only the result. Cloudflare's handling of this
+                information is described in its own privacy policy.
+            </p>
 
             <h3 class="font-serif text-lg font-semibold text-ink mt-4 mb-2">Usage Data</h3>
             <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2">
@@ -134,8 +145,9 @@
             </p>
             <ul class="list-disc list-inside space-y-1 text-ink-2 ml-2">
                 <li>With service providers necessary to operate the Service, currently including
-                    Google Cloud (hosting), Neon (database hosting), Stripe (payment processing),
-                    and Anthropic (search query interpretation)</li>
+                    Google Cloud (hosting), Neon (database hosting), Cloudflare (content delivery,
+                    and the bot check on the sign-up and password-reset forms), Stripe (payment
+                    processing), and Anthropic (search query interpretation)</li>
                 <li>If required by law</li>
             </ul>
             <p class="text-ink-2 mt-3">

@@ -208,6 +208,14 @@ BACKUP_HEALTHCHECK_URL = _resolve_runtime_setting("BACKUP_HEALTHCHECK_URL")
 # then refuse all of them.
 ASSET_SIGNING_KEY = _resolve_runtime_setting("ASSET_SIGNING_KEY")
 
+# The Turnstile secret (accounts.turnstile), re-resolved for the same reason.
+# Without it the check is off and accounts.E001 refuses the deploy.
+TURNSTILE_SECRET_KEY = _resolve_runtime_setting("TURNSTILE_SECRET_KEY")
+# Never localhost here: a token solved on a developer's machine must not open
+# the production forms.  The list must name every host that serves the forms:
+# nginx does not send app.codechronicle.ca to www, so a signup there is real.
+TURNSTILE_HOSTNAMES = ("www.codechronicle.ca", "app.codechronicle.ca", "codechronicle.ca")
+
 # Hashed static filenames for cache busting (e.g. tailwind.a1b2c3d4.css)
 STORAGES = {
     "staticfiles": {
